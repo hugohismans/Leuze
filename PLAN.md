@@ -129,10 +129,16 @@ second retire. Conséquences voulues :
 - s'il ouvre l'application, il retrouve ses inscriptions déjà faites, et peut en ajouter
   d'autres ensuite. L'application devient un complément, jamais un péage.
 
-Deux choix de conception en découlent : la liste des prénoms est **restreinte aux services
-concernés par l'activité** (liste plus courte, et rien d'inutile à l'écran) et l'écran ne
-propose que les activités **encore à venir** — prendre une inscription pour une séance
-commencée n'a pas de sens et allongerait la revue.
+Trois choix de conception en découlent :
+
+- **la réunion se tient dans une unité**, et l'écran le reflète : un sélecteur de service
+  restreint à la fois les activités passées en revue et les prénoms proposés. Une activité
+  réservée à un autre service ne peut accueillir personne d'ici ; faire défiler les
+  patients des autres unités ne ferait que rallonger la réunion. Le choix est mémorisé sur
+  l'appareil, pour que la tablette d'une unité rouvre toujours sur la sienne ;
+- la liste des prénoms est en outre **restreinte à l'audience de l'activité** ;
+- l'écran ne propose que les activités **encore à venir** — prendre une inscription pour
+  une séance commencée n'a pas de sens et allongerait la revue.
 
 ⚠️ Cet écran écrit des inscriptions : il exige donc les Cloud Functions, donc le plan
 Blaze. Il est entièrement utilisable dans la démonstration en attendant.

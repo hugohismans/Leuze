@@ -22,6 +22,29 @@
    * jamais à toucher l'application : ils la retrouveront simplement à jour s'ils
    * l'ouvrent.
    */
+  /**
+   * La réunion se tient **dans une unité**. Le service choisi restreint donc à la fois
+   * les activités passées en revue et les prénoms proposés : une activité réservée à un
+   * autre service ne peut accueillir personne d'ici, et faire défiler les patients des
+   * autres unités ne ferait que rallonger la réunion.
+   *
+   * Le choix est mémorisé sur l'appareil : la tablette du Mazurel rouvre sur Le Mazurel.
+   */
+  const MEMOIRE = 'leuze.reunion.service'
+  let serviceId = $state<string | null>(
+    typeof localStorage === 'undefined' ? null : localStorage.getItem(MEMOIRE),
+  )
+
+  function choisirService(valeur: string): void {
+    serviceId = valeur === '' ? null : valeur
+    selection = null
+    dernierMessage = null
+    if (typeof localStorage !== 'undefined') {
+      if (serviceId === null) localStorage.removeItem(MEMOIRE)
+      else localStorage.setItem(MEMOIRE, serviceId)
+    }
+  }
+
   let selection = $state<string | null>(null)
   let dernierMessage = $state<string | null>(null)
   let enCours = $state<string | null>(null)
@@ -32,7 +55,10 @@
    */
   const maintenant = new Date()
   const aInscription = $derived(
-    staffStore.occurrences.filter((o) => o.status !== 'cancelled' && o.registrationRequired),
+    staffStore.occurrences
+      .filter((o) => o.status !== 'cancelled' && o.registrationRequired)
+      // Réservée à un autre service : personne ici ne peut y aller.
+      .filter((o) => serviceId === null || isVisibleToService(o, serviceId)),
   )
   const semaine = $derived(
     aInscription
@@ -51,7 +77,9 @@
   const eligibles = $derived(
     courante === null
       ? []
-      : staffStore.patients.filter((p) => isVisibleToService(courante, p.serviceId)),
+      : staffStore.patients
+          .filter((p) => serviceId === null || p.serviceId === serviceId)
+          .filter((p) => isVisibleToService(courante, p.serviceId)),
   )
 
   const etat = $derived(courante === null ? null : capacityOf(courante))
@@ -99,6 +127,24 @@
         Du {formatDayLabel(staffStore.week[0]!)} au {formatDayLabel(staffStore.week[6]!)}
       </p>
     </div>
+
+    <div>
+      <label for="service-reunion" class="mb-1 block text-base font-semibold text-ink">
+        Réunion dans le service
+      </label>
+      <select
+        id="service-reunion"
+        class="rounded-xl border-2 border-line bg-white p-3 text-lg text-ink"
+        style="min-height: 56px;"
+        value={serviceId ?? ''}
+        onchange={(event) => choisirService(event.currentTarget.value)}
+      >
+        <option value="">Tous les services</option>
+        {#each staffStore.catalog.services as service (service.id)}
+          <option value={service.id}>{service.name}</option>
+        {/each}
+      </select>
+    </div>
     <div class="flex flex-wrap gap-2">
       <button type="button" class="btn btn-secondary" onclick={() => semaineDe(-1)}>
         <span aria-hidden="true">←</span> Semaine précédente
@@ -126,6 +172,9 @@
       {#if passees > 0}
         Toutes les activités à inscription de cette semaine ont déjà eu lieu.
         Passez à la semaine suivante pour préparer le programme.
+      {:else if serviceId !== null}
+        Aucune activité à inscription cette semaine pour ce service. Choisissez un autre
+        service, ou posez le programme dans « La semaine ».
       {:else}
         Aucune activité à inscription cette semaine. Posez d'abord le programme dans « La semaine ».
       {/if}
@@ -135,7 +184,10 @@
       <!-- La liste des activités de la semaine : on les passe une par une. -->
       <nav aria-label="Activités de la semaine" class="card p-3">
         <p class="mb-2 px-1 text-base font-semibold text-ink-soft">
-          {semaine.length} activités à passer en revue
+          {semaine.length} activité{semaine.length > 1 ? 's' : ''} à passer en revue
+          {#if serviceId !== null}
+            — {staffStore.catalog.services.find((s) => s.id === serviceId)?.name}
+          {/if}
         </p>
         <ul class="grid gap-2">
           {#each semaine as occurrence (occurrence.id)}
@@ -198,7 +250,11 @@
 
           {#if eligibles.length === 0}
             <p class="text-lg text-ink-soft">
-              Aucun patient n'est rattaché aux services concernés par cette activité.
+              {#if serviceId === null}
+                Aucun patient n'est rattaché aux services concernés par cette activité.
+              {:else}
+                Aucun patient de ce service pour le moment.
+              {/if}
             </p>
           {:else}
             <ul class="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
