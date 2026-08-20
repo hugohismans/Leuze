@@ -1,5 +1,16 @@
 import { assertFails, assertSucceeds, type RulesTestEnvironment } from '@firebase/rules-unit-testing'
-import { collection, deleteDoc, doc, getDoc, getDocs, query, setDoc, updateDoc, where } from 'firebase/firestore'
+import {
+  collection,
+  deleteDoc,
+  doc,
+  getDoc,
+  getDocs,
+  orderBy,
+  query,
+  setDoc,
+  updateDoc,
+  where,
+} from 'firebase/firestore'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import {
   JONCQUERELLE,
@@ -88,6 +99,30 @@ describe('requête du calendrier', () => {
     const titres = snapshot.docs.map((d) => d.data().title).sort()
     expect(titres).toEqual(['Atelier créatif', 'Groupe de parole', 'Relaxation'])
     expect(titres).not.toContain('Ping-pong')
+  })
+
+  it('accepte la requête réelle de l’adapter : service, fenêtre de dates et tri', async () => {
+    // Mot pour mot la requête de `firestoreRepository.listBetween`. Ce test vérifie deux
+    // choses d'un coup : que les règles l'acceptent, et que Firestore accepte de combiner
+    // `array-contains-any` avec un intervalle sur un autre champ.
+    const database = asPatient(env, 'p_1', MAZUREL)
+    const snapshot = await assertSucceeds(
+      getDocs(
+        query(
+          collection(database, 'occurrences'),
+          where('audienceKeys', 'array-contains-any', ['all', MAZUREL]),
+          where('localDate', '>=', '2026-08-31'),
+          where('localDate', '<=', '2026-09-06'),
+          orderBy('localDate'),
+          orderBy('start'),
+        ),
+      ),
+    )
+    expect(snapshot.docs.map((d) => d.data().title).sort()).toEqual([
+      'Atelier créatif',
+      'Groupe de parole',
+      'Relaxation',
+    ])
   })
 
   it('refuse en bloc une requête non filtrée : pas de sous-ensemble silencieux', async () => {

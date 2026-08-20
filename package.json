@@ -18,8 +18,9 @@
     "promote:admin": "vite-node scripts/promote-admin.ts",
     "dev:firestore": "VITE_DATA_SOURCE=firestore VITE_USE_EMULATORS=1 vite",
     "build:demo": "VITE_DATA_SOURCE=mock vite build",
-    "deploy:demo": "npm run build:demo && firebase deploy --only hosting",
-    "deploy:regles": "firebase deploy --only firestore:rules,firestore:indexes"
+    "deploy:demo": "npm run build && firebase deploy --only hosting",
+    "deploy:regles": "firebase deploy --only firestore:rules,firestore:indexes",
+    "deploy:fonctions": "firebase deploy --only functions"
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^5.0.2",

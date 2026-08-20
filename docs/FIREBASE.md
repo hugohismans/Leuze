@@ -202,21 +202,77 @@ le premier. Cela ne coûte rien.
 
 ---
 
-## 5. Mise en service, dans l'ordre
+## 5. Rester en plan Spark
+
+Le plan Spark (gratuit) permet **tout sauf les Cloud Functions**. Ce n'est pas une limite de
+quota : depuis 2020, le déploiement de fonctions est purement et simplement refusé sur Spark.
+
+| Sur Spark | État |
+|---|---|
+| Firestore, règles, index | ✅ `npm run deploy:regles` |
+| Hébergement du site | ✅ `npm run deploy:demo` |
+| Authentification par adresse et mot de passe | ✅ |
+| Écran de démonstration (données fictives) | ✅ entièrement fonctionnel |
+| Cloud Functions | ❌ plan Blaze obligatoire |
+
+Ce qui dépend des fonctions, donc indisponible en ligne tant qu'on est sur Spark :
+l'échange d'un code patient contre une session, l'inscription en transaction, la liste
+d'attente, la purge automatique et la régénération nocturne des occurrences.
+
+**Ce n'est pas bloquant pour développer** : `npm run emulators` reproduit les fonctions en
+local, gratuitement, et les 57 tests tournent contre l'émulateur.
+
+### Pourquoi ne pas contourner en concevant sans fonctions
+
+C'est techniquement possible pour une partie : des règles Firestore peuvent interdire de
+dépasser la capacité, si l'inscription est faite dans une transaction côté navigateur.
+
+En revanche, **l'isolement par service ne peut pas être garanti sans serveur**. Les règles
+ne font confiance qu'au jeton d'authentification, et seul le SDK d'administration peut y
+inscrire le service du patient. Sans fonction, ce service serait déclaré par le navigateur
+lui-même : n'importe qui pourrait lire le programme de n'importe quelle unité. La liste
+d'attente tomberait aussi, puisqu'elle exige de lire les inscriptions des autres.
+
+Autrement dit, se passer des fonctions revient à abandonner les deux garanties qui ont
+justifié l'architecture. Mieux vaut attendre Blaze que reconstruire en moins sûr.
+
+### Ce que Blaze coûte réellement
+
+Pour cet usage — 133 lits, quelques milliers de lectures par jour — la facture mensuelle
+attendue est de **0 €** : le quota gratuit de Blaze est identique à celui de Spark, et
+2 millions d'appels de fonctions par mois sont inclus. Seul le stockage des images de
+fonctions dans Artifact Registry peut coûter quelques centimes.
+
+Les 10 € demandés à l'activation sont une **vérification du moyen de paiement**, pas un
+achat. Mettre malgré tout une alerte de budget à 5 €.
+
+**Le bon interlocuteur n'est pas ta carte bancaire.** Cette application traite, même de
+façon minimale, des données de patients : le responsable du traitement au sens du RGPD doit
+être l'hôpital, pas une personne. Le projet Firebase devrait donc appartenir à un compte
+ACIS, avec la facturation de l'institution — ce qui règle la question des 10 € au passage.
+C'est une discussion à avoir avec leur service informatique **avant** la mise en service,
+pas après.
+
+## 6. Mise en service, dans l'ordre
 
 1. Vérifier l'emplacement de Firestore (§4).
 2. **Authentication** → activer Adresse e-mail/Mot de passe.
 3. Créer une **application Web** dans les paramètres, copier la configuration dans `.env`.
-4. Passer le projet en **plan Blaze** — obligatoire pour les Cloud Functions, sans
-   lesquelles il n'y a ni inscription atomique ni codes patients. L'usage réel reste dans
-   le quota gratuit ; mettre malgré tout une **alerte de budget à 5 €**.
-5. Déployer les règles et les index — cela remplace immédiatement le mode test :
+4. Déployer les règles et les index — cela remplace immédiatement le mode test, et
+   fonctionne sur Spark :
 
    ```bash
    firebase login
-   cp .firebaserc.example .firebaserc     # y mettre l'identifiant du projet
-   firebase deploy --only firestore:rules,firestore:indexes
+   npm run deploy:regles
    ```
+
+5. Publier l'écran de démonstration, également gratuit :
+
+   ```bash
+   npm run deploy:demo      # visible sur https://leuze-d23b5.web.app
+   ```
+
+Les étapes suivantes demandent le plan **Blaze** (voir §5) :
 
 6. Définir le poivre des codes patients :
 
@@ -227,7 +283,7 @@ le premier. Cela ne coûte rien.
 7. Déployer les fonctions, puis créer le premier administrateur :
 
    ```bash
-   firebase deploy --only functions
+   npm run deploy:fonctions
    npm run promote:admin -- prenom.nom@acis-asbl.be
    ```
 
