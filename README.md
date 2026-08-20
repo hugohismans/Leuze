@@ -226,6 +226,18 @@ firebase functions:secrets:set CODE_PEPPER
 Sans lui, les fonctions refusent de démarrer — sauf sur l'émulateur, qui utilise une valeur
 de développement.
 
+### Brancher l'application sur un vrai projet
+
+```bash
+cp .env.example .env       # y coller la configuration Web du projet
+```
+
+Ces valeurs (`apiKey`, `projectId`…) **ne sont pas des secrets** : elles partent dans le
+navigateur de chaque visiteur, c'est le fonctionnement normal de Firebase. Ce qui protège
+les données, ce sont les règles de sécurité, pas la confidentialité de ces clés. En
+revanche, une **clé de compte de service** (fichier JSON contenant `private_key`) ne doit
+jamais entrer dans le dépôt : elle contourne toutes les règles.
+
 ### Mise en service d'un projet Firebase
 
 ```bash
