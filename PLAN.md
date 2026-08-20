@@ -324,8 +324,15 @@ sauvegardes Firestore.
 | Wifi hospitalier défaillant | PWA lecture seule + bandeau honnête |
 | Plan du site jamais fourni | `<SitePlan>` isolé, fallback textuel dès L0 |
 | Validation RGPD interne ACIS tardive | Registre de traitement + minimisation documentés dès L1 |
+| Projet Firebase sur un compte personnel | Démonstration seulement ; bascule sur un compte ACIS avant toute mise en service (voir `IDEES.md` §2) |
 
 ---
+
+## 7 bis. Idées mises de côté
+
+Les idées formulées en cours de route et non planifiées sont consignées dans `IDEES.md` —
+aujourd'hui, les activités proposées par les patients et la question du compte de
+facturation. Elles n'entrent dans un lot que sur décision explicite.
 
 ## 8. Questions ouvertes bloquantes
 
