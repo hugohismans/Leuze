@@ -17,7 +17,7 @@
 </script>
 
 <section class="mx-auto max-w-xl px-4 py-8">
-  <h2 class="mb-3 text-3xl font-bold text-ink">Bonjour</h2>
+  <h1 class="mb-3 text-3xl font-bold text-ink">Bonjour</h1>
   <p class="mb-6 text-lg text-ink">
     Saisissez le code qui figure sur la feuille remise par un soignant. Vous verrez alors
     les activités proposées et vous pourrez vous y inscrire.

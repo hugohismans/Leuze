@@ -2,7 +2,6 @@
   import { store } from '../appState.svelte'
   import { formatTime, formatTimeRange } from '../domain/time'
   import type { Occurrence } from '../domain/types'
-  import { navigate } from '../router.svelte'
   import AudienceBadge from './AudienceBadge.svelte'
   import CategoryBadge from './CategoryBadge.svelte'
   import PlacesBadge from './PlacesBadge.svelte'
@@ -16,13 +15,16 @@
   const cancelled = $derived(occurrence.status === 'cancelled')
 </script>
 
-<button
-  type="button"
-  class="card w-full min-w-0 text-left hover:border-brand-500"
+<!--
+  Un lien, pas un bouton : ouvrir la fiche est une navigation. Le lecteur d'écran
+  annonce « lien », et le clic droit ou l'ouverture dans un onglet fonctionnent.
+-->
+<a
+  href={`#/activite/${occurrence.id}`}
+  class="card block w-full min-w-0 text-left no-underline hover:border-brand-500"
   class:p-4={!dense}
   class:p-3={dense}
   class:bg-surface-soft={cancelled}
-  onclick={() => navigate(`/activite/${occurrence.id}`)}
 >
   <div class="min-w-0" class:flex={!dense} class:gap-4={!dense}>
     <div class="shrink-0 text-brand-900">
@@ -78,4 +80,4 @@
   </div>
 
   <span class="sr-only">{formatTimeRange(occurrence.start, occurrence.end)}. Voir le détail.</span>
-</button>
+</a>

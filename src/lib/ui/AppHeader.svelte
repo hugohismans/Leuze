@@ -13,7 +13,15 @@
     <div class="flex items-center gap-4">
       <img src={logo} alt="ACIS" class="h-11 w-auto shrink-0" />
       <div>
-        <h1 class="text-2xl font-bold">Les activités</h1>
+        <!--
+          Le titre de l'application n'est le titre de page (« h1 ») que sur le calendrier.
+          Ailleurs, l'écran porte son propre titre : une page n'a qu'un seul « h1 ».
+        -->
+        {#if router.path === '/'}
+          <h1 class="text-2xl font-bold">Les activités</h1>
+        {:else}
+          <p class="text-2xl font-bold">Les activités</p>
+        {/if}
         <p class="text-base text-brand-100">{formatLongDayLabel(today)}</p>
       </div>
     </div>
