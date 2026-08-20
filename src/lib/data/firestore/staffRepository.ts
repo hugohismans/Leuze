@@ -33,7 +33,8 @@ import {
   type QueryDocumentSnapshot,
 } from 'firebase/firestore'
 import { httpsCallable } from 'firebase/functions'
-import type { Activity, LocalDate, Occurrence } from '../../domain/types'
+import { addMinutes, instantOf } from '../../domain/time'
+import type { Activity, Appointment, LocalDate, LocalTime, Occurrence } from '../../domain/types'
 import { generationWindow, planGeneration } from '../generation'
 import type {
   StaffPatient,
@@ -293,6 +294,58 @@ export function createFirestoreStaffApp(): StaffApp {
           }
         } catch (error) {
           return { ok: false, message: messageDErreur(error) }
+        }
+      },
+
+      /**
+       * Rendez-vous : écritures directes, encadrées par les règles. Pas de capacité
+       * à défendre, donc pas de fonction appelable — cela fonctionne sur le plan gratuit.
+       */
+      async listAppointments(): Promise<Appointment[]> {
+        const snapshot = await getDocs(collection(db, 'appointments'))
+        return snapshot.docs
+          .map((d) => {
+            const data = d.data() as Record<string, unknown>
+            return {
+              ...(data as Omit<Appointment, 'id' | 'createdAt' | 'start' | 'end'>),
+              id: d.id,
+              createdAt: (data.createdAt as Timestamp).toDate(),
+              ...(data.start ? { start: (data.start as Timestamp).toDate() } : {}),
+              ...(data.end ? { end: (data.end as Timestamp).toDate() } : {}),
+            }
+          })
+          .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+      },
+
+      async scheduleAppointment(
+        appointmentId: string,
+        rendezVous: { date: LocalDate; time: LocalTime; durationMin: number; withWhom: string; locationId?: string },
+      ) {
+        const start = instantOf(rendezVous.date, rendezVous.time)
+        try {
+          await updateDoc(doc(db, 'appointments', appointmentId), {
+            status: 'scheduled',
+            localDate: rendezVous.date,
+            start: Timestamp.fromDate(start),
+            end: Timestamp.fromDate(addMinutes(start, rendezVous.durationMin)),
+            withWhom: rendezVous.withWhom,
+            ...(rendezVous.locationId ? { locationId: rendezVous.locationId } : {}),
+          })
+          return { ok: true, message: 'Rendez-vous fixé. Le patient le voit dans son calendrier.' }
+        } catch {
+          return { ok: false, message: "Le rendez-vous n'a pas pu être enregistré." }
+        }
+      },
+
+      async cancelAppointment(appointmentId: string, reason: string) {
+        try {
+          await updateDoc(doc(db, 'appointments', appointmentId), {
+            status: 'cancelled',
+            cancellationReason: reason,
+          })
+          return { ok: true, message: 'Rendez-vous annulé.' }
+        } catch {
+          return { ok: false, message: "L'annulation n'a pas pu être enregistrée." }
         }
       },
 

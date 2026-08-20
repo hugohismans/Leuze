@@ -10,13 +10,23 @@
  */
 import { isVisibleToService } from '../../domain/audience'
 import { registrationBlockMessage, type RegistrationBlock } from '../../domain/capacity'
-import type { Category, LocalDate, Location, Occurrence, Service } from '../../domain/types'
+import type {
+  Appointment,
+  AppointmentKind,
+  AppointmentPreference,
+  Category,
+  LocalDate,
+  Location,
+  Occurrence,
+  Service,
+} from '../../domain/types'
 import {
   register as domainRegister,
   unregister as domainUnregister,
   registrationOf,
   waitlistPosition,
 } from '../../domain/waitlist'
+import { appointmentKindsSeed } from '../seed/appointmentKinds.seed'
 import type { AppRepository, MyRegistration, PatientSession, RegisterResult } from '../ports'
 import { mockCatalog } from './catalog'
 import {
@@ -137,6 +147,54 @@ export function createMockRepository(options: { now?: () => Date } = {}): MockRe
         if (!outcome.ok) return { ok: false, message: "Vous n'étiez pas inscrit à cette activité." }
         applyBoard(outcome.board)
         return { ok: true, message: 'Vous êtes désinscrit.' }
+      },
+    },
+
+    appointments: {
+      async listKinds(): Promise<AppointmentKind[]> {
+        return appointmentKindsSeed.filter((k) => k.isActive)
+      },
+
+      async listMine(): Promise<Appointment[]> {
+        const uid = world.session.patientUid
+        if (uid === null) return []
+        return world.appointments
+          .filter((a) => a.patientUid === uid)
+          .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+      },
+
+      async request(kindId: string, preference: AppointmentPreference) {
+        const uid = world.session.patientUid
+        if (uid === null) return { ok: false, message: 'Saisissez votre code pour demander un rendez-vous.' }
+        // Une seule demande en attente à la fois pour un même professionnel : sans cela,
+        // un patient inquiet en enverrait plusieurs, et la file perdrait son sens.
+        if (world.appointments.some((a) => a.patientUid === uid && a.kindId === kindId && a.status === 'requested')) {
+          return { ok: false, message: 'Vous avez déjà une demande en attente pour ce professionnel.' }
+        }
+        world.appointments = [
+          ...world.appointments,
+          {
+            id: `rdv-${uid}-${clock().getTime()}`,
+            patientUid: uid,
+            kindId,
+            preference,
+            status: 'requested',
+            createdAt: clock(),
+          },
+        ]
+        return { ok: true, message: 'Votre demande est envoyée. Un soignant vous dira quand.' }
+      },
+
+      async withdraw(appointmentId: string) {
+        const uid = world.session.patientUid
+        const demande = world.appointments.find((a) => a.id === appointmentId && a.patientUid === uid)
+        if (!demande || demande.status !== 'requested') {
+          return { ok: false, message: "Cette demande n'est plus en attente." }
+        }
+        world.appointments = world.appointments.map((a) =>
+          a.id === appointmentId ? { ...a, status: 'cancelled' as const } : a,
+        )
+        return { ok: true, message: 'Votre demande est retirée.' }
       },
     },
 

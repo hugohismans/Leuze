@@ -3,7 +3,17 @@
  * Deux adapters les implémentent — `mock/` (écran de démonstration, tests)
  * et, au lot L1, `firestore/`. Aucun composant n'importe `firebase/*`.
  */
-import type { Category, LocalDate, Location, Occurrence, Registration, Service } from '../domain/types'
+import type {
+  Appointment,
+  AppointmentKind,
+  AppointmentPreference,
+  Category,
+  LocalDate,
+  Location,
+  Occurrence,
+  Registration,
+  Service,
+} from '../domain/types'
 
 export interface CatalogRepository {
   listLocations(): Promise<Location[]>
@@ -47,6 +57,17 @@ export interface StaffRegistrationService {
   roster(occurrenceId: string): Promise<{ confirmed: Registration[]; waitlist: Registration[] }>
 }
 
+/**
+ * Rendez-vous individuels, côté patient. Il demande à voir quelqu'un ; il ne fixe
+ * jamais la date lui-même, et ne voit jamais les demandes des autres.
+ */
+export interface AppointmentService {
+  listKinds(): Promise<AppointmentKind[]>
+  listMine(): Promise<Appointment[]>
+  request(kindId: string, preference: AppointmentPreference): Promise<{ ok: boolean; message: string }>
+  withdraw(appointmentId: string): Promise<{ ok: boolean; message: string }>
+}
+
 export type PatientSession = {
   patientUid: string | null
   firstName: string | null
@@ -65,5 +86,6 @@ export type AppRepository = {
   catalog: CatalogRepository
   occurrences: OccurrenceRepository
   registrations: RegistrationService
+  appointments: AppointmentService
   session: SessionService
 }

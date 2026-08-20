@@ -4,7 +4,16 @@
  */
 import { capacityOf } from './domain/capacity'
 import { monthGrid, todayLocalDate, weekDays } from './domain/time'
-import type { Category, LocalDate, Location, Occurrence, Service } from './domain/types'
+import type {
+  Appointment,
+  AppointmentKind,
+  AppointmentPreference,
+  Category,
+  LocalDate,
+  Location,
+  Occurrence,
+  Service,
+} from './domain/types'
 import { createRepository, isMockRepository, usesMock } from './data'
 import type { AppRepository, MyRegistration, RegisterResult } from './data/ports'
 
@@ -63,6 +72,9 @@ class AppStore {
   signedIn = $state<boolean>(false)
   occurrences = $state<Occurrence[]>([])
   mine = $state<MyRegistration[]>([])
+  /** Rendez-vous individuels du patient : demandés, ou déjà fixés. */
+  appointments = $state<Appointment[]>([])
+  appointmentKinds = $state<AppointmentKind[]>([])
   loading = $state(true)
 
   readonly range = $derived(rangeOf(this.view, this.date))
@@ -162,6 +174,40 @@ class AppStore {
    * Le catalogue ne change quasiment jamais : il n'est chargé qu'une fois. L'écran
    * d'administration, lui, doit forcer la relecture après avoir ajouté un lieu.
    */
+  /** Les rendez-vous fixés, qui apparaissent dans « Mes inscriptions ». */
+  readonly scheduledAppointments = $derived(
+    this.appointments
+      .filter((a) => a.status === 'scheduled' && a.start !== undefined)
+      .sort((a, b) => (a.start?.getTime() ?? 0) - (b.start?.getTime() ?? 0)),
+  )
+
+  readonly pendingAppointments = $derived(this.appointments.filter((a) => a.status === 'requested'))
+
+  async loadAppointments(): Promise<void> {
+    const repository = await this.repo()
+    const [kinds, mine] = await Promise.all([
+      repository.appointments.listKinds().catch(() => []),
+      repository.appointments.listMine().catch(() => []),
+    ])
+    this.appointmentKinds = kinds
+    this.appointments = mine
+  }
+
+  async requestAppointment(
+    kindId: string,
+    preference: AppointmentPreference,
+  ): Promise<{ ok: boolean; message: string }> {
+    const resultat = await (await this.repo()).appointments.request(kindId, preference)
+    await this.loadAppointments()
+    return resultat
+  }
+
+  async withdrawAppointment(appointmentId: string): Promise<{ ok: boolean; message: string }> {
+    const resultat = await (await this.repo()).appointments.withdraw(appointmentId)
+    await this.loadAppointments()
+    return resultat
+  }
+
   async loadCatalog(force = false): Promise<void> {
     if (this.catalogLoaded && !force) return
     this.catalogLoaded = true
@@ -184,6 +230,7 @@ class AppStore {
     ])
     this.occurrences = occurrences
     this.mine = mine
+    await this.loadAppointments()
     // La session Firebase est restaurée de façon asynchrone au démarrage : à ce
     // point-ci elle est connue, on aligne l'interface dessus.
     this.syncSession()

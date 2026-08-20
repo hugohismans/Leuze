@@ -1,0 +1,94 @@
+import { describe, expect, it } from 'vitest'
+import {
+  PREFERENCE_LABELS,
+  kindName,
+  patientStatusLabel,
+  pendingFirst,
+  waitingDays,
+  waitingLabel,
+} from './appointments'
+import type { Appointment, AppointmentKind } from './types'
+
+const kinds: AppointmentKind[] = [
+  { id: 'psychiatre', name: 'Le psychiatre', icon: '🩺', isActive: true },
+  { id: 'kine', name: 'Le kinésithérapeute', icon: '🤸', isActive: true },
+]
+
+const demande = (overrides: Partial<Appointment> = {}): Appointment => ({
+  id: 'rdv-1',
+  patientUid: 'p_1',
+  kindId: 'psychiatre',
+  preference: 'peu-importe',
+  status: 'requested',
+  createdAt: new Date('2026-08-17T09:00:00Z'),
+  ...overrides,
+})
+
+describe('ce que le patient lit', () => {
+  it('dit que la demande est partie, sans promettre de délai', () => {
+    const texte = patientStatusLabel(demande(), kinds)
+    expect(texte).toContain('Demande envoyée')
+    expect(texte).toContain('Un soignant vous dira quand')
+    // Aucune promesse chiffrée : personne ne peut la tenir.
+    expect(texte).not.toMatch(/\d+ (heures?|jours?)/)
+  })
+
+  it('donne le rendez-vous en toutes lettres une fois fixé', () => {
+    const texte = patientStatusLabel(
+      demande({
+        status: 'scheduled',
+        localDate: '2026-08-25',
+        start: new Date('2026-08-25T12:00:00Z'),
+        end: new Date('2026-08-25T12:30:00Z'),
+        withWhom: 'Docteur Lemaire',
+      }),
+      kinds,
+    )
+    expect(texte).toContain('Mardi 25 août')
+    expect(texte).toContain('Docteur Lemaire')
+  })
+
+  it('propose une suite quand le rendez-vous est annulé', () => {
+    expect(patientStatusLabel(demande({ status: 'cancelled' }), kinds)).toContain('peut vous en proposer un autre')
+    expect(
+      patientStatusLabel(demande({ status: 'cancelled', cancellationReason: 'Le médecin est absent' }), kinds),
+    ).toContain('Le médecin est absent')
+  })
+
+  it('nomme le professionnel, même si le motif a disparu de la liste', () => {
+    expect(kindName(kinds, 'psychiatre')).toBe('Le psychiatre')
+    expect(kindName(kinds, 'supprime')).toBe('Un professionnel')
+  })
+})
+
+describe('la file des demandes', () => {
+  it('met les plus anciennes d’abord : c’est l’ordre à traiter', () => {
+    const file = pendingFirst([
+      demande({ id: 'recente', createdAt: new Date('2026-08-19T09:00:00Z') }),
+      demande({ id: 'ancienne', createdAt: new Date('2026-08-15T09:00:00Z') }),
+      demande({ id: 'fixee', status: 'scheduled', createdAt: new Date('2026-08-10T09:00:00Z') }),
+    ])
+    expect(file.map((a) => a.id)).toEqual(['ancienne', 'recente'])
+  })
+
+  it('compte l’attente en jours, sans jamais compter à l’envers', () => {
+    const now = new Date('2026-08-20T09:00:00Z')
+    expect(waitingDays(demande({ createdAt: new Date('2026-08-20T08:00:00Z') }), now)).toBe(0)
+    expect(waitingDays(demande({ createdAt: new Date('2026-08-19T08:00:00Z') }), now)).toBe(1)
+    expect(waitingDays(demande({ createdAt: new Date('2026-08-15T08:00:00Z') }), now)).toBe(5)
+    expect(waitingDays(demande({ createdAt: new Date('2026-08-25T08:00:00Z') }), now)).toBe(0)
+  })
+
+  it('dit l’attente en français, pour qu’un oubli se voie', () => {
+    expect(waitingLabel(0)).toBe("Demandé aujourd'hui")
+    expect(waitingLabel(1)).toBe('Demandé hier')
+    expect(waitingLabel(5)).toBe('En attente depuis 5 jours')
+  })
+})
+
+describe('préférence de moment', () => {
+  it('reste grossière : ce n’est qu’une préférence', () => {
+    expect(Object.keys(PREFERENCE_LABELS)).toEqual(['matin', 'apres-midi', 'peu-importe'])
+    expect(PREFERENCE_LABELS['peu-importe']).toBe('Peu importe le moment')
+  })
+})

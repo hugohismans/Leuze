@@ -2,7 +2,14 @@
  * Ports de l'espace soignant. Comme pour le patient, l'interface ne connaît que ceci —
  * jamais Firebase. Deux adapters les implémentent : `firestore/` et `mock/`.
  */
-import type { Activity, LocalDate, Occurrence, RegistrationStatus } from '../domain/types'
+import type {
+  Activity,
+  Appointment,
+  LocalDate,
+  LocalTime,
+  Occurrence,
+  RegistrationStatus,
+} from '../domain/types'
 
 export type StaffRole = 'staff' | 'admin'
 
@@ -93,6 +100,17 @@ export interface StaffRepository {
   ): Promise<{ ok: boolean; status?: 'confirmed' | 'waitlist'; message: string }>
 
   unregisterPatient(occurrenceId: string, patientUid: string): Promise<{ ok: boolean; message: string }>
+
+  /** La file des demandes de rendez-vous, les plus anciennes d'abord. */
+  listAppointments(): Promise<Appointment[]>
+
+  /** Le soignant consulte l'agenda, puis fixe. C'est lui, jamais le patient. */
+  scheduleAppointment(
+    appointmentId: string,
+    rendezVous: { date: LocalDate; time: LocalTime; durationMin: number; withWhom: string; locationId?: string },
+  ): Promise<{ ok: boolean; message: string }>
+
+  cancelAppointment(appointmentId: string, reason: string): Promise<{ ok: boolean; message: string }>
 }
 
 /** Réservé à l'administrateur : ajouter un lieu, un service, une catégorie. */

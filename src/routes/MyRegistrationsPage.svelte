@@ -1,13 +1,58 @@
 <script lang="ts">
   import { store } from '../lib/appState.svelte'
+  import { kindIcon, kindName, patientStatusLabel } from '../lib/domain/appointments'
   import { formatFullWhen } from '../lib/domain/time'
   import { navigate } from '../lib/router.svelte'
 
   const registrations = $derived(store.mine)
+
+  // Un rendez-vous peut avoir été fixé pendant que l'écran était ailleurs : on relit
+  // en arrivant, plutôt que d'afficher un état périmé.
+  store.loadAppointments()
 </script>
 
 <div class="mx-auto grid grid-cols-1 max-w-3xl gap-5 px-4 py-5">
   <h1 class="text-3xl font-bold">Mes inscriptions</h1>
+
+  <!--
+    Les rendez-vous individuels d'abord : ils sont plus rares, et manquer un rendez-vous
+    avec un professionnel est plus lourd de conséquences que manquer un atelier.
+    Ils ne figurent que sur cet écran, jamais dans le calendrier commun.
+  -->
+  {#if store.scheduledAppointments.length > 0 || store.pendingAppointments.length > 0}
+    <section>
+      <h2 class="mb-2 text-2xl font-bold">Mes rendez-vous</h2>
+      <ul class="grid grid-cols-1 gap-4">
+        {#each store.scheduledAppointments as rendezVous (rendezVous.id)}
+          <li class="card p-5">
+            <p class="text-xl font-bold">
+              <span aria-hidden="true">{kindIcon(store.appointmentKinds, rendezVous.kindId)}</span>
+              {kindName(store.appointmentKinds, rendezVous.kindId)}
+            </p>
+            <p class="mt-1 text-lg">{patientStatusLabel(rendezVous, store.appointmentKinds)}</p>
+            {#if rendezVous.locationId}
+              <p class="text-lg text-ink-soft">
+                <span aria-hidden="true">📍</span>
+                {store.locationOf(rendezVous.locationId)?.name ?? rendezVous.locationId}
+              </p>
+            {/if}
+          </li>
+        {/each}
+        {#each store.pendingAppointments as demande (demande.id)}
+          <li class="card p-5">
+            <p class="text-lg">
+              <span aria-hidden="true">⏳</span>
+              {patientStatusLabel(demande, store.appointmentKinds)}
+            </p>
+          </li>
+        {/each}
+      </ul>
+    </section>
+  {/if}
+
+  <button type="button" class="btn btn-secondary" onclick={() => navigate('/rendez-vous')}>
+    <span aria-hidden="true">📅</span> Demander un rendez-vous
+  </button>
 
   {#if registrations.length === 0}
     <p class="card p-6 text-xl">

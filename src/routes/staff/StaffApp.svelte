@@ -5,6 +5,7 @@
   import WeekPage from './WeekPage.svelte'
   import PrintPage from './PrintPage.svelte'
   import MeetingPage from './MeetingPage.svelte'
+  import StaffAppointmentsPage from './AppointmentsPage.svelte'
   import ActivityFormPage from './ActivityFormPage.svelte'
   import CatalogPage from './CatalogPage.svelte'
   import StaffLoginPage from './StaffLoginPage.svelte'
@@ -35,6 +36,8 @@
     <CatalogPage />
   {:else if router.path === '/soignant/reunion'}
     <MeetingPage />
+  {:else if router.path === '/soignant/rendez-vous'}
+    <StaffAppointmentsPage />
   {:else if router.path === '/soignant/impression'}
     <PrintPage />
   {:else if router.path === '/soignant/aujourdhui'}

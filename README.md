@@ -108,6 +108,16 @@ inscrit, un second retire.
 Un patient n'a donc **jamais besoin de l'application** pour être inscrit. S'il l'ouvre, il
 y retrouve ses inscriptions déjà faites et peut en ajouter d'autres.
 
+## Rendez-vous individuels
+
+Un patient demande à voir le psychiatre, le psychologue, le kinésithérapeute… depuis
+« Mes inscriptions ». Un soignant consulte l'agenda et fixe la date depuis l'onglet
+« Rendez-vous » ; le rendez-vous apparaît alors dans le calendrier du patient.
+
+**Aucun champ libre**, ni côté patient ni côté soignant : le patient dit qui il veut voir,
+jamais pourquoi. Les règles Firestore rejettent une demande qui contiendrait autre chose.
+L'écran indique aussi, avant tout le reste, que ce n'est pas un moyen d'alerter en urgence.
+
 ## Services et visibilité des activités
 
 Une activité est **ouverte à tous les services** ou **réservée à un, deux, trois d'entre eux** :

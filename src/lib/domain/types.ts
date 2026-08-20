@@ -139,6 +139,50 @@ export type Registration = {
   createdBy: 'patient' | 'staff'
 }
 
+/**
+ * Un motif de rendez-vous, au sens de « avec qui » : psychiatre, kinésithérapeute…
+ * Administrable par les soignants, comme les lieux et les catégories.
+ */
+export type AppointmentKind = {
+  id: string
+  name: string
+  /** Doublure de la couleur : l'information n'est jamais portée par la couleur seule. */
+  icon: string
+  isActive: boolean
+}
+
+export type AppointmentStatus = 'requested' | 'scheduled' | 'cancelled'
+
+/** Moment souhaité par le patient. Volontairement grossier : ce n'est qu'une préférence. */
+export type AppointmentPreference = 'matin' | 'apres-midi' | 'peu-importe'
+
+/**
+ * Un rendez-vous individuel, demandé par un patient puis fixé par un soignant.
+ *
+ * ⚠️ Aucun champ libre, ni côté patient ni côté soignant. Un motif de rendez-vous est
+ * déjà une information sensible ; un texte libre à côté deviendrait immanquablement le
+ * réceptacle de contenu clinique, ce que ce projet s'interdit. Le patient dit **qui** il
+ * veut voir, jamais **pourquoi**.
+ */
+export type Appointment = {
+  id: string
+  /** UID Firebase Auth du patient. Aucun nom de famille, aucune donnée de santé. */
+  patientUid: string
+  kindId: string
+  preference: AppointmentPreference
+  status: AppointmentStatus
+  createdAt: Date
+  // --- renseigné par le soignant au moment de fixer le rendez-vous ---
+  start?: Date
+  end?: Date
+  localDate?: LocalDate
+  /** Prénom du professionnel, ou son rôle. Jamais un nom de famille. */
+  withWhom?: string
+  locationId?: string
+  /** Motif d'annulation, en français simple. */
+  cancellationReason?: string
+}
+
 /** Le strict minimum. Le code d'accès n'est jamais stocké en clair (l'id du doc est son hash). */
 export type Patient = {
   id: string

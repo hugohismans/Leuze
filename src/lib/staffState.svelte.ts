@@ -13,7 +13,7 @@ import type {
 import { describeGeneration } from './data/generation'
 import { store } from './appState.svelte'
 import { todayLocalDate, weekDays } from './domain/time'
-import type { Activity, LocalDate, Occurrence } from './domain/types'
+import type { Activity, Appointment, LocalDate, LocalTime, Occurrence } from './domain/types'
 
 const SIGNED_OUT: StaffIdentity = { uid: null, email: null, firstName: null, role: null }
 
@@ -33,6 +33,8 @@ class StaffStore {
   date = $state<LocalDate>(todayLocalDate())
   /** Les patients, pour la réunion du lundi. Prénom et service uniquement. */
   patients = $state<StaffPatient[]>([])
+  /** Demandes de rendez-vous, les plus anciennes d'abord. */
+  appointments = $state<Appointment[]>([])
   /** Inscrits de l'activité ouverte pendant la réunion. */
   roster = $state<RosterLine[]>([])
   /** Message de compte rendu affiché après une action, en français simple. */
@@ -56,7 +58,9 @@ class StaffStore {
     // Le catalogue n'est lisible qu'une fois connecté : il faut le (re)charger ici.
     // Après connexion, le catalogue devient lisible : il faut le relire, même s'il a
     // déjà été demandé (sans succès) avant l'authentification.
-    if (result.ok) await Promise.all([store.loadCatalog(true), this.refresh(), this.loadPatients()])
+    if (result.ok) {
+      await Promise.all([store.loadCatalog(true), this.refresh(), this.loadPatients(), this.loadAppointments()])
+    }
     return result.ok ? { ok: true } : { ok: false, message: result.message }
   }
 
@@ -72,7 +76,7 @@ class StaffStore {
     await this.refresh()
     this.identity = (await this.app$()).session.current()
     if (this.identity.role !== null) {
-      await Promise.all([store.loadCatalog(true), this.loadPatients()])
+      await Promise.all([store.loadCatalog(true), this.loadPatients(), this.loadAppointments()])
     }
   }
 
@@ -86,6 +90,26 @@ class StaffStore {
     this.activities = activities
     this.occurrences = occurrences
     this.loading = false
+  }
+
+  async loadAppointments(): Promise<void> {
+    this.appointments = await (await this.app$()).repository.listAppointments().catch(() => [])
+  }
+
+  async scheduleAppointment(
+    appointmentId: string,
+    rendezVous: { date: LocalDate; time: LocalTime; durationMin: number; withWhom: string; locationId?: string },
+  ): Promise<string> {
+    const resultat = await (await this.app$()).repository.scheduleAppointment(appointmentId, rendezVous)
+    await this.loadAppointments()
+    this.message = resultat.message
+    return resultat.message
+  }
+
+  async cancelAppointment(appointmentId: string, reason: string): Promise<void> {
+    const resultat = await (await this.app$()).repository.cancelAppointment(appointmentId, reason)
+    await this.loadAppointments()
+    this.message = resultat.message
   }
 
   async loadPatients(): Promise<void> {

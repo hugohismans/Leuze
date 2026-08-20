@@ -11,7 +11,7 @@
 import { config } from '../../config'
 import { expand } from '../../domain/recurrence'
 import { addLocalDays, todayLocalDate } from '../../domain/time'
-import type { Occurrence, Registration } from '../../domain/types'
+import type { Appointment, Occurrence, Registration } from '../../domain/types'
 import { recount, type Board } from '../../domain/waitlist'
 import { activitiesSeed } from '../seed/activities.seed'
 import { patientsSeed, type SeedPatient } from '../seed/patients.seed'
@@ -33,6 +33,7 @@ function stableHash(value: string): number {
 export type MockWorld = {
   occurrences: Map<string, Occurrence>
   registrations: Registration[]
+  appointments: Appointment[]
   patients: SeedPatient[]
   session: PatientSession
 }
@@ -76,9 +77,23 @@ function build(now: Date): MockWorld {
     }
   }
 
+  // Une demande déjà en attente, pour que la file du soignant ne soit pas vide
+  // à l'ouverture de la démonstration.
+  const appointments: Appointment[] = [
+    {
+      id: 'rdv-demo-1',
+      patientUid: 'demo-p2',
+      kindId: 'psychiatre',
+      preference: 'matin',
+      status: 'requested',
+      createdAt: new Date(now.getTime() - 2 * 86_400_000),
+    },
+  ]
+
   const monde: MockWorld = {
     occurrences,
     registrations,
+    appointments,
     patients: patientsSeed,
     session: { patientUid: DEMO_PATIENT_UID, firstName: 'Camille', serviceId: DEMO_SERVICE_ID },
   }

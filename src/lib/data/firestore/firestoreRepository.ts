@@ -10,19 +10,30 @@
 import { signInWithCustomToken, onAuthStateChanged, signOut, type User } from 'firebase/auth'
 import {
   Timestamp,
+  addDoc,
   collection,
   doc,
   getDoc,
   getDocs,
   orderBy,
   query,
+  updateDoc,
   where,
   type DocumentSnapshot,
   type QueryDocumentSnapshot,
 } from 'firebase/firestore'
 import { httpsCallable } from 'firebase/functions'
 import { audienceQueryKeys } from '../../domain/audience'
-import type { Category, LocalDate, Location, Occurrence, Service } from '../../domain/types'
+import type {
+  Appointment,
+  AppointmentKind,
+  AppointmentPreference,
+  Category,
+  LocalDate,
+  Location,
+  Occurrence,
+  Service,
+} from '../../domain/types'
 import type {
   AppRepository,
   MyRegistration,
@@ -212,6 +223,68 @@ export function createFirestoreRepository(): AppRepository {
         )
         mineCache = null
         return result as { ok: boolean; message: string }
+      },
+    },
+
+    /**
+     * Rendez-vous. Contrairement aux inscriptions, il n'y a pas de capacité à défendre :
+     * aucune transaction n'est nécessaire, et les règles suffisent à garantir qu'un
+     * patient ne demande que pour lui-même et ne fixe jamais la date.
+     */
+    appointments: {
+      async listKinds(): Promise<AppointmentKind[]> {
+        const snapshot = await getDocs(query(collection(db, 'appointmentKinds'), orderBy('name')))
+        return snapshot.docs
+          .map((d) => ({ ...(d.data() as Omit<AppointmentKind, 'id'>), id: d.id }))
+          .filter((k) => k.isActive)
+      },
+
+      async listMine(): Promise<Appointment[]> {
+        await sessionReady
+        if (session.patientUid === null) return []
+        const snapshot = await getDocs(
+          query(collection(db, 'appointments'), where('patientUid', '==', session.patientUid)),
+        )
+        return snapshot.docs
+          .map((d) => {
+            const data = d.data() as Record<string, unknown>
+            return {
+              ...(data as Omit<Appointment, 'id' | 'createdAt' | 'start' | 'end'>),
+              id: d.id,
+              createdAt: (data.createdAt as Timestamp).toDate(),
+              ...(data.start ? { start: (data.start as Timestamp).toDate() } : {}),
+              ...(data.end ? { end: (data.end as Timestamp).toDate() } : {}),
+            }
+          })
+          .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+      },
+
+      async request(kindId: string, preference: AppointmentPreference) {
+        await sessionReady
+        if (session.patientUid === null) {
+          return { ok: false, message: 'Saisissez votre code pour demander un rendez-vous.' }
+        }
+        try {
+          await addDoc(collection(db, 'appointments'), {
+            patientUid: session.patientUid,
+            kindId,
+            preference,
+            status: 'requested',
+            createdAt: Timestamp.now(),
+          })
+          return { ok: true, message: 'Votre demande est envoyée. Un soignant vous dira quand.' }
+        } catch {
+          return { ok: false, message: "La demande n'a pas pu être envoyée. Réessayez dans un instant." }
+        }
+      },
+
+      async withdraw(appointmentId: string) {
+        try {
+          await updateDoc(doc(db, 'appointments', appointmentId), { status: 'cancelled' })
+          return { ok: true, message: 'Votre demande est retirée.' }
+        } catch {
+          return { ok: false, message: "Cette demande n'a pas pu être retirée." }
+        }
       },
     },
 

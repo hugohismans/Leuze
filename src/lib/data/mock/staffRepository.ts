@@ -3,7 +3,8 @@
  * Même logique de génération que l'adapter Firestore, mêmes fonctions du domaine.
  */
 import { todayLocalDate } from '../../domain/time'
-import type { Activity, LocalDate, Occurrence } from '../../domain/types'
+import { instantOf, addMinutes } from '../../domain/time'
+import type { Activity, Appointment, LocalDate, LocalTime, Occurrence } from '../../domain/types'
 import { generationWindow, planGeneration } from '../generation'
 import { activitiesSeed } from '../seed/activities.seed'
 import { mockCatalog } from './catalog'
@@ -177,6 +178,40 @@ export function createMockStaffApp(): StaffApp {
           status: outcome.status,
           message: outcome.status === 'confirmed' ? 'Inscrit' : "Sur la liste d'attente",
         }
+      },
+
+      async listAppointments(): Promise<Appointment[]> {
+        return [...world.appointments].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+      },
+
+      async scheduleAppointment(
+        appointmentId: string,
+        rendezVous: { date: LocalDate; time: LocalTime; durationMin: number; withWhom: string; locationId?: string },
+      ) {
+        const demande = world.appointments.find((a) => a.id === appointmentId)
+        if (!demande) return { ok: false, message: "Cette demande n'existe plus." }
+        const start = instantOf(rendezVous.date, rendezVous.time)
+        world.appointments = world.appointments.map((a) =>
+          a.id === appointmentId
+            ? {
+                ...a,
+                status: 'scheduled' as const,
+                localDate: rendezVous.date,
+                start,
+                end: addMinutes(start, rendezVous.durationMin),
+                withWhom: rendezVous.withWhom,
+                ...(rendezVous.locationId ? { locationId: rendezVous.locationId } : {}),
+              }
+            : a,
+        )
+        return { ok: true, message: 'Rendez-vous fixé. Le patient le voit dans son calendrier.' }
+      },
+
+      async cancelAppointment(appointmentId: string, reason: string) {
+        world.appointments = world.appointments.map((a) =>
+          a.id === appointmentId ? { ...a, status: 'cancelled' as const, cancellationReason: reason } : a,
+        )
+        return { ok: true, message: 'Rendez-vous annulé.' }
       },
 
       async unregisterPatient(occurrenceId: string, patientUid: string) {

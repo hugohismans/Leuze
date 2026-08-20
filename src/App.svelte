@@ -6,6 +6,7 @@
   import ActivityPage from './routes/ActivityPage.svelte'
   import CalendarPage from './routes/CalendarPage.svelte'
   import CodePage from './routes/CodePage.svelte'
+  import AppointmentsPage from './routes/AppointmentsPage.svelte'
   import StaffApp from './routes/staff/StaffApp.svelte'
   import MyRegistrationsPage from './routes/MyRegistrationsPage.svelte'
 
@@ -37,7 +38,7 @@
 
 <AppHeader />
 
-{#if !espaceSoignant && (occurrenceId !== null || router.path === '/mes-inscriptions')}
+{#if !espaceSoignant && (occurrenceId !== null || router.path === '/mes-inscriptions' || router.path === '/rendez-vous')}
   <BackLink />
 {/if}
 
@@ -50,6 +51,8 @@
     <ActivityPage {occurrenceId} />
   {:else if router.path === '/mes-inscriptions'}
     <MyRegistrationsPage />
+  {:else if router.path === '/rendez-vous'}
+    <AppointmentsPage />
   {:else}
     <CalendarPage />
   {/if}

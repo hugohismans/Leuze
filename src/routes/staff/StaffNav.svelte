@@ -6,6 +6,7 @@
     { chemin: '/soignant', libelle: 'La semaine' },
     { chemin: '/soignant/reunion', libelle: 'Réunion du lundi' },
     { chemin: '/soignant/aujourdhui', libelle: "Aujourd'hui" },
+    { chemin: '/soignant/rendez-vous', libelle: 'Rendez-vous' },
     { chemin: '/soignant/activites', libelle: 'Les activités' },
     { chemin: '/soignant/catalogue', libelle: 'Le catalogue' },
   ]

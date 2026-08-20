@@ -137,6 +137,31 @@ commencée n'a pas de sens et allongerait la revue.
 ⚠️ Cet écran écrit des inscriptions : il exige donc les Cloud Functions, donc le plan
 Blaze. Il est entièrement utilisable dans la démonstration en attendant.
 
+### 4.0 ter Rendez-vous individuels
+
+Aujourd'hui, obtenir un rendez-vous avec le psychiatre, le psychologue ou le
+kinésithérapeute suppose de demander à un soignant, qui y pense — ou pas. L'application
+ouvre une file : le patient demande **qui** il veut voir, un soignant consulte l'agenda et
+fixe la date, le rendez-vous apparaît dans le calendrier du patient.
+
+Trois décisions de conception, prises avant d'écrire la moindre ligne :
+
+1. **Aucun champ libre, nulle part.** Un texte à côté de « rendez-vous avec le psychiatre »
+   deviendrait immanquablement le réceptacle de contenu clinique — « je vais mal », « j'ai
+   des idées noires ». Le patient dit qui il veut voir et, s'il le souhaite, matin ou
+   après-midi. Jamais pourquoi. Les règles Firestore refusent d'ailleurs toute demande
+   contenant autre chose.
+2. **Ce n'est pas un canal d'urgence, et l'écran le dit en premier.** Une demande passe
+   par une file relevée par l'équipe ; elle ne réveille personne. Le message renvoie vers
+   la seule réponse valable dans l'immédiat : s'adresser à un soignant, dans le service.
+3. **L'attente doit se voir.** Faute de notification, la seule protection contre l'oubli
+   est que la file affiche l'ancienneté de chaque demande, les plus anciennes en tête.
+
+Les rendez-vous n'ont pas de capacité : aucune transaction n'est nécessaire, et les règles
+suffisent. **Cette fonctionnalité marche donc sur le plan gratuit**, contrairement aux
+inscriptions. Un rendez-vous n'apparaît que dans « Mes inscriptions » du patient concerné,
+jamais dans le calendrier commun ni sur la feuille imprimée.
+
 ### 4.1 Récurrence — « série + occurrences matérialisées + exceptions portées par l'occurrence »
 
 C'est bien le modèle demandé, avec une simplification : **pas de collection d'exceptions**.

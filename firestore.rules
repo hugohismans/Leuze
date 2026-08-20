@@ -162,6 +162,47 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // --- rendez-vous individuels ----------------------------------------------
+    // Un patient demande à voir quelqu'un ; un soignant fixe la date. Aucun champ
+    // libre nulle part : le motif de rendez-vous est déjà sensible, un texte libre
+    // à côté deviendrait le réceptacle de contenu clinique.
+
+    match /appointmentKinds/{kindId} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+
+    function validAppointmentRequest(data) {
+      return data.patientUid == request.auth.uid
+        && data.kindId is string && data.kindId.size() > 0
+        && data.preference in ['matin', 'apres-midi', 'peu-importe']
+        && data.status == 'requested'
+        // Le patient ne fixe pas son propre rendez-vous.
+        && !('start' in data) && !('withWhom' in data) && !('localDate' in data);
+    }
+
+    // Le patient peut retirer sa demande tant qu'elle n'est pas fixée. Il ne peut
+    // pas la transformer en autre chose : ni changer de patient, ni la programmer.
+    function patientWithdrawal() {
+      return resource.data.patientUid == request.auth.uid
+        && resource.data.status == 'requested'
+        && request.resource.data.status == 'cancelled'
+        && request.resource.data.patientUid == resource.data.patientUid
+        && request.resource.data.kindId == resource.data.kindId
+        && !('start' in request.resource.data)
+        && !('withWhom' in request.resource.data);
+    }
+
+    match /appointments/{appointmentId} {
+      allow get, list: if isStaff()
+        || (isPatient() && resource.data.patientUid == request.auth.uid);
+      allow create: if isPatient() && validAppointmentRequest(request.resource.data);
+      allow update: if isStaff()
+        || (isPatient() && patientWithdrawal());
+      // Un rendez-vous ne se supprime pas : il s'annule, avec un motif.
+      allow delete: if false;
+    }
+
     // --- patients -------------------------------------------------------------
     // Prénom, service, dates. L'identifiant du document est le hachage du code d'accès.
     // Rien de tout cela n'est lisible par un client, y compris par le personnel :
