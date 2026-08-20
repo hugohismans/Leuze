@@ -1,0 +1,63 @@
+# Publie l'écran de démonstration sur GitHub Pages, à chaque envoi sur la branche.
+#
+# Ce qui est publié est volontairement la version **mockée** : données fictives, aucun
+# appel à Firebase. L'adresse est publique et non authentifiée — elle ne doit donc jamais
+# servir la vraie application, qui contient des inscriptions de patients.
+name: Démonstration sur GitHub Pages
+
+on:
+  push:
+    branches: [main, claude/firebase-admin-login-project-diqd22]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Un seul déploiement à la fois ; les envois rapprochés ne se marchent pas dessus.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  construire:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # Une démonstration qui ment est pire que pas de démonstration :
+      # on ne publie que si le domaine et les composants passent.
+      - name: Tests
+        run: npm test
+
+      - name: Vérification des types
+        run: npm run check
+
+      - name: Construction
+        env:
+          BASE_PATH: /Leuze/
+          VITE_DATA_SOURCE: mock
+        run: npm run build
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  publier:
+    needs: construire
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

@@ -288,6 +288,33 @@ npm run promote:admin -- prenom.nom@acis-asbl.be
 Le premier administrateur doit être promu par script : un rôle est un « custom claim » du
 jeton, il ne se pose pas depuis la console. Ensuite, tout se fait dans l'application.
 
+## Deux adresses, deux usages
+
+| Adresse | Contenu | Pour qui |
+|---|---|---|
+| `hugohismans.github.io/Leuze/` | démonstration, données fictives | montrer le projet, partager un lien |
+| `leuze-d23b5.web.app` | application réelle, Firestore | l'hôpital, une fois le projet en service |
+
+### GitHub Pages — la démonstration
+
+Publiée par `.github/workflows/pages.yml` à chaque envoi. Réglage à faire une fois :
+**Settings > Pages > Source : GitHub Actions**. Le workflow refuse de publier si les tests
+ou la vérification des types échouent.
+
+La version publiée est construite avec `VITE_DATA_SOURCE=mock` : l'adapter Firestore est
+remplacé par un module vide, et **le SDK Firebase disparaît entièrement du paquet**
+(129 Ko au lieu de 884 Ko). Cette adresse publique ne peut donc pas atteindre la base,
+même en cas de manipulation de l'URL.
+
+GitHub Pages ne permet pas de définir d'en-têtes HTTP : le `noindex` repose sur la balise
+`<meta name="robots">` de `index.html`.
+
+### Firebase Hosting — l'application réelle
+
+`npm run deploy:demo` publie la même démonstration sur Firebase Hosting, avec les en-têtes
+de sécurité configurés dans `firebase.json`. C'est cette adresse qui servira l'application
+réelle : même origine que les Cloud Functions, donc aucune configuration CORS.
+
 ## Déploiement
 
 Cible retenue : **Firebase Hosting** (justification dans `PLAN.md` §4.7). La configuration arrive

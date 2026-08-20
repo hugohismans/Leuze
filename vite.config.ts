@@ -4,6 +4,9 @@ import tailwindcss from '@tailwindcss/vite'
 import { fileURLToPath, URL } from 'node:url'
 
 export default defineConfig(({ mode }) => ({
+  // GitHub Pages sert le site depuis un sous-dossier (/Leuze/), Firebase Hosting depuis
+  // la racine. Le workflow renseigne BASE_PATH ; partout ailleurs, la racine convient.
+  base: process.env.BASE_PATH ?? '/',
   plugins: [svelte(), tailwindcss()],
   resolve: {
     alias: {
