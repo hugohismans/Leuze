@@ -249,6 +249,34 @@ les données, ce sont les règles de sécurité, pas la confidentialité de ces 
 revanche, une **clé de compte de service** (fichier JSON contenant `private_key`) ne doit
 jamais entrer dans le dépôt : elle contourne toutes les règles.
 
+### Deux constructions, deux paquets
+
+| Commande | Source de données | Poids |
+|---|---|---|
+| `npm run build:demo` | données fictives | 129 Ko |
+| `VITE_DATA_SOURCE=firestore npm run build` | le vrai projet | 905 Ko |
+
+La construction de démonstration ne contient **pas une ligne du SDK Firebase** : l'adapter
+est remplacé à la compilation par un module vide (alias `$adapter`). Elle se charge vite et
+n'a aucun moyen de contacter un serveur — c'est celle qu'on met en ligne pour montrer
+l'application, et elle fonctionne sur le plan gratuit de Firebase Hosting.
+
+```bash
+npm run deploy:demo      # met la démonstration en ligne (plan Spark, gratuit)
+npm run deploy:regles    # déploie les règles et les index (plan Spark, gratuit)
+```
+
+### Ce qui exige le plan Blaze
+
+Les **Cloud Functions** ne sont pas disponibles sur le plan gratuit Spark. Sans elles :
+inscription atomique, codes patients, génération d'occurrences et purge automatique ne
+peuvent pas être déployés. Tout cela fonctionne en revanche sur les émulateurs, sans
+compte de facturation.
+
+Firestore, l'authentification, les règles, les index et l'hébergement fonctionnent sur
+Spark. On peut donc mettre la démonstration en ligne et travailler entièrement en local
+en attendant.
+
 ### Mise en service d'un projet Firebase
 
 ```bash

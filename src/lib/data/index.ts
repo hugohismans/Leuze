@@ -4,23 +4,26 @@
  */
 import type { AppRepository } from './ports'
 import { createMockRepository, type MockRepository } from './mock/mockRepository'
-import { createFirestoreRepository } from './firestore/firestoreRepository'
+import { createFirestoreRepository } from '$adapter'
 
 export type DataSource = 'mock' | 'firestore'
 
+// `$adapter` est résolu à la construction (voir vite.config.ts) : le vrai adapter
+// Firestore, ou un remplaçant vide pour la démonstration.
 /**
  * `/demo` reste toujours branché sur les données fictives : c'est l'écran montrable
- * sans backend, y compris si Firebase est injoignable. Partout ailleurs, la variable
- * `VITE_DATA_SOURCE` décide, et vaut « mock » par défaut tant que le projet n'est pas
- * en service.
+ * sans backend, y compris si Firebase est injoignable.
  */
 export function chooseSource(): DataSource {
+  if (createFirestoreRepository === null) return 'mock'
   if (typeof window !== 'undefined' && window.location.hash.startsWith('#/demo')) return 'mock'
-  return import.meta.env.VITE_DATA_SOURCE === 'firestore' ? 'firestore' : 'mock'
+  return 'firestore'
 }
 
 export function createRepository(source: DataSource): AppRepository {
-  return source === 'firestore' ? createFirestoreRepository() : createMockRepository()
+  return source === 'firestore' && createFirestoreRepository !== null
+    ? createFirestoreRepository()
+    : createMockRepository()
 }
 
 export const isMockRepository = (repository: AppRepository): repository is MockRepository =>

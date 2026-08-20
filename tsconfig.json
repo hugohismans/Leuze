@@ -16,7 +16,10 @@
     "checkJs": true,
     "types": ["vite/client", "node"],
     "baseUrl": ".",
-    "paths": { "$lib/*": ["src/lib/*"] }
+    "paths": {
+      "$lib/*": ["src/lib/*"],
+      "$adapter": ["src/lib/data/adapter.stub.ts"]
+    }
   },
   "include": ["src/**/*.ts", "src/**/*.svelte", "vite.config.ts"]
 }
