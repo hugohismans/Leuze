@@ -113,6 +113,30 @@ Conséquences, appliquées :
 
 La récurrence reste entièrement supportée : elle n'est plus le chemin par défaut.
 
+### 4.0 bis La réunion de début de semaine
+
+Le processus existant, à ne pas changer : le lundi, l'équipe annonce les activités de la
+semaine, demande qui veut participer, et note les prénoms sur une feuille. Le produit ne
+remplace pas ce rituel — il remplace **la feuille**.
+
+L'écran « Réunion du lundi » déroule les activités à venir de la semaine, une par une.
+Pour chacune, les prénoms des patients concernés s'affichent ; un appui inscrit, un
+second retire. Conséquences voulues :
+
+- **un patient n'a jamais besoin de l'application** pour être inscrit. Ceux qui n'ont pas
+  de téléphone, ou que la technique met en difficulté, vivent exactement la même réunion
+  qu'avant ;
+- s'il ouvre l'application, il retrouve ses inscriptions déjà faites, et peut en ajouter
+  d'autres ensuite. L'application devient un complément, jamais un péage.
+
+Deux choix de conception en découlent : la liste des prénoms est **restreinte aux services
+concernés par l'activité** (liste plus courte, et rien d'inutile à l'écran) et l'écran ne
+propose que les activités **encore à venir** — prendre une inscription pour une séance
+commencée n'a pas de sens et allongerait la revue.
+
+⚠️ Cet écran écrit des inscriptions : il exige donc les Cloud Functions, donc le plan
+Blaze. Il est entièrement utilisable dans la démonstration en attendant.
+
 ### 4.1 Récurrence — « série + occurrences matérialisées + exceptions portées par l'occurrence »
 
 C'est bien le modèle demandé, avec une simplification : **pas de collection d'exceptions**.

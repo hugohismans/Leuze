@@ -118,6 +118,32 @@ export const staffPromote = onCall(async (request: CallableRequest) => {
   return promoteTx(db(), { occurrenceId, patientUid })
 })
 
+/**
+ * Les patients, pour la réunion du lundi : prénom et service, rien d'autre.
+ * `patients` n'est lisible par aucun client — cette fonction est le seul chemin.
+ */
+export const staffPatients = onCall(async (request: CallableRequest) => {
+  requireStaff(request)
+  const snapshot = await db().collection(COLLECTIONS.patients).get()
+  const maintenant = Date.now()
+  const patients = snapshot.docs
+    .map((document) => {
+      const data = document.data() as { firstName?: string; serviceId?: string; expiresAt?: Timestamp }
+      return {
+        uid: document.id,
+        firstName: data.firstName ?? 'Prénom inconnu',
+        serviceId: data.serviceId ?? '',
+        expiresAt: data.expiresAt?.toMillis() ?? Number.MAX_SAFE_INTEGER,
+      }
+    })
+    // Un séjour terminé ne doit plus apparaître dans la liste de la réunion.
+    .filter((patient) => patient.expiresAt > maintenant)
+    .map(({ expiresAt: _expiresAt, ...patient }) => patient)
+    .sort((a, b) => a.firstName.localeCompare(b.firstName, 'fr'))
+
+  return { patients }
+})
+
 /** Liste des inscrits : jamais lisible par un patient, jamais servie sans être soignant. */
 export const staffRoster = onCall(async (request: CallableRequest) => {
   requireStaff(request)

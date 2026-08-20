@@ -34,6 +34,13 @@ export type GenerationReport = {
 /** Portée d'une modification, comme dans un agenda classique. */
 export type EditScope = 'occurrence' | 'following' | 'series'
 
+/** Un patient, tel que le personnel le voit : un prénom, un service. Rien d'autre. */
+export type StaffPatient = {
+  uid: string
+  firstName: string
+  serviceId: string
+}
+
 export type RosterLine = {
   patientUid: string
   firstName: string
@@ -68,6 +75,24 @@ export interface StaffRepository {
 
   /** Liste des inscrits. Vide tant que les inscriptions ne sont pas en service. */
   roster(occurrenceId: string): Promise<RosterLine[]>
+
+  /**
+   * Les patients, pour la réunion du lundi. Prénom et service uniquement.
+   * La liste est toujours restreinte à ce dont le soignant a besoin à l'écran.
+   */
+  listPatients(): Promise<StaffPatient[]>
+
+  /**
+   * Inscription prise par un soignant, pour un patient. C'est le geste central de la
+   * réunion de début de semaine : le patient n'a rien à faire, et retrouve l'activité
+   * dans son calendrier s'il ouvre l'application.
+   */
+  registerPatient(
+    occurrenceId: string,
+    patientUid: string,
+  ): Promise<{ ok: boolean; status?: 'confirmed' | 'waitlist'; message: string }>
+
+  unregisterPatient(occurrenceId: string, patientUid: string): Promise<{ ok: boolean; message: string }>
 }
 
 /** Réservé à l'administrateur : ajouter un lieu, un service, une catégorie. */

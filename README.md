@@ -98,6 +98,16 @@ complet avec liste d'attente).
 
 ---
 
+## La réunion de début de semaine
+
+Le lundi, l'équipe annonce les activités et note sur une feuille qui veut participer.
+L'écran « Réunion du lundi » (`#/soignant/reunion`) remplace cette feuille : les activités
+à venir défilent une par une, les prénoms des patients concernés s'affichent, un appui
+inscrit, un second retire.
+
+Un patient n'a donc **jamais besoin de l'application** pour être inscrit. S'il l'ouvre, il
+y retrouve ses inscriptions déjà faites et peut en ajouter d'autres.
+
 ## Services et visibilité des activités
 
 Une activité est **ouverte à tous les services** ou **réservée à un, deux, trois d'entre eux** :

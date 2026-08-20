@@ -36,6 +36,7 @@ import { httpsCallable } from 'firebase/functions'
 import type { Activity, LocalDate, Occurrence } from '../../domain/types'
 import { generationWindow, planGeneration } from '../generation'
 import type {
+  StaffPatient,
   ActivityDraft,
   CatalogAdminService,
   GenerationReport,
@@ -47,6 +48,12 @@ import type {
 import { firebase } from './app'
 
 const SIGNED_OUT: StaffIdentity = { uid: null, email: null, firstName: null, role: null }
+
+/** Les fonctions appelables renvoient leur message en français : on le laisse passer. */
+function messageDErreur(error: unknown): string {
+  const brut = error instanceof Error ? error.message : ''
+  return brut.replace(/^.*?:\s*/, '') || "L'opération n'a pas abouti. Réessayez dans un instant."
+}
 
 function toOccurrence(snapshot: DocumentSnapshot | QueryDocumentSnapshot): Occurrence {
   const data = snapshot.data() as Record<string, unknown>
@@ -254,6 +261,50 @@ export function createFirestoreStaffApp(): StaffApp {
           // Sans Cloud Functions (plan gratuit), les prénoms ne sont pas servis :
           // il n'y a de toute façon pas encore d'inscriptions.
           return []
+        }
+      },
+
+      /**
+       * Les trois appels de la réunion du lundi. Ils passent tous par des fonctions
+       * appelables : l'inscription touche à la capacité, elle ne se fait donc jamais
+       * par une écriture directe depuis un navigateur, fût-il celui d'un soignant.
+       */
+      async listPatients(): Promise<StaffPatient[]> {
+        try {
+          const call = httpsCallable<unknown, { patients: StaffPatient[] }>(functions, 'staffPatients')
+          return (await call({})).data.patients
+        } catch {
+          return []
+        }
+      },
+
+      async registerPatient(occurrenceId: string, patientUid: string) {
+        try {
+          const call = httpsCallable<
+            { occurrenceId: string; patientUid: string },
+            { ok: boolean; status?: 'confirmed' | 'waitlist'; message?: string }
+          >(functions, 'staffRegister')
+          const resultat = (await call({ occurrenceId, patientUid })).data
+          return {
+            ok: resultat.ok,
+            ...(resultat.status ? { status: resultat.status } : {}),
+            message:
+              resultat.message ?? (resultat.status === 'waitlist' ? "Sur la liste d'attente" : 'Inscrit'),
+          }
+        } catch (error) {
+          return { ok: false, message: messageDErreur(error) }
+        }
+      },
+
+      async unregisterPatient(occurrenceId: string, patientUid: string) {
+        try {
+          const call = httpsCallable<{ occurrenceId: string; patientUid: string }, { ok: boolean; message: string }>(
+            functions,
+            'staffUnregister',
+          )
+          return (await call({ occurrenceId, patientUid })).data
+        } catch (error) {
+          return { ok: false, message: messageDErreur(error) }
         }
       },
     },

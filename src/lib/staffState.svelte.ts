@@ -2,7 +2,14 @@
  * État de l'espace soignant. Comme pour le patient, ne connaît que les ports.
  */
 import { createStaffApp } from './data'
-import type { ActivityDraft, GenerationReport, StaffApp, StaffIdentity } from './data/staffPorts'
+import type {
+  ActivityDraft,
+  GenerationReport,
+  RosterLine,
+  StaffApp,
+  StaffIdentity,
+  StaffPatient,
+} from './data/staffPorts'
 import { describeGeneration } from './data/generation'
 import { store } from './appState.svelte'
 import { todayLocalDate, weekDays } from './domain/time'
@@ -24,6 +31,10 @@ class StaffStore {
   activities = $state<Activity[]>([])
   occurrences = $state<Occurrence[]>([])
   date = $state<LocalDate>(todayLocalDate())
+  /** Les patients, pour la réunion du lundi. Prénom et service uniquement. */
+  patients = $state<StaffPatient[]>([])
+  /** Inscrits de l'activité ouverte pendant la réunion. */
+  roster = $state<RosterLine[]>([])
   /** Message de compte rendu affiché après une action, en français simple. */
   message = $state<string | null>(null)
   loading = $state(false)
@@ -45,7 +56,7 @@ class StaffStore {
     // Le catalogue n'est lisible qu'une fois connecté : il faut le (re)charger ici.
     // Après connexion, le catalogue devient lisible : il faut le relire, même s'il a
     // déjà été demandé (sans succès) avant l'authentification.
-    if (result.ok) await Promise.all([store.loadCatalog(true), this.refresh()])
+    if (result.ok) await Promise.all([store.loadCatalog(true), this.refresh(), this.loadPatients()])
     return result.ok ? { ok: true } : { ok: false, message: result.message }
   }
 
@@ -60,7 +71,9 @@ class StaffStore {
   async restore(): Promise<void> {
     await this.refresh()
     this.identity = (await this.app$()).session.current()
-    if (this.identity.role !== null) await store.loadCatalog(true)
+    if (this.identity.role !== null) {
+      await Promise.all([store.loadCatalog(true), this.loadPatients()])
+    }
   }
 
   async refresh(): Promise<void> {
@@ -73,6 +86,35 @@ class StaffStore {
     this.activities = activities
     this.occurrences = occurrences
     this.loading = false
+  }
+
+  async loadPatients(): Promise<void> {
+    this.patients = await (await this.app$()).repository.listPatients().catch(() => [])
+  }
+
+  async openRoster(occurrenceId: string): Promise<void> {
+    this.roster = await (await this.app$()).repository.roster(occurrenceId).catch(() => [])
+  }
+
+  isRegistered(patientUid: string): boolean {
+    return this.roster.some((ligne) => ligne.patientUid === patientUid)
+  }
+
+  /**
+   * Le geste de la réunion : on clique sur un prénom, il est inscrit ; on reclique,
+   * il est retiré. Rien d'autre à faire — le patient retrouvera l'activité dans son
+   * calendrier s'il ouvre l'application.
+   */
+  async togglePatient(occurrenceId: string, patientUid: string): Promise<string> {
+    const repository = (await this.app$()).repository
+    const inscrit = this.isRegistered(patientUid)
+    const resultat = inscrit
+      ? await repository.unregisterPatient(occurrenceId, patientUid)
+      : await repository.registerPatient(occurrenceId, patientUid)
+
+    await this.openRoster(occurrenceId)
+    await this.refresh()
+    return resultat.message
   }
 
   activityOf(activityId: string): Activity | null {
