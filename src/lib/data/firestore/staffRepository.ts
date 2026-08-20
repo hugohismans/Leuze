@@ -37,6 +37,7 @@ import { addMinutes, instantOf } from '../../domain/time'
 import type { Activity, Appointment, LocalDate, LocalTime, Occurrence } from '../../domain/types'
 import { generationWindow, planGeneration } from '../generation'
 import type {
+  NewPatientCode,
   StaffPatient,
   ActivityDraft,
   CatalogAdminService,
@@ -272,10 +273,50 @@ export function createFirestoreStaffApp(): StaffApp {
        */
       async listPatients(): Promise<StaffPatient[]> {
         try {
-          const call = httpsCallable<unknown, { patients: StaffPatient[] }>(functions, 'staffPatients')
-          return (await call({})).data.patients
+          const call = httpsCallable<unknown, { patients: (Omit<StaffPatient, 'expiresAt'> & { expiresAt?: string })[] }>(
+            functions,
+            'staffPatients',
+          )
+          return (await call({})).data.patients.map(({ expiresAt, ...patient }) => ({
+            ...patient,
+            ...(expiresAt ? { expiresAt: new Date(expiresAt) } : {}),
+          }))
         } catch {
           return []
+        }
+      },
+
+      /**
+       * Création d'un patient et de son code. Le code en clair ne transite qu'ici, une
+       * seule fois : la base n'en garde que l'empreinte, dérivée avec un poivre secret.
+       */
+      async createPatient(firstName: string, serviceId: string): Promise<NewPatientCode> {
+        const call = httpsCallable<
+          { firstName: string; serviceId: string },
+          { uid: string; code: string; printableCode: string; expiresAt: string }
+        >(functions, 'createPatientCode')
+        const data = (await call({ firstName, serviceId })).data
+        return { ...data, firstName, expiresAt: new Date(data.expiresAt) }
+      },
+
+      async regenerateCode(patientUid: string): Promise<NewPatientCode> {
+        const call = httpsCallable<
+          { patientUid: string },
+          { uid: string; firstName: string; code: string; printableCode: string; expiresAt: string }
+        >(functions, 'regeneratePatientCode')
+        const data = (await call({ patientUid })).data
+        return { ...data, expiresAt: new Date(data.expiresAt) }
+      },
+
+      async endStay(patientUid: string) {
+        try {
+          const call = httpsCallable<{ patientUid: string }, { ok: boolean; message: string }>(
+            functions,
+            'endPatientStay',
+          )
+          return (await call({ patientUid })).data
+        } catch (error) {
+          return { ok: false, message: messageDErreur(error) }
         }
       },
 

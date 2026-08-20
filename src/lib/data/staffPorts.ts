@@ -46,6 +46,21 @@ export type StaffPatient = {
   uid: string
   firstName: string
   serviceId: string
+  /** Fin de validité du code. Passée cette date, la personne sort des listes. */
+  expiresAt?: Date
+}
+
+/**
+ * Un code fraîchement créé. Il n'est **renvoyé qu'une fois** : seule son empreinte est
+ * conservée. Perdu, il ne se retrouve pas — on en délivre un nouveau.
+ */
+export type NewPatientCode = {
+  uid: string
+  firstName: string
+  code: string
+  /** Découpé en groupes de trois, pour être lu et recopié sans erreur. */
+  printableCode: string
+  expiresAt: Date
 }
 
 export type RosterLine = {
@@ -100,6 +115,21 @@ export interface StaffRepository {
   ): Promise<{ ok: boolean; status?: 'confirmed' | 'waitlist'; message: string }>
 
   unregisterPatient(occurrenceId: string, patientUid: string): Promise<{ ok: boolean; message: string }>
+
+  /**
+   * Crée un patient et son code d'accès. Le strict minimum est enregistré :
+   * un prénom et un service.
+   */
+  createPatient(firstName: string, serviceId: string): Promise<NewPatientCode>
+
+  /** Nouveau code pour une personne existante — feuille perdue, code oublié. */
+  regenerateCode(patientUid: string): Promise<NewPatientCode>
+
+  /**
+   * Fin de séjour : le code cesse de fonctionner et la personne sort des listes.
+   * Ses inscriptions passées ne sont pas touchées ; la purge s'en chargera.
+   */
+  endStay(patientUid: string): Promise<{ ok: boolean; message: string }>
 
   /** La file des demandes de rendez-vous, les plus anciennes d'abord. */
   listAppointments(): Promise<Appointment[]>

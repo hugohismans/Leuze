@@ -3,6 +3,7 @@
  */
 import { createStaffApp } from './data'
 import type {
+  NewPatientCode,
   ActivityDraft,
   GenerationReport,
   RosterLine,
@@ -90,6 +91,25 @@ class StaffStore {
     this.activities = activities
     this.occurrences = occurrences
     this.loading = false
+  }
+
+  async createPatient(firstName: string, serviceId: string): Promise<NewPatientCode> {
+    const code = await (await this.app$()).repository.createPatient(firstName, serviceId)
+    await this.loadPatients()
+    this.message = null
+    return code
+  }
+
+  async regenerateCode(patientUid: string): Promise<NewPatientCode> {
+    const code = await (await this.app$()).repository.regenerateCode(patientUid)
+    await this.loadPatients()
+    return code
+  }
+
+  async endStay(patientUid: string): Promise<void> {
+    const resultat = await (await this.app$()).repository.endStay(patientUid)
+    await this.loadPatients()
+    this.message = resultat.message
   }
 
   async loadAppointments(): Promise<void> {

@@ -16,7 +16,9 @@ import {
   rosterOf,
   waitlistPosition,
 } from '../../domain/waitlist'
+import { slugify } from '../../domain/slug'
 import type {
+  NewPatientCode,
   ActivityDraft,
   GenerationReport,
   RosterLine,
@@ -33,6 +35,17 @@ const DEMO_STAFF: StaffIdentity = {
 }
 
 const SIGNED_OUT: StaffIdentity = { uid: null, email: null, firstName: null, role: null }
+
+/** Alphabet sans ambiguïté : ni I, ni L, ni O, ni U. Identique à celui des vraies fonctions. */
+const ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'
+
+function codeDeDemonstration(): string {
+  let code = ''
+  for (let i = 0; i < 6; i += 1) code += ALPHABET[Math.floor(Math.random() * ALPHABET.length)]
+  return code
+}
+
+const pourLaFeuille = (code: string): string => code.replace(/(.{3})(?=.)/g, '$1-')
 
 export function createMockStaffApp(): StaffApp {
   // Les activités vivent ici, les occurrences et les inscriptions dans le monde partagé
@@ -152,7 +165,40 @@ export function createMockStaffApp(): StaffApp {
       },
 
       async listPatients(): Promise<StaffPatient[]> {
-        return [...world.patients].sort((a, b) => a.firstName.localeCompare(b.firstName, 'fr'))
+        const maintenant = Date.now()
+        return [...world.patients]
+          .filter((p) => p.expiresAt === undefined || p.expiresAt.getTime() > maintenant)
+          .sort((a, b) => a.firstName.localeCompare(b.firstName, 'fr'))
+      },
+
+      async createPatient(firstName: string, serviceId: string): Promise<NewPatientCode> {
+        const uid = `demo-${slugify(firstName)}-${Date.now().toString(36)}`
+        const expiresAt = new Date(Date.now() + 60 * 86_400_000)
+        world.patients = [...world.patients, { uid, firstName, serviceId, expiresAt }]
+        // En démonstration le code n'est pas haché : il n'ouvre rien de réel.
+        const code = codeDeDemonstration()
+        return { uid, firstName, code, printableCode: pourLaFeuille(code), expiresAt }
+      },
+
+      async regenerateCode(patientUid: string): Promise<NewPatientCode> {
+        const patient = world.patients.find((p) => p.uid === patientUid)
+        const expiresAt = new Date(Date.now() + 60 * 86_400_000)
+        world.patients = world.patients.map((p) => (p.uid === patientUid ? { ...p, expiresAt } : p))
+        const code = codeDeDemonstration()
+        return {
+          uid: patientUid,
+          firstName: patient?.firstName ?? '',
+          code,
+          printableCode: pourLaFeuille(code),
+          expiresAt,
+        }
+      },
+
+      async endStay(patientUid: string) {
+        world.patients = world.patients.map((p) =>
+          p.uid === patientUid ? { ...p, expiresAt: new Date(Date.now() - 1000) } : p,
+        )
+        return { ok: true, message: 'Le séjour est clôturé. Le code ne fonctionne plus.' }
       },
 
       async registerPatient(occurrenceId: string, patientUid: string) {

@@ -15,6 +15,7 @@ import type { Appointment, Occurrence, Registration } from '../../domain/types'
 import { recount, type Board } from '../../domain/waitlist'
 import { activitiesSeed } from '../seed/activities.seed'
 import { patientsSeed, type SeedPatient } from '../seed/patients.seed'
+export type { SeedPatient }
 import type { PatientSession } from '../ports'
 
 export const DEMO_PATIENT_UID = 'demo-patient'
@@ -34,7 +35,7 @@ export type MockWorld = {
   occurrences: Map<string, Occurrence>
   registrations: Registration[]
   appointments: Appointment[]
-  patients: SeedPatient[]
+  patients: (SeedPatient & { expiresAt?: Date })[]
   session: PatientSession
 }
 
@@ -94,7 +95,7 @@ function build(now: Date): MockWorld {
     occurrences,
     registrations,
     appointments,
-    patients: patientsSeed,
+    patients: patientsSeed.map((p) => ({ ...p })),
     session: { patientUid: DEMO_PATIENT_UID, firstName: 'Camille', serviceId: DEMO_SERVICE_ID },
   }
   for (const occurrence of occurrences.values()) syncCounts(monde, occurrence.id)

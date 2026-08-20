@@ -108,6 +108,19 @@ inscrit, un second retire.
 Un patient n'a donc **jamais besoin de l'application** pour être inscrit. S'il l'ouvre, il
 y retrouve ses inscriptions déjà faites et peut en ajouter d'autres.
 
+## Les patients et leurs codes
+
+Un soignant crée une personne avec **un prénom et un service** — rien d'autre, et l'écran
+ne propose aucun champ pour saisir autre chose. L'application délivre alors un code à six
+caractères, affiché **une seule fois** : la base n'en garde que l'empreinte scrypt. Perdu,
+il ne se retrouve pas ; on en délivre un nouveau, ce qui invalide l'ancien.
+
+« Fin de séjour » retire la personne des listes et rend son code inutilisable. Ses
+inscriptions passées restent jusqu'à la purge automatique.
+
+Cet écran demande les Cloud Functions, donc le plan Blaze : le code est dérivé côté
+serveur avec un poivre secret, ce qu'un navigateur ne peut pas faire.
+
 ## Rendez-vous individuels
 
 Un patient demande à voir le psychiatre, le psychologue, le kinésithérapeute… depuis

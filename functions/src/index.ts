@@ -133,12 +133,15 @@ export const staffPatients = onCall(async (request: CallableRequest) => {
         uid: document.id,
         firstName: data.firstName ?? 'Prénom inconnu',
         serviceId: data.serviceId ?? '',
-        expiresAt: data.expiresAt?.toMillis() ?? Number.MAX_SAFE_INTEGER,
+        expiresAtMs: data.expiresAt?.toMillis() ?? Number.MAX_SAFE_INTEGER,
       }
     })
     // Un séjour terminé ne doit plus apparaître dans la liste de la réunion.
-    .filter((patient) => patient.expiresAt > maintenant)
-    .map(({ expiresAt: _expiresAt, ...patient }) => patient)
+    .filter((patient) => patient.expiresAtMs > maintenant)
+    .map(({ expiresAtMs, ...patient }) => ({
+      ...patient,
+      expiresAt: new Date(expiresAtMs).toISOString(),
+    }))
     .sort((a, b) => a.firstName.localeCompare(b.firstName, 'fr'))
 
   return { patients }
@@ -188,6 +191,62 @@ export const createPatientCode = onCall(async (request: CallableRequest) => {
   await batch.commit()
 
   return { uid, code, printableCode: formatCodeForPrint(code), expiresAt: expiresAt.toDate().toISOString() }
+})
+
+/**
+ * Nouveau code pour un patient existant : la feuille est perdue, l'identité ne change
+ * pas. Les anciens codes cessent aussitôt de fonctionner.
+ */
+export const regeneratePatientCode = onCall(async (request: CallableRequest) => {
+  const staff = requireStaff(request)
+  const uid = requireString(request.data?.patientUid, 'patientUid')
+
+  const patientSnapshot = await db().collection(COLLECTIONS.patients).doc(uid).get()
+  const patient = patientSnapshot.data() as { firstName?: string } | undefined
+  if (patient === undefined) throw new HttpsError('not-found', "Cette personne n'existe pas.")
+
+  const validityDays = await readConfig('codeValidityDays', DEFAULT_CODE_VALIDITY_DAYS)
+  const expiresAt = Timestamp.fromMillis(Date.now() + validityDays * 86_400_000)
+  const code = generateCode(CODE_LENGTH)
+
+  const anciens = await db().collection(COLLECTIONS.patientCodes).where('uid', '==', uid).get()
+  const batch = db().batch()
+  anciens.docs.forEach((document) => batch.delete(document.ref))
+  batch.set(db().collection(COLLECTIONS.patientCodes).doc(hashCode(code)), {
+    uid,
+    expiresAt,
+    createdAt: FieldValue.serverTimestamp(),
+    createdBy: staff.uid,
+  })
+  batch.update(db().collection(COLLECTIONS.patients).doc(uid), { expiresAt })
+  await batch.commit()
+  await getAuth().revokeRefreshTokens(uid).catch(() => undefined)
+
+  return {
+    uid,
+    firstName: patient.firstName ?? '',
+    code,
+    printableCode: formatCodeForPrint(code),
+    expiresAt: expiresAt.toDate().toISOString(),
+  }
+})
+
+/**
+ * Fin de séjour. Le code cesse de fonctionner et la personne sort des listes ; ses
+ * inscriptions restent, la purge planifiée s'en chargera le moment venu.
+ */
+export const endPatientStay = onCall(async (request: CallableRequest) => {
+  requireStaff(request)
+  const uid = requireString(request.data?.patientUid, 'patientUid')
+
+  const codes = await db().collection(COLLECTIONS.patientCodes).where('uid', '==', uid).get()
+  const batch = db().batch()
+  codes.docs.forEach((document) => batch.delete(document.ref))
+  batch.update(db().collection(COLLECTIONS.patients).doc(uid), { expiresAt: Timestamp.now() })
+  await batch.commit()
+  await getAuth().revokeRefreshTokens(uid).catch(() => undefined)
+
+  return { ok: true, message: 'Le séjour est clôturé. Le code ne fonctionne plus.' }
 })
 
 /** Fin de séjour, code égaré : le code cesse de fonctionner, les inscriptions restent. */
