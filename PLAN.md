@@ -1,0 +1,286 @@
+# PLAN — Web app « Activités » — CH psychiatrique Saint-Jean-de-Dieu, Leuze-en-Hainaut
+
+> Statut : **en attente de validation**. Aucune ligne de code applicatif n'est écrite avant accord
+> sur ce document et réponses aux questions ouvertes (§8).
+
+---
+
+## 1. Principes directeurs
+
+Trois règles qui arbitrent tous les arbitrages qui suivent :
+
+1. **Un patient désorienté doit comprendre l'écran en 3 secondes.** Toute fonctionnalité qui ajoute
+   un choix à l'écran patient doit être justifiée ; en cas de doute, elle va dans l'espace soignant.
+2. **Une fuite de la base ne doit rien révéler de plus que « cette personne a fait du yoga ».**
+   Pas de nom de famille, pas de date de naissance, pas de diagnostic, pas de numéro de dossier.
+   Le nom de l'hôpital n'apparaît nulle part dans les données, seulement dans l'interface.
+3. **Le réseau lâche.** Le programme de la semaine doit s'afficher hors ligne. L'inscription, non
+   (voir §4.6) — une inscription « en attente de synchro » est un mensonge dangereux quand il y a
+   une capacité à respecter.
+
+---
+
+## 2. Architecture générale
+
+```
+src/
+  lib/
+    domain/        ← logique métier PURE, zéro import Firebase, 100 % testée en Vitest
+      recurrence.ts      génération d'occurrences, exceptions, split de série
+      capacity.ts        état d'une occurrence (libre / complet / annulée)
+      waitlist.ts        ordre, promotion, position
+      time.ts            fuseau Europe/Brussels, semaine ISO, formats FR
+    data/          ← interfaces de dépôt (ports) + implémentations (adapters)
+      ports.ts           ActivityRepository, OccurrenceRepository, RegistrationService…
+      firestore/         adapter Firestore + callables
+      mock/              adapter en mémoire (écran de démo + tests de composants)
+      seed/              locations.seed.ts, activities.seed.ts, script de seed
+    ui/            ← design system (Button, Card, Badge, Sheet, BigTime…)
+  routes/          ← écrans patient / soignant / admin / démo
+functions/         ← Cloud Functions (TypeScript, region europe-west1)
+firestore.rules
+firestore.indexes.json
+tests/rules/       ← @firebase/rules-unit-testing sur émulateur
+```
+
+**Décision structurante : pattern ports/adapters.** L'UI ne connaît jamais Firestore, seulement des
+interfaces. Conséquences directes : l'écran de démo sans backend (§11.7 du brief) n'est pas une
+maquette jetable mais **la vraie app branchée sur l'adapter mock** ; les tests de composants sont
+triviaux ; un changement de backend reste possible.
+
+---
+
+## 3. Modèle de données Firestore
+
+### Collections
+
+| Collection | Doc ID | Lecture | Écriture |
+|---|---|---|---|
+| `locations/{id}` | slug | tout le monde (auth) | admin |
+| `categories/{id}` | slug | tout le monde (auth) | admin |
+| `activities/{id}` | auto | tout le monde (auth) | soignant |
+| `occurrences/{id}` | **déterministe** | tout le monde (auth) | Functions + soignant |
+| `registrations/{id}` | auto | **la sienne uniquement** / soignant | **Functions uniquement** |
+| `patients/{id}` | **hash du code** | personne (client) | Functions uniquement |
+| `staff/{uid}` | uid Auth | soi-même / admin | admin |
+| `config/app` | fixe | tout le monde (auth) | admin |
+
+### Écarts assumés par rapport à l'ossature du brief
+
+- **`Occurrence` est dénormalisée** : elle porte `title`, `categoryId`, `locationId`, `capacity`,
+  `facilitator`, `status`. Raison : le calendrier fait **une seule requête** (`occurrences` où
+  `localDate` ∈ [début, fin]) au lieu de N jointures. C'est ce qui rend la vue semaine instantanée
+  et le cache hors ligne trivial. Le coût est la resynchronisation lors d'une modification de série
+  — prise en charge par la Cloud Function de régénération.
+- **`localDate: 'yyyy-MM-dd'`** en plus de `start: Timestamp`. Une requête « le mardi 12 » sur une
+  chaîne locale est exacte et insensible aux pièges de fuseau ; un `Timestamp` UTC ne l'est pas
+  autour du changement d'heure. Les deux champs sont écrits ensemble, `localDate` fait autorité pour
+  le regroupement par jour, `start` pour l'ordre et l'affichage de l'heure.
+- **`confirmedCount` + `waitlistCount`** au lieu du seul `registeredCount`. L'affichage « il reste 4
+  places » et « vous êtes 2e sur la liste d'attente » sont deux informations différentes.
+- **`seriesId`** sur `activities` : une série modifiée « à partir de telle date » produit un second
+  document `activities` partageant le même `seriesId` (voir §4.2).
+- **`patientRef` devient `patientUid`** : l'UID Firebase Auth du patient (§4.5). C'est ce qui permet
+  aux règles de sécurité d'isoler les inscriptions sans Cloud Function de lecture.
+
+### ID d'occurrence déterministe
+
+`{activityId}_{yyyyMMddTHHmm}` (heure locale Bruxelles). Conséquence : la régénération est
+**idempotente**. Régénérer 12 semaines deux fois ne crée pas de doublons, et une occurrence
+individuellement modifiée est identifiable sans registre d'exceptions séparé.
+
+---
+
+## 4. Décisions techniques tranchées
+
+### 4.1 Récurrence — « série + occurrences matérialisées + exceptions portées par l'occurrence »
+
+C'est bien le modèle demandé, avec une simplification : **pas de collection d'exceptions**.
+L'exception *est* le document d'occurrence, marqué `overridden: true`.
+
+- `activities.recurrence` : `{ freq: 'weekly', byWeekday: [2], startTime: '14:00', durationMin: 90,
+  from: 'yyyy-MM-dd', until: 'yyyy-MM-dd' | null, skipDates: string[] }`
+- Génération sur **fenêtre glissante de 12 semaines**, déclenchée : (a) à l'écriture d'une activité
+  (trigger Firestore `onWrite`), (b) chaque nuit par une fonction planifiée qui repousse la fenêtre.
+- La génération **n'écrase jamais** une occurrence `overridden: true` ni une occurrence portant des
+  inscriptions, sauf demande explicite « toutes les suivantes ».
+- Le calcul de récurrence lui-même vit dans `domain/recurrence.ts`, fonction pure
+  `expand(activity, from, to): OccurrenceDraft[]`, testée en Vitest **avant** d'être branchée.
+- Changement d'heure d'été : la récurrence raisonne en **heure murale locale**. « Mardi 14h » reste
+  14h le mardi qui suit le passage à l'heure d'hiver. C'est un des cas de test obligatoires.
+
+### 4.2 Modifier une activité récurrente
+
+Trois choix proposés systématiquement, comme un calendrier classique :
+
+| Choix | Effet |
+|---|---|
+| **Cette occurrence** | écrit sur le doc d'occurrence, `overridden: true`. La série n'est pas touchée. |
+| **Cette occurrence et les suivantes** | `recurrence.until` = veille sur l'activité courante ; création d'une nouvelle `activity` (même `seriesId`) valable à partir de la date ; régénération. Les occurrences passées sont préservées telles quelles. |
+| **Toute la série** | édition de l'activité, régénération des occurrences **futures** uniquement. |
+
+Une annulation en série (congé de l'animateur du 12 au 26) est une opération dédiée
+« annuler du … au … avec motif » qui passe les occurrences concernées en `cancelled` — pas une
+suppression, pas une modification de la règle.
+
+### 4.3 Capacité et liste d'attente — **serveur uniquement**
+
+Toutes les écritures sur `registrations` passent par des **Cloud Functions callables**
+(`register`, `unregister`, `staffRegister`, `staffUnregister`). Les règles Firestore interdisent
+toute écriture client sur `registrations`. Raisons, dans l'ordre :
+
+1. **Atomicité réelle.** Transaction Firestore côté serveur : relire `confirmedCount`, décider
+   `confirmed` vs `waitlist`, écrire l'inscription et le compteur dans la même transaction. Deux
+   patients sur la dernière place : l'un est confirmé, l'autre est 1er sur liste d'attente, jamais
+   deux confirmés.
+2. **Confidentialité.** Calculer une position de liste d'attente côté client obligerait à lire les
+   inscriptions des autres. Impossible par construction ici.
+3. **Promotion fiable.** À la désinscription d'un confirmé, la même transaction promeut le premier
+   de la liste d'attente. Cela ne dépend pas du fait que le navigateur du patient reste ouvert.
+
+> ⚠️ Cette décision **impose le plan Firebase Blaze** (Cloud Functions). Voir question 1.
+
+### 4.4 Authentification du personnel
+
+Firebase Auth email/mot de passe. Le rôle vit dans un **custom claim** (`role: 'staff' | 'admin'`)
+posé par une Function, doublé d'un doc `staff/{uid}` pour l'affichage. Les règles lisent le claim
+(pas de lecture supplémentaire). Comptes créés **uniquement par un admin** — pas d'inscription
+libre. Désactivation d'un compte = révocation du claim + `disabled` dans Auth.
+
+### 4.5 Identification patient — **option B, avec trois précisions** (mon avis argumenté)
+
+Je confirme ton intuition : **B**. A rend « mes inscriptions » impossible et produit des doublons
+(« Marie » de trois unités différentes) que le soignant devra démêler à la main tous les jours.
+C est disproportionné : demander un email et un mot de passe à quelqu'un en décompensation, c'est
+créer une barrière à l'accès aux soins.
+
+Mais un code court est un secret faible. Trois garde-fous, non négociables à mes yeux :
+
+1. **Le code n'est jamais une requête Firestore côté client.** Il est envoyé à une callable
+   `exchangeCode`, qui le vérifie et renvoie un **custom token** Firebase. Le patient obtient un
+   vrai UID ; les règles isolent ses inscriptions avec `resource.data.patientUid == request.auth.uid`.
+2. **Le code est stocké haché** (SHA-256, l'ID du doc `patients` *est* le hash). Une fuite de la
+   base ne donne aucun code utilisable. Le code en clair n'existe que sur le papier remis au patient.
+3. **Anti-énumération** : 6 caractères d'un alphabet sans ambiguïté (Crockford base32, sans I/L/O/U)
+   ≈ 1 milliard de combinaisons, + App Check + limitation de débit par IP sur `exchangeCode` +
+   blocage temporaire après N échecs. Un code est lié à un séjour et expire (voir question 2).
+
+Données stockées pour un patient : `firstName`, `unitId`, `createdAt`, `expiresAt`. Rien d'autre.
+
+### 4.6 Hors ligne
+
+- `persistentLocalCache` Firestore + `vite-plugin-pwa` (Workbox) pour la coque applicative.
+- Hors ligne : **lecture seule**, bandeau explicite « Pas de connexion — le programme affiché date
+  de <heure>. L'inscription n'est pas possible pour l'instant, adressez-vous à un soignant. »
+- Aucune écriture mise en file d'attente. Une inscription qui « part » hors ligne et se transforme
+  en liste d'attente trois heures plus tard est pire que pas d'inscription du tout.
+
+### 4.7 Hébergement — **Firebase Hosting** (justification)
+
+Cloudflare Pages est excellent, mais ici il ajoute un second fournisseur, un second pipeline et une
+configuration CORS/proxy pour atteindre les callables. Firebase Hosting apporte, gratuitement et
+sans colle : rewrites natifs vers les Functions (même origine, pas de CORS, cookies simples),
+canaux de prévisualisation par branche, intégration App Check, et surtout **le même émulateur en
+local que Firestore/Auth/Functions** — ce qui compte quand la logique critique est côté serveur.
+Le trafic attendu (133 lits) rend la question du CDN sans objet.
+
+### 4.8 Le plan du site (lot 2, préparé dès maintenant)
+
+Composant `<SitePlan zoneId?>` isolé, alimenté par `config/app.planZones` (mapping
+`planZoneId → locationId`, éditable dans l'admin). Tant que le SVG n'existe pas, le composant rend
+`null` et la fiche activité affiche nom du lieu + `accessNotes` — **aucun trou dans l'UI, aucun
+espace réservé vide**. Format SVG attendu documenté dans le README.
+
+---
+
+## 5. Découpage en lots
+
+La numérotation du brief (« lot 1 » = MVP) est conservée comme **jalon** ; je la découpe en lots
+livrables plus courts, chacun commitable et démontrable.
+
+### L0 — Socle + écran de démo *(livrable visible immédiatement)*
+Vite + Svelte 5 (runes) + TS + Tailwind, design system (tokens, échelle typo 18px base, boutons
+56px), routing, `domain/*` complet avec **tests Vitest** (récurrence, capacité, liste d'attente),
+adapter mock, seed `locations.seed.ts` + activités d'exemple, écran `/demo` = app patient complète
+sur données mockées.
+**Critère d'acceptation** : `npm run dev` → calendrier jour/semaine/mois navigable, fiche activité,
+inscription simulée. Montrable à la direction sans backend. `npm test` vert.
+
+### L1 — Backend Firebase
+Schéma, `firestore.rules` + **tests de règles** sur émulateur, Functions (`expandOccurrences`,
+`register`, `unregister`, `exchangeCode`, `purge` planifiée), index, script de seed vers émulateur.
+**Critère d'acceptation** : suite de tests de règles verte (dont « un patient ne peut pas lire les
+inscriptions d'un autre ») ; test de concurrence sur la dernière place.
+
+### L2 — App patient réelle
+Branchement de l'adapter Firestore, écran de saisie de code, « Mes inscriptions », inscription /
+désinscription / liste d'attente, mode borne, PWA + hors ligne.
+
+### L3 — Espace soignant / admin
+Auth, création rapide d'activité (< 30 s), duplication, annulation en 2 clics avec motif, dialogue
+« cette occurrence / les suivantes / toute la série », vue « Aujourd'hui » + listes d'inscrits,
+CRUD lieux / catégories / comptes / codes patients, écran de mapping des zones du plan.
+
+### L4 — Finitions MVP
+Audit accessibilité (contrastes AA/AAA, clavier, lecteur d'écran), `README.md` complet, déploiement,
+sauvegardes Firestore.
+
+### L5 — *(= lot 2 du brief)*
+`<SitePlan>` avec le vrai SVG, export PDF du programme hebdomadaire, rappels.
+
+---
+
+## 6. Ce qui, dans le brief, me paraît discutable
+
+*(§12 demande un avis, pas une exécution aveugle.)*
+
+1. **La vue mois pour les patients.** Une grille de 30 cases avec des pastilles est exactement le
+   genre d'écran qu'un patient désorienté ne décode pas, et elle contredit « comprendre en 3
+   secondes ». Proposition : vue mois **réservée à l'espace soignant**, patients en jour/semaine.
+2. **La liste d'attente n'a pas de canal d'information.** Sans email ni SMS, comment le patient
+   promu apprend-il qu'il a une place ? Il ne l'apprend pas, ou trop tard, et il se présente à une
+   activité complète — ou pire, il ne se présente pas à une place qui lui était réservée.
+   Proposition : la liste d'attente existe **pour le soignant** (qui prévient de vive voix) ; côté
+   patient, un statut clair « Vous êtes en attente — un soignant vous préviendra » et pas de
+   promesse implicite. La rendre **activable par activité**, pas systématique.
+3. **Session sur borne partagée vs « pas de timeout brutal » (§8).** Les deux ne peuvent pas être
+   vrais en même temps sur une tablette de salle commune : si la session persiste, le patient
+   suivant voit — et peut annuler — les inscriptions du précédent. Proposition : comportement
+   différencié par appareil (mode borne appairé par un soignant) → bouton « J'ai terminé » très
+   visible + retour automatique au calendrier public après 90 s d'inactivité, avec un message doux
+   et aucune perte de saisie. Sur téléphone personnel, session persistante comme demandé.
+4. **Les listes d'inscrits imprimables.** Une feuille avec des prénoms et des unités, oubliée sur
+   une table, est une divulgation. Proposition : impression depuis l'espace soignant uniquement,
+   en-tête sans mention de l'établissement ni du service, et **le programme hebdomadaire affiché
+   dans les unités (L5) ne contient jamais de noms**.
+5. **`unitId` est quasi-identifiant.** Prénom + unité, dans un hôpital de 133 lits, identifie
+   souvent une personne. Proposition : l'unité est utile au soignant, pas au patient — elle n'est
+   **jamais affichée sur les écrans patient**, et devient optionnelle si tu n'en as pas l'usage.
+6. **« Grande image » sur la fiche activité (§5).** Des photos réelles des locaux peuvent
+   identifier l'établissement si une capture circule. Proposition : icônes de catégorie et
+   illustrations neutres, pas de photos des lieux — sauf demande contraire.
+7. **Le compteur « il reste 4 places »** peut créer une course et de l'anxiété. Proposition :
+   afficher « Il reste des places » / « Dernières places » / « Complet » côté patient, et le chiffre
+   exact côté soignant. À trancher : c'est un vrai désaccord possible, le chiffre rassure aussi.
+8. **Suppression d'activité.** Jamais de suppression physique d'une occurrence portant des
+   inscriptions : `isActive: false` et `status: 'cancelled'`, toujours.
+
+---
+
+## 7. Risques
+
+| Risque | Parade |
+|---|---|
+| Dérive des occurrences après édition d'une série | ID déterministe + régénération idempotente + tests |
+| Surbooking | Transaction serveur + test de concurrence automatisé |
+| Code patient deviné | Hash + App Check + limitation de débit + expiration |
+| Wifi hospitalier défaillant | PWA lecture seule + bandeau honnête |
+| Plan du site jamais fourni | `<SitePlan>` isolé, fallback textuel dès L0 |
+| Validation RGPD interne ACIS tardive | Registre de traitement + minimisation documentés dès L1 |
+
+---
+
+## 8. Questions ouvertes bloquantes
+
+Voir le message d'accompagnement (10 questions groupées). Aucune implémentation ne démarre avant
+réponse aux questions 1, 2, 3 et 9 ; les autres peuvent être tranchées pendant L0.
