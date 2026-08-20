@@ -5,10 +5,8 @@
 import { todayLocalDate } from '../../domain/time'
 import type { Activity, LocalDate, Occurrence } from '../../domain/types'
 import { generationWindow, planGeneration } from '../generation'
+import { mockCatalog } from './catalog'
 import { activitiesSeed } from '../seed/activities.seed'
-import { categoriesSeed } from '../seed/categories.seed'
-import { locationsSeed } from '../seed/locations.seed'
-import { servicesSeed } from '../seed/services.seed'
 import type {
   ActivityDraft,
   GenerationReport,
@@ -148,19 +146,13 @@ export function createMockStaffApp(): StaffApp {
 
     catalogAdmin: {
       async saveLocation(location) {
-        const index = locationsSeed.findIndex((l) => l.id === location.id)
-        if (index === -1) locationsSeed.push({ ...location })
-        else Object.assign(locationsSeed[index]!, location)
+        mockCatalog.saveLocation(location)
       },
       async saveService(service) {
-        const index = servicesSeed.findIndex((s) => s.id === service.id)
-        if (index === -1) servicesSeed.push({ ...service })
-        else Object.assign(servicesSeed[index]!, service)
+        mockCatalog.saveService(service)
       },
       async saveCategory(category) {
-        const index = categoriesSeed.findIndex((c) => c.id === category.id)
-        if (index === -1) categoriesSeed.push({ ...category })
-        else Object.assign(categoriesSeed[index]!, category)
+        mockCatalog.saveCategory(category)
       },
     },
   }

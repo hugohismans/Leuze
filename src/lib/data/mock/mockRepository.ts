@@ -20,10 +20,8 @@ import {
 } from '../../domain/waitlist'
 import { registrationBlockMessage, type RegistrationBlock } from '../../domain/capacity'
 import type { AppRepository, MyRegistration, PatientSession, RegisterResult } from '../ports'
+import { mockCatalog } from './catalog'
 import { activitiesSeed } from '../seed/activities.seed'
-import { categoriesSeed } from '../seed/categories.seed'
-import { locationsSeed } from '../seed/locations.seed'
-import { servicesSeed } from '../seed/services.seed'
 
 export const DEMO_PATIENT_UID = 'demo-patient'
 /** Service du patient fictif au démarrage de la démonstration. */
@@ -140,14 +138,16 @@ export function createMockRepository(options: { now?: () => Date } = {}): MockRe
 
   return {
     catalog: {
+      // Le catalogue est partagé avec l'écran soignant : un lieu ajouté là-bas
+      // apparaît ici sans rechargement.
       async listLocations(): Promise<Location[]> {
-        return locationsSeed.filter((l) => l.isActive)
+        return mockCatalog.locations()
       },
       async listCategories(): Promise<Category[]> {
-        return categoriesSeed
+        return mockCatalog.categories()
       },
       async listServices(): Promise<Service[]> {
-        return servicesSeed.filter((s) => s.isActive)
+        return mockCatalog.services()
       },
     },
 

@@ -36,7 +36,7 @@ export async function createRepository(): Promise<AppRepository> {
     const { createFirestoreRepository } = await import('./firestore/firestoreRepository')
     return createFirestoreRepository()
   }
-  const { createMockRepository } = await import('./mock/mockRepository')
+  const { createMockRepository } = await import('./mock')
   return createMockRepository()
 }
 
@@ -45,7 +45,7 @@ export async function createStaffApp(): Promise<StaffApp> {
     const { createFirestoreStaffApp } = await import('./firestore/staffRepository')
     return createFirestoreStaffApp()
   }
-  const { createMockStaffApp } = await import('./mock/staffRepository')
+  const { createMockStaffApp } = await import('./mock')
   return createMockStaffApp()
 }
 

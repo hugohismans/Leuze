@@ -43,7 +43,9 @@ class StaffStore {
     const result = await (await this.app$()).session.signIn(email, password)
     this.identity = (await this.app$()).session.current()
     // Le catalogue n'est lisible qu'une fois connecté : il faut le (re)charger ici.
-    if (result.ok) await Promise.all([store.loadCatalog(), this.refresh()])
+    // Après connexion, le catalogue devient lisible : il faut le relire, même s'il a
+    // déjà été demandé (sans succès) avant l'authentification.
+    if (result.ok) await Promise.all([store.loadCatalog(true), this.refresh()])
     return result.ok ? { ok: true } : { ok: false, message: result.message }
   }
 
@@ -58,7 +60,7 @@ class StaffStore {
   async restore(): Promise<void> {
     await this.refresh()
     this.identity = (await this.app$()).session.current()
-    if (this.identity.role !== null) await store.loadCatalog()
+    if (this.identity.role !== null) await store.loadCatalog(true)
   }
 
   async refresh(): Promise<void> {
@@ -115,6 +117,35 @@ class StaffStore {
     await (await this.app$()).repository.restoreOccurrence(occurrenceId)
     await this.refresh()
     this.message = 'Séance rétablie.'
+  }
+
+  async saveLocation(location: {
+    id: string
+    name: string
+    accessNotes?: string
+    building?: string
+    isActive: boolean
+  }): Promise<void> {
+    await (await this.app$()).catalogAdmin.saveLocation(location)
+    await store.loadCatalog(true)
+    this.message = `Lieu enregistré : ${location.name}.`
+  }
+
+  async saveService(service: { id: string; name: string; isActive: boolean }): Promise<void> {
+    await (await this.app$()).catalogAdmin.saveService(service)
+    await store.loadCatalog(true)
+    this.message = `Service enregistré : ${service.name}.`
+  }
+
+  async saveCategory(category: {
+    id: string
+    name: string
+    icon: string
+    colorToken: string
+  }): Promise<void> {
+    await (await this.app$()).catalogAdmin.saveCategory(category)
+    await store.loadCatalog(true)
+    this.message = `Catégorie enregistrée : ${category.name}.`
   }
 
   /** Le catalogue est partagé avec l'écran patient : mêmes lieux, mêmes catégories. */

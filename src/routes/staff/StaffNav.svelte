@@ -5,6 +5,7 @@
   const onglets = [
     { chemin: '/soignant', libelle: "Aujourd'hui" },
     { chemin: '/soignant/activites', libelle: 'Les activités' },
+    { chemin: '/soignant/catalogue', libelle: 'Le catalogue' },
   ]
 </script>
 

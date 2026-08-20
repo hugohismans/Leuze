@@ -158,8 +158,12 @@ class AppStore {
     return (await this.repo()).registrations.unregister(occurrenceId)
   }
 
-  async loadCatalog(): Promise<void> {
-    if (this.catalogLoaded) return
+  /**
+   * Le catalogue ne change quasiment jamais : il n'est chargé qu'une fois. L'écran
+   * d'administration, lui, doit forcer la relecture après avoir ajouté un lieu.
+   */
+  async loadCatalog(force = false): Promise<void> {
+    if (this.catalogLoaded && !force) return
     this.catalogLoaded = true
     const [categories, locations, services] = await Promise.all([
       (await this.repo()).catalog.listCategories(),
