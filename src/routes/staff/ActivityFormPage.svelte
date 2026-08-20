@@ -2,11 +2,11 @@
   import { staffStore } from '../../lib/staffState.svelte'
   import { store } from '../../lib/appState.svelte'
   import { audienceLabelForStaff, isPublished } from '../../lib/domain/audience'
-  import { todayLocalDate } from '../../lib/domain/time'
-  import type { Activity, IsoWeekday, LocalTime } from '../../lib/domain/types'
+  import { formatLongDayLabel, todayLocalDate } from '../../lib/domain/time'
+  import type { Activity, IsoWeekday, LocalDate, LocalTime } from '../../lib/domain/types'
   import { navigate } from '../../lib/router.svelte'
 
-  let { activityId }: { activityId: string } = $props()
+  let { activityId, date }: { activityId: string; date?: string } = $props()
 
   const JOURS: Array<{ valeur: IsoWeekday; libelle: string }> = [
     { valeur: 1, libelle: 'Lundi' },
@@ -27,6 +27,13 @@
   let categoryId = $state('')
   let locationId = $state('')
   let facilitator = $state('')
+  /**
+   * La grande majorité des activités sont **ponctuelles** : le programme se refait
+   * chaque semaine selon les disponibilités. La récurrence existe pour les quelques
+   * rendez-vous fixes, mais ce n'est pas le cas courant — d'où le choix par défaut.
+   */
+  let repetition = $state<'une-fois' | 'chaque-semaine'>('une-fois')
+  let dateUnique = $state<LocalDate>(todayLocalDate())
   let jours = $state<IsoWeekday[]>([])
   let heure = $state<LocalTime>('14:00')
   let duree = $state(60)
@@ -43,6 +50,11 @@
   let busy = $state(false)
 
   const nouvelle = $derived(activityId === 'nouvelle')
+  /**
+   * On revient d'où l'on vient : posée depuis la semaine, l'activité y ramène ;
+   * ouverte depuis la liste, elle ramène à la liste.
+   */
+  const retour = $derived(date !== undefined ? '/soignant' : '/soignant/activites')
 
   $effect(() => {
     if (chargee) return
@@ -53,6 +65,8 @@
     if (nouvelle) {
       categoryId = categories[0]!.id
       locationId = lieux[0]!.id
+      // La date vient de la case de la semaine sur laquelle le soignant a cliqué.
+      if (date !== undefined) dateUnique = date
       chargee = true
       return
     }
@@ -68,9 +82,12 @@
       categoryId = activity.categoryId
       locationId = activity.locationId
       facilitator = activity.facilitator ?? ''
+      repetition = activity.recurrence === null ? 'une-fois' : 'chaque-semaine'
+      dateUnique = activity.singleStart?.date ?? date ?? todayLocalDate()
+      void 0
       jours = activity.recurrence?.byWeekday ?? []
-      heure = activity.recurrence?.startTime ?? '14:00'
-      duree = activity.recurrence?.durationMin ?? 60
+      heure = activity.recurrence?.startTime ?? activity.singleStart?.time ?? '14:00'
+      duree = activity.recurrence?.durationMin ?? activity.singleStart?.durationMin ?? 60
       pourTous = activity.audience === 'all'
       serviceIds = [...activity.serviceIds]
       placesLimitees = activity.capacity !== null
@@ -106,8 +123,12 @@
       erreur = 'Donnez un titre à l’activité.'
       return
     }
-    if (jours.length === 0) {
+    if (repetition === 'chaque-semaine' && jours.length === 0) {
       erreur = 'Choisissez au moins un jour de la semaine.'
+      return
+    }
+    if (repetition === 'une-fois' && !dateUnique) {
+      erreur = 'Choisissez la date de l’activité.'
       return
     }
     busy = true
@@ -125,18 +146,25 @@
         capacity: placesLimitees ? capacite : null,
         registrationRequired: placesLimitees,
         waitlistEnabled: placesLimitees && listeAttente,
-        recurrence: {
-          freq: 'weekly',
-          byWeekday: jours,
-          startTime: heure,
-          durationMin: duree,
-          from: todayLocalDate(),
-          until: null,
-          skipDates: [],
-        },
+        ...(repetition === 'une-fois'
+          ? {
+              recurrence: null,
+              singleStart: { date: dateUnique, time: heure, durationMin: duree },
+            }
+          : {
+              recurrence: {
+                freq: 'weekly' as const,
+                byWeekday: jours,
+                startTime: heure,
+                durationMin: duree,
+                from: todayLocalDate(),
+                until: null,
+                skipDates: [],
+              },
+            }),
         isActive: auProgramme,
       })
-      navigate('/soignant/activites')
+      navigate(retour)
     } catch {
       erreur = "L'enregistrement n'a pas abouti. Réessayez dans un instant."
     }
@@ -194,7 +222,36 @@
 
     <fieldset class="card p-4">
       <legend class="px-1 text-lg font-semibold text-ink">Quand</legend>
-      <div class="mt-2 flex flex-wrap gap-2">
+
+      <div class="mt-2 flex flex-col gap-2">
+        <label class="flex items-center gap-3 text-lg text-ink" style="min-height: 56px;">
+          <input
+            type="radio"
+            name="repetition"
+            checked={repetition === 'une-fois'}
+            onchange={() => (repetition = 'une-fois')}
+            class="size-6"
+          />
+          Une seule fois, à une date précise
+        </label>
+        <label class="flex items-center gap-3 text-lg text-ink" style="min-height: 56px;">
+          <input
+            type="radio"
+            name="repetition"
+            checked={repetition === 'chaque-semaine'}
+            onchange={() => (repetition = 'chaque-semaine')}
+            class="size-6"
+          />
+          Chaque semaine, les mêmes jours
+        </label>
+      </div>
+
+      {#if repetition === 'une-fois'}
+        <label for="date" class="mt-4 mb-2 block text-lg font-semibold text-ink">Date</label>
+        <input id="date" type="date" bind:value={dateUnique} class={champ} style="min-height: 56px;" />
+        <p class="mt-1 text-base text-ink-soft">{formatLongDayLabel(dateUnique)}</p>
+      {:else}
+      <div class="mt-4 flex flex-wrap gap-2">
         {#each JOURS as jour (jour.valeur)}
           <button
             type="button"
@@ -208,6 +265,7 @@
           </button>
         {/each}
       </div>
+      {/if}
 
       <div class="mt-4 grid gap-4 sm:grid-cols-2">
         <div>
@@ -304,7 +362,7 @@
       <button type="submit" class="btn btn-primary" disabled={busy}>
         {busy ? 'Enregistrement…' : 'Enregistrer'}
       </button>
-      <button type="button" class="btn btn-secondary" onclick={() => navigate('/soignant/activites')}>
+      <button type="button" class="btn btn-secondary" onclick={() => navigate(retour)}>
         Annuler
       </button>
     </div>

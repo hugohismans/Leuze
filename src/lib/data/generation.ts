@@ -11,14 +11,20 @@
  */
 import { config } from '../config'
 import { expand, mergeOccurrences, type MergeOptions } from '../domain/recurrence'
-import { addLocalDays, todayLocalDate } from '../domain/time'
+import { addLocalDays, startOfIsoWeek, todayLocalDate } from '../domain/time'
 import type { Activity, LocalDate, Occurrence } from '../domain/types'
 import type { GenerationReport } from './staffPorts'
 
 export type GenerationWindow = { from: LocalDate; to: LocalDate }
 
+/**
+ * La fenêtre commence au **lundi de la semaine en cours**, pas au jour même : un soignant
+ * qui planifie le jeudi doit pouvoir poser une activité le lundi passé sans qu'elle
+ * disparaisse aussitôt.
+ */
 export function generationWindow(from: LocalDate = todayLocalDate()): GenerationWindow {
-  return { from, to: addLocalDays(from, config.generationWindowWeeks * 7) }
+  const debut = startOfIsoWeek(from)
+  return { from: debut, to: addLocalDays(debut, config.generationWindowWeeks * 7) }
 }
 
 export type GenerationPlan = {

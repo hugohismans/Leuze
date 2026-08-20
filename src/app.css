@@ -163,3 +163,77 @@ body {
     left: 0;
   }
 }
+
+/* --------------------------------------------------------------------------
+   Impression — la feuille affichée dans l'unité, qui remplace le tableau papier.
+   Paysage, parce que sept colonnes ne tiennent pas en portrait.
+
+   On ne masque pas par structure (« tout sauf main ») : l'application est montée dans
+   un conteneur, et une telle règle masquerait la page entière. On rend tout invisible,
+   puis on rend la feuille visible — insensible à la structure du document.
+   -------------------------------------------------------------------------- */
+@media print {
+  @page {
+    size: A4 landscape;
+    margin: 8mm;
+  }
+
+  html,
+  body {
+    background: #fff;
+  }
+
+  body * {
+    visibility: hidden;
+  }
+
+  .feuille,
+  .feuille * {
+    visibility: visible;
+  }
+
+  .feuille {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    border: 0 !important;
+    padding: 0 !important;
+  }
+
+  /* Une journée ne se coupe pas au milieu d'une page. */
+  .feuille section {
+    break-inside: avoid;
+  }
+
+  .feuille h2 {
+    font-size: 16pt;
+  }
+
+  .feuille header p,
+  .feuille footer {
+    font-size: 9pt;
+  }
+
+  .feuille header {
+    margin-bottom: 3mm;
+    padding-bottom: 2mm;
+    border-bottom-width: 1px;
+  }
+
+  .feuille footer {
+    margin-top: 3mm;
+    padding-top: 2mm;
+    border-top-width: 1px;
+  }
+
+  .feuille header img {
+    height: 8mm;
+  }
+
+  /* Les repères de couleur doivent sortir, y compris sur une imprimante noir et blanc. */
+  * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}

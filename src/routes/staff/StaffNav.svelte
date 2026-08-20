@@ -3,7 +3,8 @@
   import { navigate, router } from '../../lib/router.svelte'
 
   const onglets = [
-    { chemin: '/soignant', libelle: "Aujourd'hui" },
+    { chemin: '/soignant', libelle: 'La semaine' },
+    { chemin: '/soignant/aujourdhui', libelle: "Aujourd'hui" },
     { chemin: '/soignant/activites', libelle: 'Les activités' },
     { chemin: '/soignant/catalogue', libelle: 'Le catalogue' },
   ]

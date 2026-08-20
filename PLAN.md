@@ -95,6 +95,24 @@ individuellement modifiée est identifiable sans registre d'exceptions séparé.
 
 ## 4. Décisions techniques tranchées
 
+### 4.0 Correction de cadrage : le programme est refait chaque semaine
+
+Le brief laissait entendre que « la plupart des activités sont hebdomadaires et fixes ».
+La réalité du service est l'inverse : **le programme est refait chaque semaine**, selon les
+disponibilités des soignants et des patients, et il est aujourd'hui écrit à la main sur un
+tableau papier le lundi. Les activités ponctuelles sont donc le cas courant, la récurrence
+l'exception.
+
+Conséquences, appliquées :
+- le formulaire propose **« une seule fois, à une date précise » par défaut** ;
+- l'écran principal du personnel est **la semaine**, avec un bouton « Ajouter » sous chaque
+  jour : on pose les activités là où on les veut, une par une ;
+- la fenêtre de génération commence au **lundi de la semaine en cours**, pour qu'une
+  activité posée un lundi alors qu'on est jeudi ne disparaisse pas ;
+- une **feuille imprimable par service** remplace le tableau papier.
+
+La récurrence reste entièrement supportée : elle n'est plus le chemin par défaut.
+
 ### 4.1 Récurrence — « série + occurrences matérialisées + exceptions portées par l'occurrence »
 
 C'est bien le modèle demandé, avec une simplification : **pas de collection d'exceptions**.
@@ -256,7 +274,7 @@ confirmé et quatre positions d'attente distinctes.
 Branchement de l'adapter Firestore, écran de saisie de code, « Mes inscriptions », inscription /
 désinscription / liste d'attente, mode borne, PWA + hors ligne.
 
-### L3 — Espace soignant / admin
+### L3 — Espace soignant / admin *(en cours)*
 Auth, création rapide d'activité (< 30 s), duplication, annulation en 2 clics avec motif, dialogue
 « cette occurrence / les suivantes / toute la série », vue « Aujourd'hui » + listes d'inscrits,
 CRUD lieux / catégories / comptes / codes patients, écran de mapping des zones du plan.
