@@ -58,8 +58,9 @@ triviaux ; un changement de backend reste possible.
 |---|---|---|---|
 | `locations/{id}` | slug | tout le monde (auth) | admin |
 | `categories/{id}` | slug | tout le monde (auth) | admin |
+| `services/{id}` | slug | tout le monde (auth) | admin |
 | `activities/{id}` | auto | tout le monde (auth) | soignant |
-| `occurrences/{id}` | **déterministe** | tout le monde (auth) | Functions + soignant |
+| `occurrences/{id}` | **déterministe** | **son service uniquement** | Functions + soignant |
 | `registrations/{id}` | auto | **la sienne uniquement** / soignant | **Functions uniquement** |
 | `patients/{id}` | **hash du code** | personne (client) | Functions uniquement |
 | `staff/{uid}` | uid Auth | soi-même / admin | admin |
@@ -80,6 +81,7 @@ triviaux ; un changement de backend reste possible.
   places » et « vous êtes 2e sur la liste d'attente » sont deux informations différentes.
 - **`seriesId`** sur `activities` : une série modifiée « à partir de telle date » produit un second
   document `activities` partageant le même `seriesId` (voir §4.2).
+- **`audience` + `serviceIds` sur l'activité, `audienceKeys` sur l'occurrence** (voir §4.8).
 - **`patientRef` devient `patientUid`** : l'UID Firebase Auth du patient (§4.5). C'est ce qui permet
   aux règles de sécurité d'isoler les inscriptions sans Cloud Function de lecture.
 
@@ -184,7 +186,43 @@ canaux de prévisualisation par branche, intégration App Check, et surtout **le
 local que Firestore/Auth/Functions** — ce qui compte quand la logique critique est côté serveur.
 Le trafic attendu (133 lits) rend la question du CDN sans objet.
 
-### 4.8 Le plan du site (lot 2, préparé dès maintenant)
+### 4.8 Audience : quelles activités pour quels services
+
+Toutes les activités ne sont pas ouvertes à tout l'hôpital. Une activité est soit ouverte à
+**tous les services**, soit réservée à **un, deux, trois** services — le ping-pong du mardi n'est
+proposé qu'à une seule unité.
+
+- Sur l'activité : `audience: 'all' | 'services'` et `serviceIds: string[]`.
+- Sur l'occurrence, dénormalisé : `audienceKeys: string[]`, qui vaut `['all']` ou la liste triée
+  des services autorisés.
+
+**Pourquoi cette forme.** Elle permet de construire le calendrier d'un patient avec la requête
+qu'il a le droit de faire, et une seule :
+
+```
+occurrences
+  .where('audienceKeys', 'array-contains-any', ['all', serviceDuPatient])
+  .where('localDate', '>=', debut).where('localDate', '<=', fin)
+```
+
+Les règles Firestore vérifient exactement la même condition, si bien qu'une activité d'un autre
+service **n'atteint jamais le navigateur du patient** — ce n'est pas un filtre d'affichage, qui
+laisserait fuiter les titres. Cela demande un index composite (`audienceKeys` tableau + `localDate`),
+déclaré dans `firestore.indexes.json` au lot L1.
+
+Le filtrage est fait dans la **couche de données**, pas dans l'interface : l'adapter de
+démonstration applique déjà la même règle, y compris sur l'accès direct à une adresse devinée.
+
+**Cas particulier : « aucun service ».** Une activité `'services'` avec une liste vide n'est
+visible par personne. Ce n'est presque jamais voulu : `isPublished()` la détecte et l'écran
+soignant l'affiche comme « Aucun service — cette activité n'est visible par personne », plutôt
+que de la laisser disparaître silencieusement.
+
+**Ce que le patient voit.** Un badge « Réservée à votre service », jamais la liste des autres
+services : elle ne lui apprend rien et révèle l'organisation interne. Le soignant, lui, voit la
+liste exacte.
+
+### 4.9 Le plan du site (lot 5, préparé dès maintenant)
 
 Composant `<SitePlan zoneId?>` isolé, alimenté par `config/app.planZones` (mapping
 `planZoneId → locationId`, éditable dans l'admin). Tant que le SVG n'existe pas, le composant rend

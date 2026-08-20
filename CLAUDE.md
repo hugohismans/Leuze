@@ -12,11 +12,15 @@ Lire `PLAN.md` avant toute modification d'architecture.
    en implique une, s'arrêter et poser la question.
 2. **Aucune écriture client sur `registrations` ni `patients`.** Tout passe par une Cloud Function
    callable. Les règles Firestore refusent le reste.
-3. **`src/lib/domain/**` n'importe jamais Firebase**, ni `window`, ni Svelte. Fonctions pures,
+3. **Le filtrage par service n'est jamais fait dans l'interface.** Une activité réservée à un
+   autre service ne doit pas atteindre le navigateur du patient : le filtre vit dans la couche
+   de données (`listBetween`, `get`) et sera doublé par les règles Firestore. Un filtre de rendu
+   laisserait fuiter les titres.
+4. **`src/lib/domain/**` n'importe jamais Firebase**, ni `window`, ni Svelte. Fonctions pures,
    testées. C'est la seule partie du code où un bug est cher.
-4. **Ne jamais supprimer physiquement** une activité ou une occurrence portant des inscriptions.
+5. **Ne jamais supprimer physiquement** une activité ou une occurrence portant des inscriptions.
    `isActive: false` / `status: 'cancelled'` avec motif.
-5. **Pas de librairie de calendrier générique** (FullCalendar & co). Vues construites à la main
+6. **Pas de librairie de calendrier générique** (FullCalendar & co). Vues construites à la main
    avec `date-fns` (locale `fr`, `weekStartsOn: 1`, fuseau `Europe/Brussels`).
 
 ---
@@ -57,7 +61,7 @@ Français simple, **vouvoiement**, phrases courtes, **aucune abréviation**, auc
 ## Structure
 
 ```
-src/lib/domain/    logique pure (récurrence, capacité, liste d'attente, temps) — 100 % testée
+src/lib/domain/    logique pure (récurrence, capacité, liste d'attente, audience, temps) — 100 % testée
 src/lib/data/      ports.ts (interfaces) + firestore/ + mock/ + seed/
 src/lib/ui/        design system
 src/routes/        écrans : patient/, staff/, admin/, demo/

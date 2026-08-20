@@ -10,10 +10,25 @@ export type LocalTime = string
 /** Jour de la semaine ISO : 1 = lundi … 7 = dimanche. */
 export type IsoWeekday = 1 | 2 | 3 | 4 | 5 | 6 | 7
 
-export type Unit = {
+/**
+ * Un « service » au sens de l'hôpital : unité de soins (Le Mazurel, La Joncquerelle…)
+ * ou service transversal (service culturel…). C'est le vocabulaire des soignants,
+ * et c'est aussi ce qui décide *qui voit quoi* — voir `audience.ts`.
+ */
+export type Service = {
   id: string
   name: string
+  isActive: boolean
 }
+
+/**
+ * À qui s'adresse une activité.
+ *  - `'all'`      : tous les services.
+ *  - `'services'` : uniquement les services listés dans `serviceIds` (un, deux, trois…).
+ * Une activité `'services'` avec une liste vide n'est visible par personne :
+ * elle est traitée comme non publiée et signalée comme telle au soignant.
+ */
+export type AudienceKind = 'all' | 'services'
 
 export type Location = {
   id: string
@@ -60,6 +75,9 @@ export type Activity = {
   categoryId: string
   locationId: string
   facilitator?: string
+  audience: AudienceKind
+  /** Vide quand `audience === 'all'`. */
+  serviceIds: string[]
   /** `null` = places illimitées. */
   capacity: number | null
   registrationRequired: boolean
@@ -88,6 +106,13 @@ export type Occurrence = {
   categoryId: string
   locationId: string
   facilitator?: string
+  /**
+   * Clés d'audience dénormalisées : `['all']`, ou la liste des services autorisés.
+   * Permet au calendrier de ne demander que ce que le patient a le droit de voir,
+   * en une seule requête (`array-contains-any ['all', serviceDuPatient]`),
+   * et aux règles de sécurité de vérifier la même chose.
+   */
+  audienceKeys: string[]
   capacity: number | null
   registrationRequired: boolean
   waitlistEnabled: boolean
@@ -118,7 +143,7 @@ export type Registration = {
 export type Patient = {
   id: string
   firstName: string
-  unitId?: string
+  serviceId: string
   createdAt: Date
   expiresAt: Date
 }

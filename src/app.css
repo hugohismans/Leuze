@@ -8,11 +8,12 @@
  */
 
 @theme {
-  --color-brand-50: #eef5f9;
-  --color-brand-100: #d6e6f0;
-  --color-brand-500: #2b6c93;
-  --color-brand-700: #1b4965;
-  --color-brand-900: #12324a;
+  /* Reprises du logo ACIS : bleu #236bc3, marine #1a1a38, vert #299b5c. */
+  --color-brand-50: #eff5fc;
+  --color-brand-100: #d9e6f7;
+  --color-brand-500: #236bc3;
+  --color-brand-700: #1c5296;
+  --color-brand-900: #1a1a38;
 
   --color-ink: #16202b;
   --color-ink-soft: #45535f;

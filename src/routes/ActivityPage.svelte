@@ -3,6 +3,7 @@
   import { registrationBlock, registrationBlockMessage } from '../lib/domain/capacity'
   import { formatDuration, formatFullWhen, formatTime } from '../lib/domain/time'
   import type { Occurrence } from '../lib/domain/types'
+  import AudienceBadge from '../lib/ui/AudienceBadge.svelte'
   import CategoryBadge from '../lib/ui/CategoryBadge.svelte'
   import PlacesBadge from '../lib/ui/PlacesBadge.svelte'
   import SitePlan from '../lib/ui/SitePlan.svelte'
@@ -128,7 +129,10 @@
 
     <section aria-labelledby="titre-places" class="grid grid-cols-1 gap-3">
       <h2 id="titre-places" class="text-lg font-bold text-ink-soft">Les places</h2>
-      <div><PlacesBadge {occurrence} /></div>
+      <div class="flex flex-wrap gap-2">
+        <PlacesBadge {occurrence} />
+        <AudienceBadge {occurrence} />
+      </div>
     </section>
 
     <!-- Zone d'inscription : un seul bouton, énorme, texte explicite. -->

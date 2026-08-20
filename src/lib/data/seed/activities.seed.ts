@@ -3,7 +3,9 @@ import type { Activity, IsoWeekday, LocalTime } from '../../domain/types'
 /**
  * TODO : activités d'exemple, à remplacer par le programme réel.
  * Semaine type complète, pensée pour démontrer tous les cas d'affichage :
- * places limitées, places illimitées, sans inscription, liste d'attente.
+ * places limitées, places illimitées, sans inscription, liste d'attente,
+ * et les trois formes d'audience — ouverte à tous les services, réservée à un
+ * seul service, réservée à plusieurs.
  * Les descriptions sont volontairement en français simple et au vouvoiement.
  */
 
@@ -12,11 +14,14 @@ function weekly(
   weekday: IsoWeekday,
   startTime: LocalTime,
   durationMin: number,
-  rest: Omit<Activity, 'id' | 'seriesId' | 'recurrence' | 'isActive'>,
+  rest: Omit<Activity, 'id' | 'seriesId' | 'recurrence' | 'isActive' | 'audience' | 'serviceIds'> &
+    Partial<Pick<Activity, 'audience' | 'serviceIds'>>,
 ): Activity {
   return {
     id,
     seriesId: `serie-${id}`,
+    audience: 'all',
+    serviceIds: [],
     ...rest,
     recurrence: {
       freq: 'weekly',
@@ -72,6 +77,8 @@ export const activitiesSeed: Activity[] = [
     categoryId: 'relaxation',
     locationId: 'salle-de-detente',
     facilitator: 'Claire',
+    audience: 'services',
+    serviceIds: ['le-mazurel', 'la-joncquerelle'],
     capacity: 8,
     registrationRequired: true,
     waitlistEnabled: true,
@@ -83,6 +90,8 @@ export const activitiesSeed: Activity[] = [
     categoryId: 'cuisine',
     locationId: 'cuisine-therapeutique',
     facilitator: 'Nadia',
+    audience: 'services',
+    serviceIds: ['la-couturelle'],
     capacity: 6,
     registrationRequired: true,
     waitlistEnabled: true,
@@ -94,6 +103,8 @@ export const activitiesSeed: Activity[] = [
     categoryId: 'parole',
     locationId: 'salon-daccueil',
     facilitator: 'Docteur Lemaire',
+    audience: 'services',
+    serviceIds: ['le-mazurel'],
     capacity: 10,
     registrationRequired: true,
     waitlistEnabled: false,
@@ -160,6 +171,21 @@ export const activitiesSeed: Activity[] = [
     categoryId: 'nature',
     locationId: 'jardin-therapeutique',
     facilitator: 'Julien',
+    audience: 'services',
+    serviceIds: ['le-mesnil', 'l-ancrive', 'l-escalette'],
+    capacity: 8,
+    registrationRequired: true,
+    waitlistEnabled: true,
+  }),
+  weekly('ping-pong', 2, '16:00', 60, {
+    title: 'Ping-pong',
+    description:
+      'Des parties courtes, seul ou en double. Les raquettes sont prêtées. Venez comme vous êtes.',
+    categoryId: 'sport',
+    locationId: 'salle-de-sport',
+    facilitator: 'Marc',
+    audience: 'services',
+    serviceIds: ['la-joncquerelle'],
     capacity: 8,
     registrationRequired: true,
     waitlistEnabled: true,

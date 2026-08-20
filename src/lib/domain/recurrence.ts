@@ -1,3 +1,4 @@
+import { audienceKeysOf } from './audience'
 import type { Activity, LocalDate, LocalTime, Occurrence } from './types'
 import { addLocalDays, addMinutes, instantOf, isoWeekdayOf, localDatesBetween } from './time'
 
@@ -27,6 +28,7 @@ function draftFrom(activity: Activity, localDate: LocalDate, startTime: LocalTim
     categoryId: activity.categoryId,
     locationId: activity.locationId,
     ...(activity.facilitator === undefined ? {} : { facilitator: activity.facilitator }),
+    audienceKeys: audienceKeysOf(activity),
     capacity: activity.capacity,
     registrationRequired: activity.registrationRequired,
     waitlistEnabled: activity.waitlistEnabled,

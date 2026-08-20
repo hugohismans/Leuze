@@ -88,16 +88,3 @@ export const locationsSeed: Location[] = [
     isActive: true,
   },
 ]
-
-/**
- * TODO : à confirmer sur place.
- * L'unité de soins est une donnée de gestion, utile au personnel.
- * Elle n'est jamais affichée sur un écran patient (voir PLAN.md §6.5).
- */
-export const unitsSeed = [
-  { id: 'le-mazurel', name: 'Le Mazurel' },
-  { id: 'la-joncquerelle', name: 'La Joncquerelle' },
-  { id: 'la-couturelle', name: 'La Couturelle' },
-  { id: 'le-trieu', name: 'Le Trieu' },
-  { id: 'le-mesnil', name: 'Le Mesnil' },
-]

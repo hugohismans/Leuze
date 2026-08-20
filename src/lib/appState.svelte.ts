@@ -4,8 +4,8 @@
  */
 import { capacityOf } from './domain/capacity'
 import { monthGrid, todayLocalDate, weekDays } from './domain/time'
-import type { Category, LocalDate, Location, Occurrence } from './domain/types'
-import { createMockRepository } from './data/mock/mockRepository'
+import type { Category, LocalDate, Location, Occurrence, Service } from './domain/types'
+import { createMockRepository, type MockRepository } from './data/mock/mockRepository'
 import type { AppRepository, MyRegistration } from './data/ports'
 
 export type CalendarView = 'day' | 'week' | 'month'
@@ -32,7 +32,9 @@ export function hasFreePlaces(occurrence: Occurrence): boolean {
 }
 
 class AppStore {
-  readonly repository: AppRepository = createMockRepository()
+  /** Adapter de démonstration. Au lot L1, seule cette ligne changera. */
+  private readonly mock: MockRepository = createMockRepository()
+  readonly repository: AppRepository = this.mock
 
   view = $state<CalendarView>(defaultView())
   date = $state<LocalDate>(todayLocalDate())
@@ -42,6 +44,9 @@ class AppStore {
 
   categories = $state<Category[]>([])
   locations = $state<Location[]>([])
+  services = $state<Service[]>([])
+  /** Service du patient connecté : décide de ce que le calendrier contient. */
+  serviceId = $state<string | null>(this.mock.session.current().serviceId)
   occurrences = $state<Occurrence[]>([])
   mine = $state<MyRegistration[]>([])
   loading = $state(true)
@@ -73,6 +78,20 @@ class AppStore {
     return this.locations.find((l) => l.id === id) ?? null
   }
 
+  serviceOf(id: string | null): Service | null {
+    if (id === null) return null
+    return this.services.find((s) => s.id === id) ?? null
+  }
+
+  /**
+   * Démonstration uniquement : change le service du patient fictif pour montrer
+   * qu'il ne voit que les activités ouvertes à son service.
+   */
+  setDemoService(serviceId: string): void {
+    this.mock.setDemoService(serviceId)
+    this.serviceId = serviceId
+  }
+
   clearFilters(): void {
     this.categoryId = null
     this.locationId = null
@@ -80,12 +99,14 @@ class AppStore {
   }
 
   async loadCatalog(): Promise<void> {
-    const [categories, locations] = await Promise.all([
+    const [categories, locations, services] = await Promise.all([
       this.repository.catalog.listCategories(),
       this.repository.catalog.listLocations(),
+      this.repository.catalog.listServices(),
     ])
     this.categories = categories
     this.locations = locations
+    this.services = services
   }
 
   async refresh(): Promise<void> {

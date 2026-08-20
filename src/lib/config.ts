@@ -13,8 +13,8 @@ export const config = {
   patientShowsExactPlaces: false,
   /** En dessous de ce seuil, on affiche « Dernières places ». */
   lastPlacesThreshold: 3,
-  /** L'unité de soins n'est jamais affichée sur un écran patient (§6.5). */
-  showUnitToPatient: false,
+  /** Le service du patient n'est jamais affiché sur un écran patient (§6.5). */
+  showServiceToPatient: false,
   /** Retour au calendrier public après inactivité, en mode borne partagée (§6.3). */
   kioskIdleTimeoutSeconds: 90,
   /** Fenêtre de matérialisation des occurrences, en semaines. */

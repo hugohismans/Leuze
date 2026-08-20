@@ -6,9 +6,10 @@
  * dans la transaction Firestore : le comportement démontré est le comportement réel.
  */
 import { config } from '../../config'
+import { isVisibleToService } from '../../domain/audience'
 import { expand } from '../../domain/recurrence'
 import { addLocalDays, todayLocalDate } from '../../domain/time'
-import type { Category, LocalDate, Location, Occurrence, Registration, Unit } from '../../domain/types'
+import type { Category, LocalDate, Location, Occurrence, Registration, Service } from '../../domain/types'
 import {
   register as domainRegister,
   unregister as domainUnregister,
@@ -21,9 +22,12 @@ import { registrationBlockMessage, type RegistrationBlock } from '../../domain/c
 import type { AppRepository, MyRegistration, PatientSession, RegisterResult } from '../ports'
 import { activitiesSeed } from '../seed/activities.seed'
 import { categoriesSeed } from '../seed/categories.seed'
-import { locationsSeed, unitsSeed } from '../seed/locations.seed'
+import { locationsSeed } from '../seed/locations.seed'
+import { servicesSeed } from '../seed/services.seed'
 
 export const DEMO_PATIENT_UID = 'demo-patient'
+/** Service du patient fictif au démarrage de la démonstration. */
+export const DEMO_SERVICE_ID = 'le-mazurel'
 
 /** Hachage stable : la démonstration montre les mêmes taux de remplissage à chaque ouverture. */
 function stableHash(value: string): number {
@@ -75,7 +79,7 @@ function buildState(now: Date): MockState {
   const state: MockState = {
     occurrences,
     registrations,
-    session: { patientUid: DEMO_PATIENT_UID, firstName: 'Camille' },
+    session: { patientUid: DEMO_PATIENT_UID, firstName: 'Camille', serviceId: DEMO_SERVICE_ID },
   }
   for (const occurrence of occurrences.values()) syncCounts(state, occurrence.id)
   return state
@@ -108,8 +112,14 @@ const REFUS: Record<RegistrationBlock | 'already-registered', string> = {
 }
 
 export type MockRepository = AppRepository & {
-  /** Remet les données de démonstration à zéro (bouton « Réinitialiser la démonstration »). */
+  /** Remet les données de démonstration à zéro. */
   reset(): void
+  /**
+   * Réservé à la démonstration : change le service du patient fictif, pour montrer
+   * qu'un patient ne voit que les activités ouvertes à son service.
+   * Cette méthode n'existe pas dans l'adapter Firestore.
+   */
+  setDemoService(serviceId: string): void
 }
 
 export function createMockRepository(options: { now?: () => Date } = {}): MockRepository {
@@ -136,19 +146,26 @@ export function createMockRepository(options: { now?: () => Date } = {}): MockRe
       async listCategories(): Promise<Category[]> {
         return categoriesSeed
       },
-      async listUnits(): Promise<Unit[]> {
-        return unitsSeed
+      async listServices(): Promise<Service[]> {
+        return servicesSeed.filter((s) => s.isActive)
       },
     },
 
     occurrences: {
       async listBetween(from: LocalDate, to: LocalDate): Promise<Occurrence[]> {
+        // Le filtrage par service se fait ici, dans la couche de données : une activité
+        // d'un autre service n'atteint jamais l'interface. Côté Firestore, ce sera la
+        // requête `array-contains-any` doublée par les règles de sécurité.
         return [...state.occurrences.values()]
           .filter((o) => o.localDate >= from && o.localDate <= to)
+          .filter((o) => isVisibleToService(o, state.session.serviceId))
           .sort((a, b) => a.start.getTime() - b.start.getTime())
       },
       async get(occurrenceId: string): Promise<Occurrence | null> {
-        return state.occurrences.get(occurrenceId) ?? null
+        const occurrence = state.occurrences.get(occurrenceId)
+        if (!occurrence) return null
+        // Même règle sur l'accès direct : une adresse devinée ne donne rien de plus.
+        return isVisibleToService(occurrence, state.session.serviceId) ? occurrence : null
       },
     },
 
@@ -170,7 +187,7 @@ export function createMockRepository(options: { now?: () => Date } = {}): MockRe
       async register(occurrenceId: string): Promise<RegisterResult> {
         const board = boardOf(state, occurrenceId)
         const uid = state.session.patientUid
-        if (!board || uid === null) {
+        if (!board || uid === null || !isVisibleToService(board.occurrence, state.session.serviceId)) {
           return { ok: false, reason: 'unknown', message: "Cette activité n'a pas été trouvée." }
         }
         const outcome = domainRegister(board, uid, {
@@ -204,16 +221,24 @@ export function createMockRepository(options: { now?: () => Date } = {}): MockRe
         if (code.trim().length < 4) {
           return { ok: false as const, message: "Ce code n'est pas reconnu. Demandez un nouveau code à un soignant." }
         }
-        state.session = { patientUid: DEMO_PATIENT_UID, firstName: 'Camille' }
+        state.session = {
+          patientUid: DEMO_PATIENT_UID,
+          firstName: 'Camille',
+          serviceId: state.session.serviceId ?? DEMO_SERVICE_ID,
+        }
         return { ok: true as const }
       },
       async signOut() {
-        state.session = { patientUid: null, firstName: null }
+        state.session = { patientUid: null, firstName: null, serviceId: null }
       },
     },
 
     reset() {
       state = buildState(clock())
+    },
+
+    setDemoService(serviceId: string) {
+      state.session = { ...state.session, serviceId }
     },
   }
 }

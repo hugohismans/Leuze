@@ -3,16 +3,22 @@
  * Deux adapters les implémentent — `mock/` (écran de démonstration, tests)
  * et, au lot L1, `firestore/`. Aucun composant n'importe `firebase/*`.
  */
-import type { Category, LocalDate, Location, Occurrence, Registration, Unit } from '../domain/types'
+import type { Category, LocalDate, Location, Occurrence, Registration, Service } from '../domain/types'
 
 export interface CatalogRepository {
   listLocations(): Promise<Location[]>
   listCategories(): Promise<Category[]>
-  listUnits(): Promise<Unit[]>
+  listServices(): Promise<Service[]>
 }
 
 export interface OccurrenceRepository {
-  /** Le calendrier n'a besoin que de cette requête : une fenêtre de dates locales. */
+  /**
+   * Le calendrier n'a besoin que de cette requête : une fenêtre de dates locales.
+   * Le filtrage par service est fait **ici**, dans la couche de données — jamais dans
+   * l'interface : côté Firestore, ce sera la requête `array-contains-any` doublée par
+   * les règles de sécurité, si bien qu'une activité d'un autre service n'est même pas
+   * transmise au navigateur du patient.
+   */
   listBetween(from: LocalDate, to: LocalDate): Promise<Occurrence[]>
   get(occurrenceId: string): Promise<Occurrence | null>
 }
@@ -44,6 +50,8 @@ export interface StaffRegistrationService {
 export type PatientSession = {
   patientUid: string | null
   firstName: string | null
+  /** Service du patient : décide de ce qu'il voit. `null` s'il n'est pas connecté. */
+  serviceId: string | null
 }
 
 export interface SessionService {

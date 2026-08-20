@@ -59,6 +59,7 @@ src/lib/domain/    logique métier pure — aucune dépendance Firebase, entièr
   recurrence.ts      dépliage des séries, exceptions, scission « et les suivantes »
   capacity.ts        état des places et messages destinés au patient
   waitlist.ts        inscription, liste d'attente, promotion
+  audience.ts        quelles activités sont ouvertes à quels services
 src/lib/data/
   ports.ts           interfaces consommées par l'interface (jamais Firebase directement)
   mock/              adapter en mémoire — démonstration et tests
@@ -67,6 +68,7 @@ src/lib/ui/        design system et composants
 src/lib/calendar/  vues jour, semaine, mois
 src/routes/        écrans
 src/lib/plan/      source du plan du site (voir plus bas)
+src/lib/brand/     logo ACIS
 ```
 
 Le découplage par interfaces (`ports.ts`) fait que brancher Firestore au lot L1 ne touchera
@@ -78,9 +80,14 @@ aucun composant : seule une implémentation s'ajoute à côté de `mock/`.
 
 Les lieux, les unités de soins et les activités sont **inventés** et marqués `// TODO` dans :
 
-- `src/lib/data/seed/locations.seed.ts` — 10 lieux et les 5 unités de soins (à confirmer sur place)
+- `src/lib/data/seed/locations.seed.ts` — 10 lieux inventés
+- `src/lib/data/seed/services.seed.ts` — les services de l'hôpital
 - `src/lib/data/seed/categories.seed.ts` — 8 catégories d'activité
-- `src/lib/data/seed/activities.seed.ts` — 13 activités réparties sur une semaine type
+- `src/lib/data/seed/activities.seed.ts` — 14 activités réparties sur une semaine type
+
+Les six unités de soins (La Couturelle, La Joncquerelle, Le Mazurel, L'Ancrive, Le Mesnil,
+L'Escalette) proviennent du site de l'établissement et restent à vérifier sur place ; L'Écheveau,
+le service culturel et Jean Crelle ont été cités oralement et sont marqués `TODO`.
 
 Remplacer ces fichiers suffit à changer toute la démonstration. En production, ces données seront
 administrées depuis l'espace soignant, sans modification de code.
@@ -90,6 +97,20 @@ d'occurrence : la démonstration montre toujours les mêmes cas (places libres, 
 complet avec liste d'attente).
 
 ---
+
+## Services et visibilité des activités
+
+Une activité est **ouverte à tous les services** ou **réservée à un, deux, trois d'entre eux** :
+le ping-pong du mardi n'est proposé qu'à La Joncquerelle. Le patient ne reçoit que ce qui le
+concerne — le filtrage est fait dans la couche de données, pas à l'affichage, et sera doublé par
+les règles Firestore au lot L1 (voir `PLAN.md` §4.8). Un accès direct à l'adresse d'une activité
+d'un autre service ne renvoie rien.
+
+Dans la démonstration, un panneau en bas de page permet de changer le service du patient fictif
+pour observer l'effet immédiatement. Ce panneau n'existera pas dans l'application livrée.
+
+Une activité réservée à **aucun** service n'est visible par personne : elle est signalée comme
+telle au soignant plutôt que de disparaître en silence.
 
 ## Le plan du site
 
@@ -128,6 +149,13 @@ large. En dessous, une colonne ne peut plus afficher un titre sans couper un mot
 dégrade donc en liste groupée par jour. Voir `PLAN.md` §6.8.
 
 ---
+
+## Identité visuelle
+
+Le logo est celui du groupe ACIS, récupéré sur le site public de l'association
+(`acis_logo_blanc.svg`) et placé dans `src/lib/brand/`. Il reste la propriété d'ACIS : son usage
+doit être validé par le service communication avant la mise en service. La palette de
+l'application (marine `#1a1a38`, bleu `#236bc3`, vert `#299b5c`) est reprise de ce logo.
 
 ## Déploiement
 

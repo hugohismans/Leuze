@@ -3,6 +3,7 @@
   import { formatTime, formatTimeRange } from '../domain/time'
   import type { Occurrence } from '../domain/types'
   import { navigate } from '../router.svelte'
+  import AudienceBadge from './AudienceBadge.svelte'
   import CategoryBadge from './CategoryBadge.svelte'
   import PlacesBadge from './PlacesBadge.svelte'
 
@@ -56,6 +57,9 @@
           </span>
         {:else}
           <PlacesBadge {occurrence} short={dense} />
+        {/if}
+        {#if !dense}
+          <AudienceBadge {occurrence} />
         {/if}
         {#if mine}
           <span class="badge max-w-full" style="background: var(--color-brand-100); color: var(--color-brand-900);">
