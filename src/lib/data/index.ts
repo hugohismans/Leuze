@@ -1,29 +1,52 @@
 /**
- * Choix de la source de données. C'est le seul endroit où l'on décide entre
- * la démonstration et le vrai projet Firebase.
+ * Choix de la source de données.
+ *
+ * `DATA_SOURCE` est une constante de compilation : Vite remplace `import.meta.env` par
+ * une chaîne littérale, ce qui rend l'une des deux branches ci-dessous morte et permet
+ * à Rollup de la supprimer entièrement. Conséquences concrètes :
+ *  - la version de démonstration ne contient **pas une ligne** du SDK Firebase, ni la
+ *    configuration du projet : l'adresse publique ne peut pas atteindre la base, même
+ *    en principe, et la page pèse sept fois moins ;
+ *  - dans la version réelle, les données fictives partent dans un fragment séparé, qui
+ *    n'est téléchargé que si quelqu'un ouvre `/demo`.
+ *
+ * C'est pour cela que les adapters sont chargés par `import()` et que la création du
+ * dépôt est asynchrone : un import statique retiendrait les deux.
  */
 import type { AppRepository } from './ports'
-import { createMockRepository, type MockRepository } from './mock/mockRepository'
-import { createFirestoreRepository } from '$adapter'
+import type { MockRepository } from './mock/mockRepository'
+import type { StaffApp } from './staffPorts'
 
 export type DataSource = 'mock' | 'firestore'
 
-// `$adapter` est résolu à la construction (voir vite.config.ts) : le vrai adapter
-// Firestore, ou un remplaçant vide pour la démonstration.
-/**
- * `/demo` reste toujours branché sur les données fictives : c'est l'écran montrable
- * sans backend, y compris si Firebase est injoignable.
- */
-export function chooseSource(): DataSource {
-  if (createFirestoreRepository === null) return 'mock'
-  if (typeof window !== 'undefined' && window.location.hash.startsWith('#/demo')) return 'mock'
-  return 'firestore'
+export const DATA_SOURCE: DataSource =
+  import.meta.env.VITE_DATA_SOURCE === 'firestore' ? 'firestore' : 'mock'
+
+/** `/demo` reste sur les données fictives même dans une version branchée sur Firestore. */
+export function isDemoRoute(): boolean {
+  return typeof window !== 'undefined' && window.location.hash.startsWith('#/demo')
 }
 
-export function createRepository(source: DataSource): AppRepository {
-  return source === 'firestore' && createFirestoreRepository !== null
-    ? createFirestoreRepository()
-    : createMockRepository()
+export function usesMock(): boolean {
+  return DATA_SOURCE === 'mock' || isDemoRoute()
+}
+
+export async function createRepository(): Promise<AppRepository> {
+  if (DATA_SOURCE === 'firestore' && !isDemoRoute()) {
+    const { createFirestoreRepository } = await import('./firestore/firestoreRepository')
+    return createFirestoreRepository()
+  }
+  const { createMockRepository } = await import('./mock/mockRepository')
+  return createMockRepository()
+}
+
+export async function createStaffApp(): Promise<StaffApp> {
+  if (DATA_SOURCE === 'firestore' && !isDemoRoute()) {
+    const { createFirestoreStaffApp } = await import('./firestore/staffRepository')
+    return createFirestoreStaffApp()
+  }
+  const { createMockStaffApp } = await import('./mock/staffRepository')
+  return createMockStaffApp()
 }
 
 export const isMockRepository = (repository: AppRepository): repository is MockRepository =>

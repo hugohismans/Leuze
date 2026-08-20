@@ -117,13 +117,38 @@ service cloud.firestore {
         && request.resource.data.status in ['scheduled', 'cancelled', 'moved'];
     }
 
+    // Une occurrence fraîchement engendrée ne porte aucune inscription : les compteurs
+    // partent à zéro. C'est vrai que la génération vienne d'une Cloud Function ou, sur
+    // le plan gratuit, de l'application soignante elle-même.
+    function validNewOccurrence(data) {
+      return data.activityId is string
+        && data.localDate is string
+        && data.audienceKeys is list
+        && data.status in ['scheduled', 'cancelled', 'moved']
+        && data.confirmedCount == 0
+        && data.waitlistCount == 0;
+    }
+
+    // Régénération d'une série : tout peut bouger sauf les compteurs, qui appartiennent
+    // aux inscriptions et à elles seules.
+    function staffOccurrenceRegeneration() {
+      return request.resource.data.confirmedCount == resource.data.confirmedCount
+        && request.resource.data.waitlistCount == resource.data.waitlistCount
+        && request.resource.data.activityId == resource.data.activityId
+        && request.resource.data.status in ['scheduled', 'cancelled', 'moved'];
+    }
+
     match /occurrences/{occurrenceId} {
       // `list` est soumis à la même condition : une requête qui ne filtre pas sur
       // `audienceKeys` est refusée en bloc, elle ne renvoie pas un sous-ensemble.
       allow get, list: if isStaff() || (isPatient() && visibleToPatient());
-      // Créées et supprimées par la génération d'occurrences (Cloud Function).
-      allow create, delete: if false;
-      allow update: if isStaff() && staffOccurrencePatch();
+
+      allow create: if isStaff() && validNewOccurrence(request.resource.data);
+      allow update: if isStaff() && (staffOccurrencePatch() || staffOccurrenceRegeneration());
+      // Une occurrence portant des inscriptions ne se supprime jamais : elle s'annule.
+      allow delete: if isStaff()
+        && resource.data.confirmedCount == 0
+        && resource.data.waitlistCount == 0;
     }
 
     // --- inscriptions ---------------------------------------------------------

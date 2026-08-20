@@ -165,9 +165,12 @@ describe('modification d’une occurrence', () => {
     await assertFails(updateDoc(doc(database, 'occurrences', OUVERTE), { confirmedCount: 99 }))
   })
 
-  it('refuse qu’un soignant change l’audience sans passer par l’activité', async () => {
+  it('laisse un soignant rafraîchir l’audience — c’est ce que fait une régénération', async () => {
+    // Le soignant définit déjà l'audience sur l'activité : la lui interdire ici ne
+    // protégerait rien. Ce qui reste interdit, dans tous les cas, ce sont les compteurs.
     const database = asStaff(env)
-    await assertFails(updateDoc(doc(database, 'occurrences', OUVERTE), { audienceKeys: [MAZUREL] }))
+    await assertSucceeds(updateDoc(doc(database, 'occurrences', OUVERTE), { audienceKeys: [MAZUREL] }))
+    await assertFails(updateDoc(doc(database, 'occurrences', OUVERTE), { confirmedCount: 1 }))
   })
 
   it('refuse toute modification par un patient', async () => {
@@ -175,8 +178,59 @@ describe('modification d’une occurrence', () => {
     await assertFails(updateDoc(doc(database, 'occurrences', OUVERTE), { status: 'cancelled' }))
   })
 
-  it('refuse la suppression, y compris au personnel', async () => {
-    const database = asStaff(env)
+  it('refuse toute écriture d’occurrence à un patient', async () => {
+    const database = asPatient(env, 'p_1', MAZUREL)
+    await assertFails(setDoc(doc(database, 'occurrences', 'occ-forgee'), occurrenceDoc()))
     await assertFails(deleteDoc(doc(database, 'occurrences', OUVERTE)))
+  })
+})
+
+describe('génération des occurrences par l’application soignante', () => {
+  // Sans Cloud Functions (plan gratuit), c'est l'écran soignant qui matérialise les
+  // occurrences. Les règles doivent donc l'autoriser — sans jamais lui laisser toucher
+  // aux compteurs de places, qui appartiennent aux inscriptions.
+
+  it('laisse un soignant créer une occurrence vide', async () => {
+    const database = asStaff(env)
+    await assertSucceeds(
+      setDoc(doc(database, 'occurrences', 'occ-nouvelle'), occurrenceDoc({ localDate: '2026-09-08' })),
+    )
+  })
+
+  it('refuse une occurrence créée avec des inscrits', async () => {
+    const database = asStaff(env)
+    await assertFails(
+      setDoc(doc(database, 'occurrences', 'occ-truquee'), occurrenceDoc({ confirmedCount: 5 })),
+    )
+  })
+
+  it('laisse rafraîchir les champs d’une occurrence lors d’une régénération', async () => {
+    const database = asStaff(env)
+    await assertSucceeds(
+      setDoc(doc(database, 'occurrences', OUVERTE), occurrenceDoc({ title: 'Atelier peinture' })),
+    )
+  })
+
+  it('refuse une régénération qui modifierait les compteurs', async () => {
+    const database = asStaff(env)
+    await assertFails(
+      setDoc(doc(database, 'occurrences', OUVERTE), occurrenceDoc({ confirmedCount: 3 })),
+    )
+  })
+
+  it('supprime une occurrence sortie de la série, si personne n’y est inscrit', async () => {
+    const database = asStaff(env)
+    await assertSucceeds(deleteDoc(doc(database, 'occurrences', OUVERTE)))
+  })
+
+  it('refuse de supprimer une occurrence portant des inscriptions', async () => {
+    await env.withSecurityRulesDisabled(async (context) => {
+      await setDoc(
+        doc(context.firestore(), 'occurrences', 'occ-avec-inscrits'),
+        occurrenceDoc({ confirmedCount: 2 }),
+      )
+    })
+    const database = asStaff(env)
+    await assertFails(deleteDoc(doc(database, 'occurrences', 'occ-avec-inscrits')))
   })
 })

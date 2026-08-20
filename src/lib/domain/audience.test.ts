@@ -83,17 +83,17 @@ describe('audience — libellés', () => {
   it('donne au soignant la liste exacte des services', () => {
     expect(audienceLabelForStaff({ audience: 'all', serviceIds: [] }, services)).toBe('Tous les services')
     expect(audienceLabelForStaff({ audience: 'services', serviceIds: ['le-mazurel'] }, services)).toBe(
-      'Réservée à Le Mazurel',
+      'Réservée au service Le Mazurel',
     )
     expect(
       audienceLabelForStaff({ audience: 'services', serviceIds: ['le-mazurel', 'le-mesnil'] }, services),
-    ).toBe('Réservée à Le Mazurel et Le Mesnil')
+    ).toBe('Réservée aux services Le Mazurel et Le Mesnil')
     expect(
       audienceLabelForStaff(
         { audience: 'services', serviceIds: ['le-mazurel', 'la-joncquerelle', 'le-mesnil'] },
         services,
       ),
-    ).toBe('Réservée à Le Mazurel, La Joncquerelle et Le Mesnil')
+    ).toBe('Réservée aux services Le Mazurel, La Joncquerelle et Le Mesnil')
   })
 
   it('avertit le soignant quand personne ne verra l’activité', () => {

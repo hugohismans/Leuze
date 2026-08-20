@@ -6,6 +6,7 @@
   import ActivityPage from './routes/ActivityPage.svelte'
   import CalendarPage from './routes/CalendarPage.svelte'
   import CodePage from './routes/CodePage.svelte'
+  import StaffApp from './routes/staff/StaffApp.svelte'
   import MyRegistrationsPage from './routes/MyRegistrationsPage.svelte'
 
   // Le catalogue n'est lisible qu'une fois la session ouverte (règles Firestore).
@@ -27,18 +28,23 @@
   const occurrenceId = $derived(
     router.path.startsWith('/activite/') ? router.path.slice('/activite/'.length) : null,
   )
+
+  /** L'espace soignant est une application à part : sa propre navigation, sa propre session. */
+  const espaceSoignant = $derived(router.path.startsWith('/soignant'))
 </script>
 
 <a class="skip-link" href="#contenu">Aller au contenu</a>
 
 <AppHeader />
 
-{#if occurrenceId !== null || router.path === '/mes-inscriptions'}
+{#if !espaceSoignant && (occurrenceId !== null || router.path === '/mes-inscriptions')}
   <BackLink />
 {/if}
 
 <main id="contenu">
-  {#if !store.isDemo && !store.signedIn && !store.loading}
+  {#if espaceSoignant}
+    <StaffApp />
+  {:else if !store.isDemo && !store.signedIn && !store.loading}
     <CodePage />
   {:else if occurrenceId !== null}
     <ActivityPage {occurrenceId} />
@@ -49,7 +55,10 @@
   {/if}
 </main>
 
-<footer class="mx-auto grid grid-cols-1 max-w-5xl gap-4 px-4 py-8 text-base text-ink-soft">
+<footer
+  class="mx-auto grid grid-cols-1 max-w-5xl gap-4 px-4 py-8 text-base text-ink-soft"
+  class:hidden={espaceSoignant}
+>
   {#if store.isDemo}
     <p>
       Démonstration — les activités, les lieux et les inscriptions affichés sont fictifs.

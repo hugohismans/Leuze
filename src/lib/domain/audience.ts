@@ -35,13 +35,20 @@ export function audienceQueryKeys(serviceId: string | null): string[] {
   return serviceId === null ? [ALL_SERVICES] : [ALL_SERVICES, serviceId]
 }
 
-/** Libellé pour le soignant : il voit la liste réelle des services concernés. */
+/**
+ * Libellé pour le soignant : il voit la liste réelle des services concernés.
+ *
+ * La formulation passe par « au service » / « aux services » à dessein : « Réservée à
+ * Le Mazurel » serait fautif, et les élisions varient d'un service à l'autre
+ * (au Mazurel, à La Couturelle, à L'Ancrive). Nommer le mot « service » évite le piège
+ * quel que soit le nom, y compris pour ceux qui seront ajoutés plus tard.
+ */
 export function audienceLabelForStaff(source: AudienceSource, services: Service[]): string {
   if (source.audience === 'all') return 'Tous les services'
   if (source.serviceIds.length === 0) return "Aucun service — cette activité n'est visible par personne"
   const names = source.serviceIds.map((id) => services.find((s) => s.id === id)?.name ?? id)
-  if (names.length === 1) return `Réservée à ${names[0]}`
-  return `Réservée à ${names.slice(0, -1).join(', ')} et ${names.at(-1)}`
+  if (names.length === 1) return `Réservée au service ${names[0]}`
+  return `Réservée aux services ${names.slice(0, -1).join(', ')} et ${names.at(-1)}`
 }
 
 /**

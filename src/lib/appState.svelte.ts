@@ -5,8 +5,8 @@
 import { capacityOf } from './domain/capacity'
 import { monthGrid, todayLocalDate, weekDays } from './domain/time'
 import type { Category, LocalDate, Location, Occurrence, Service } from './domain/types'
-import { chooseSource, createRepository, isMockRepository, type DataSource } from './data'
-import type { AppRepository, MyRegistration } from './data/ports'
+import { createRepository, isMockRepository, usesMock } from './data'
+import type { AppRepository, MyRegistration, RegisterResult } from './data/ports'
 
 export type CalendarView = 'day' | 'week' | 'month'
 
@@ -32,10 +32,20 @@ export function hasFreePlaces(occurrence: Occurrence): boolean {
 }
 
 class AppStore {
-  readonly source: DataSource = chooseSource()
-  readonly repository: AppRepository = createRepository(this.source)
+  /**
+   * L'adapter est chargé à la demande — c'est ce qui permet de ne pas embarquer Firebase
+   * dans la version de démonstration. Tous les accès passent donc par `repo()`.
+   */
+  private readonly loading$: Promise<AppRepository> = createRepository()
+  private repository: AppRepository | null = null
+
   /** Vrai sur l'écran de démonstration : données fictives, panneau de réglage visible. */
-  readonly isDemo = this.source === 'mock'
+  readonly isDemo = usesMock()
+
+  private async repo(): Promise<AppRepository> {
+    if (this.repository === null) this.repository = await this.loading$
+    return this.repository
+  }
 
   view = $state<CalendarView>(defaultView())
   date = $state<LocalDate>(todayLocalDate())
@@ -47,10 +57,10 @@ class AppStore {
   locations = $state<Location[]>([])
   services = $state<Service[]>([])
   /** Service du patient connecté : décide de ce que le calendrier contient. */
-  serviceId = $state<string | null>(this.repository.session.current().serviceId)
-  firstName = $state<string | null>(this.repository.session.current().firstName)
+  serviceId = $state<string | null>(null)
+  firstName = $state<string | null>(null)
   /** Vrai tant que le patient n'a pas saisi son code (hors démonstration). */
-  signedIn = $state<boolean>(this.repository.session.current().patientUid !== null)
+  signedIn = $state<boolean>(false)
   occurrences = $state<Occurrence[]>([])
   mine = $state<MyRegistration[]>([])
   loading = $state(true)
@@ -92,13 +102,14 @@ class AppStore {
    * qu'il ne voit que les activités ouvertes à son service.
    */
   setDemoService(serviceId: string): void {
-    if (!isMockRepository(this.repository)) return
+    if (this.repository === null || !isMockRepository(this.repository)) return
     this.repository.setDemoService(serviceId)
     this.serviceId = serviceId
   }
 
   /** Recopie l'état de la session dans l'interface après une connexion ou une déconnexion. */
   private syncSession(): void {
+    if (this.repository === null) return
     const session = this.repository.session.current()
     this.serviceId = session.serviceId
     this.firstName = session.firstName
@@ -106,14 +117,14 @@ class AppStore {
   }
 
   async signInWithCode(code: string): Promise<{ ok: boolean; message?: string }> {
-    const result = await this.repository.session.signInWithCode(code)
+    const result = await (await this.repo()).session.signInWithCode(code)
     this.syncSession()
     if (result.ok) await this.refresh()
     return result.ok ? { ok: true } : { ok: false, message: result.message }
   }
 
   async signOut(): Promise<void> {
-    await this.repository.session.signOut()
+    await (await this.repo()).session.signOut()
     this.syncSession()
     this.occurrences = []
     this.mine = []
@@ -131,13 +142,29 @@ class AppStore {
    * Lieux, catégories et services ne sont lisibles qu'une fois connecté : les règles
    * refusent la lecture à un visiteur anonyme. Ce chargement attend donc la session.
    */
+  /**
+   * Les écrans passent par ces méthodes plutôt que par le dépôt : un composant n'a pas
+   * à connaître la couche de données, et l'adapter peut rester chargé à la demande.
+   */
+  async getOccurrence(occurrenceId: string): Promise<Occurrence | null> {
+    return (await this.repo()).occurrences.get(occurrenceId)
+  }
+
+  async registerTo(occurrenceId: string): Promise<RegisterResult> {
+    return (await this.repo()).registrations.register(occurrenceId)
+  }
+
+  async unregisterFrom(occurrenceId: string): Promise<{ ok: boolean; message: string }> {
+    return (await this.repo()).registrations.unregister(occurrenceId)
+  }
+
   async loadCatalog(): Promise<void> {
     if (this.catalogLoaded) return
     this.catalogLoaded = true
     const [categories, locations, services] = await Promise.all([
-      this.repository.catalog.listCategories(),
-      this.repository.catalog.listLocations(),
-      this.repository.catalog.listServices(),
+      (await this.repo()).catalog.listCategories(),
+      (await this.repo()).catalog.listLocations(),
+      (await this.repo()).catalog.listServices(),
     ])
     this.categories = categories
     this.locations = locations
@@ -148,8 +175,8 @@ class AppStore {
     const { from, to } = this.range
     this.loading = true
     const [occurrences, mine] = await Promise.all([
-      this.repository.occurrences.listBetween(from, to),
-      this.repository.registrations.listMine(),
+      (await this.repo()).occurrences.listBetween(from, to),
+      (await this.repo()).registrations.listMine(),
     ])
     this.occurrences = occurrences
     this.mine = mine
@@ -162,8 +189,8 @@ class AppStore {
   /** Après une inscription : on relit l'occurrence concernée et « Mes inscriptions ». */
   async refreshOccurrence(occurrenceId: string): Promise<void> {
     const [updated, mine] = await Promise.all([
-      this.repository.occurrences.get(occurrenceId),
-      this.repository.registrations.listMine(),
+      (await this.repo()).occurrences.get(occurrenceId),
+      (await this.repo()).registrations.listMine(),
     ])
     if (updated) {
       this.occurrences = this.occurrences.map((o) => (o.id === occurrenceId ? updated : o))

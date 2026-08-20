@@ -20,7 +20,7 @@
   $effect(() => {
     const id = occurrenceId
     void store.occurrences
-    store.repository.occurrences.get(id).then((found) => {
+    store.getOccurrence(id).then((found) => {
       occurrence = found
       notFound = found === null
     })
@@ -40,7 +40,7 @@
   async function inscrire(): Promise<void> {
     if (!occurrence || busy) return
     busy = true
-    const result = await store.repository.registrations.register(occurrence.id)
+    const result = await store.registerTo(occurrence.id)
     messageIsError = !result.ok
     if (result.ok) {
       message =
@@ -51,18 +51,18 @@
       message = result.message
     }
     await store.refreshOccurrence(occurrence.id)
-    occurrence = await store.repository.occurrences.get(occurrence.id)
+    occurrence = await store.getOccurrence(occurrence.id)
     busy = false
   }
 
   async function desinscrire(): Promise<void> {
     if (!occurrence || busy) return
     busy = true
-    const result = await store.repository.registrations.unregister(occurrence.id)
+    const result = await store.unregisterFrom(occurrence.id)
     messageIsError = !result.ok
     message = result.ok ? 'Vous êtes désinscrit.' : result.message
     await store.refreshOccurrence(occurrence.id)
-    occurrence = await store.repository.occurrences.get(occurrence.id)
+    occurrence = await store.getOccurrence(occurrence.id)
     busy = false
   }
 </script>
