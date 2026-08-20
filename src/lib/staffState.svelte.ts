@@ -40,6 +40,12 @@ class StaffStore {
   roster = $state<RosterLine[]>([])
   /** Message de compte rendu affiché après une action, en français simple. */
   message = $state<string | null>(null)
+  /**
+   * Un compte rendu appartient à l'écran qui l'a provoqué : il disparaît dès qu'on
+   * change d'onglet. Seule exception, une action qui **navigue** après coup — enregistrer
+   * une activité renvoie à la semaine, et le message doit y arriver.
+   */
+  #survitAuProchainChangement = false
   loading = $state(false)
 
   readonly signedIn = $derived(this.identity.role !== null)
@@ -161,6 +167,15 @@ class StaffStore {
     return resultat.message
   }
 
+  /** Appelé à chaque changement d'écran par `StaffApp`. */
+  clearMessageOnNavigation(): void {
+    if (this.#survitAuProchainChangement) {
+      this.#survitAuProchainChangement = false
+      return
+    }
+    this.message = null
+  }
+
   activityOf(activityId: string): Activity | null {
     return this.activities.find((a) => a.id === activityId) ?? null
   }
@@ -171,6 +186,8 @@ class StaffStore {
 
   private report(prefix: string, report: GenerationReport): void {
     this.message = `${prefix} ${describeGeneration(report)}`
+    // Le formulaire renvoie ensuite à la semaine ou à la liste : le message suit.
+    this.#survitAuProchainChangement = true
   }
 
   async saveActivity(draft: ActivityDraft): Promise<string> {

@@ -22,6 +22,12 @@
       : [],
   )
   const activityId = $derived(segments[0] ?? null)
+
+  // Un compte rendu ne doit pas suivre le soignant d'un onglet à l'autre.
+  $effect(() => {
+    void router.path
+    staffStore.clearMessageOnNavigation()
+  })
   const dateChoisie = $derived(segments[1])
 </script>
 
