@@ -3,3 +3,6 @@ lib/
 # Copie régénérée à chaque build par scripts/sync-domain.mjs
 src/domain/
 src/config.ts
+
+# Variables chargées uniquement par les émulateurs, jamais déployées.
+.env.local

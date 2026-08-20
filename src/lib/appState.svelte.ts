@@ -5,7 +5,7 @@
 import { capacityOf } from './domain/capacity'
 import { monthGrid, todayLocalDate, weekDays } from './domain/time'
 import type { Category, LocalDate, Location, Occurrence, Service } from './domain/types'
-import { createMockRepository, type MockRepository } from './data/mock/mockRepository'
+import { chooseSource, createRepository, isMockRepository, type DataSource } from './data'
 import type { AppRepository, MyRegistration } from './data/ports'
 
 export type CalendarView = 'day' | 'week' | 'month'
@@ -32,9 +32,10 @@ export function hasFreePlaces(occurrence: Occurrence): boolean {
 }
 
 class AppStore {
-  /** Adapter de démonstration. Au lot L1, seule cette ligne changera. */
-  private readonly mock: MockRepository = createMockRepository()
-  readonly repository: AppRepository = this.mock
+  readonly source: DataSource = chooseSource()
+  readonly repository: AppRepository = createRepository(this.source)
+  /** Vrai sur l'écran de démonstration : données fictives, panneau de réglage visible. */
+  readonly isDemo = this.source === 'mock'
 
   view = $state<CalendarView>(defaultView())
   date = $state<LocalDate>(todayLocalDate())
@@ -46,7 +47,10 @@ class AppStore {
   locations = $state<Location[]>([])
   services = $state<Service[]>([])
   /** Service du patient connecté : décide de ce que le calendrier contient. */
-  serviceId = $state<string | null>(this.mock.session.current().serviceId)
+  serviceId = $state<string | null>(this.repository.session.current().serviceId)
+  firstName = $state<string | null>(this.repository.session.current().firstName)
+  /** Vrai tant que le patient n'a pas saisi son code (hors démonstration). */
+  signedIn = $state<boolean>(this.repository.session.current().patientUid !== null)
   occurrences = $state<Occurrence[]>([])
   mine = $state<MyRegistration[]>([])
   loading = $state(true)
@@ -88,8 +92,31 @@ class AppStore {
    * qu'il ne voit que les activités ouvertes à son service.
    */
   setDemoService(serviceId: string): void {
-    this.mock.setDemoService(serviceId)
+    if (!isMockRepository(this.repository)) return
+    this.repository.setDemoService(serviceId)
     this.serviceId = serviceId
+  }
+
+  /** Recopie l'état de la session dans l'interface après une connexion ou une déconnexion. */
+  private syncSession(): void {
+    const session = this.repository.session.current()
+    this.serviceId = session.serviceId
+    this.firstName = session.firstName
+    this.signedIn = session.patientUid !== null
+  }
+
+  async signInWithCode(code: string): Promise<{ ok: boolean; message?: string }> {
+    const result = await this.repository.session.signInWithCode(code)
+    this.syncSession()
+    if (result.ok) await this.refresh()
+    return result.ok ? { ok: true } : { ok: false, message: result.message }
+  }
+
+  async signOut(): Promise<void> {
+    await this.repository.session.signOut()
+    this.syncSession()
+    this.occurrences = []
+    this.mine = []
   }
 
   clearFilters(): void {
@@ -98,7 +125,15 @@ class AppStore {
     this.onlyAvailable = false
   }
 
+  private catalogLoaded = false
+
+  /**
+   * Lieux, catégories et services ne sont lisibles qu'une fois connecté : les règles
+   * refusent la lecture à un visiteur anonyme. Ce chargement attend donc la session.
+   */
   async loadCatalog(): Promise<void> {
+    if (this.catalogLoaded) return
+    this.catalogLoaded = true
     const [categories, locations, services] = await Promise.all([
       this.repository.catalog.listCategories(),
       this.repository.catalog.listLocations(),
@@ -118,6 +153,9 @@ class AppStore {
     ])
     this.occurrences = occurrences
     this.mine = mine
+    // La session Firebase est restaurée de façon asynchrone au démarrage : à ce
+    // point-ci elle est connue, on aligne l'interface dessus.
+    this.syncSession()
     this.loading = false
   }
 

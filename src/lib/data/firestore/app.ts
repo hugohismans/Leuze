@@ -14,28 +14,26 @@ import {
   type Firestore,
 } from 'firebase/firestore'
 import { connectFunctionsEmulator, getFunctions, type Functions } from 'firebase/functions'
+import { firebaseOptions } from './options'
 
 const REGION = 'europe-west1'
 
+/** Les valeurs versionnées, qu'un fichier `.env` local peut redéfinir une à une. */
 function readConfig(): Record<string, string> {
-  const config = {
-    apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-    authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-    projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-    storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-    messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-    appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  const override = (value: string | undefined, fallback: string): string =>
+    value === undefined || value === '' ? fallback : value
+
+  return {
+    apiKey: override(import.meta.env.VITE_FIREBASE_API_KEY, firebaseOptions.apiKey),
+    authDomain: override(import.meta.env.VITE_FIREBASE_AUTH_DOMAIN, firebaseOptions.authDomain),
+    projectId: override(import.meta.env.VITE_FIREBASE_PROJECT_ID, firebaseOptions.projectId),
+    storageBucket: override(import.meta.env.VITE_FIREBASE_STORAGE_BUCKET, firebaseOptions.storageBucket),
+    messagingSenderId: override(
+      import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+      firebaseOptions.messagingSenderId,
+    ),
+    appId: override(import.meta.env.VITE_FIREBASE_APP_ID, firebaseOptions.appId),
   }
-  const missing = Object.entries(config)
-    .filter(([, value]) => value === undefined || value === '')
-    .map(([key]) => key)
-  if (missing.length > 0) {
-    throw new Error(
-      `Configuration Firebase incomplète : ${missing.join(', ')}. ` +
-        'Copiez .env.example en .env et renseignez les valeurs du projet.',
-    )
-  }
-  return config as Record<string, string>
 }
 
 export const usesEmulators = (): boolean => import.meta.env.VITE_USE_EMULATORS === '1'

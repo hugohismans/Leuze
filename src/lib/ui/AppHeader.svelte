@@ -18,7 +18,7 @@
       </div>
     </div>
 
-    {#if router.path !== '/mes-inscriptions'}
+    {#if router.path !== '/mes-inscriptions' && (store.isDemo || store.signedIn)}
       <button type="button" class="btn btn-secondary" onclick={() => navigate('/mes-inscriptions')}>
         <span aria-hidden="true">📋</span>
         <span>Mes inscriptions{registeredCount > 0 ? ` (${registeredCount})` : ''}</span>

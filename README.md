@@ -164,7 +164,12 @@ l'application (marine `#1a1a38`, bleu `#236bc3`, vert `#299b5c`) est reprise de 
 ```bash
 npm run emulators          # Firestore, Auth et Functions, sur les ports de firebase.json
 npm run seed               # dans un autre terminal
+npm run dev:firestore      # l'application, branchée sur les émulateurs
 ```
+
+`npm run dev` lance l'application sur les données fictives (écran de démonstration) ;
+`npm run dev:firestore` la branche sur les émulateurs, avec les vraies règles, les vraies
+transactions et la connexion par code.
 
 Le seed crée deux comptes du personnel (`admin@exemple.test` et `soignant@exemple.test`,
 mot de passe `demonstration`) et un code patient fixe : **4KT9RM** (Camille, Le Mazurel).
@@ -179,6 +184,12 @@ Il est idempotent — les identifiants d'occurrence sont déterministes.
 | `npm run test:backend` | les transactions d'inscription et la génération d'occurrences |
 
 Les deux dernières démarrent l'émulateur autour de la suite. Java est nécessaire.
+
+Le déclencheur Firestore `onActivityWritten` passe par Eventarc. Sur une machine où
+l'émulateur n'arrive pas à l'enregistrer (il refuse alors de démarrer), créer un fichier
+`functions/.env.local` contenant `LEUZE_NO_FIRESTORE_TRIGGER=1` : les émulateurs démarrent
+sans lui, et la régénération reste disponible par l'appel `regenerateSeries`. Ce fichier
+n'est jamais déployé.
 
 ### Ce que les règles garantissent
 

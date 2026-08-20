@@ -11,6 +11,7 @@ import { initializeApp } from 'firebase-admin/app'
 import { getAuth } from 'firebase-admin/auth'
 import { getFirestore, Timestamp } from 'firebase-admin/firestore'
 import { config } from '../src/lib/config'
+import { firebaseOptions } from '../src/lib/data/firestore/options'
 import { activitiesSeed } from '../src/lib/data/seed/activities.seed'
 import { categoriesSeed } from '../src/lib/data/seed/categories.seed'
 import { locationsSeed } from '../src/lib/data/seed/locations.seed'
@@ -18,12 +19,24 @@ import { servicesSeed } from '../src/lib/data/seed/services.seed'
 import { GENERATION_WINDOW_WEEKS, expand } from '../src/lib/domain/recurrence'
 import { addLocalDays, todayLocalDate } from '../src/lib/domain/time'
 
-// Le préfixe « demo- » dispense l'émulateur de toute authentification Google.
-const PROJECT_ID = process.env.GCLOUD_PROJECT ?? 'demo-leuze'
+// Le même identifiant que l'application : l'adresse des fonctions appelables le contient,
+// un écart ferait échouer tous les appels en local.
+const PROJECT_ID = process.env.GCLOUD_PROJECT ?? firebaseOptions.projectId
 process.env.FIRESTORE_EMULATOR_HOST ??= '127.0.0.1:8080'
 process.env.FIREBASE_AUTH_EMULATOR_HOST ??= '127.0.0.1:9099'
 // Les fonctions émulées dérivent les codes avec le poivre de développement.
 process.env.FUNCTIONS_EMULATOR ??= 'true'
+
+// Garde-fou : ce script écrit des activités fictives et des comptes de démonstration.
+// Il ne doit jamais atteindre le vrai projet.
+const host = process.env.FIRESTORE_EMULATOR_HOST
+if (!/^(127\.0\.0\.1|localhost|::1):/.test(host)) {
+  console.error(
+    `Refus d'écrire ailleurs que sur l'émulateur (FIRESTORE_EMULATOR_HOST = ${host}).\n` +
+      'Lancez « npm run emulators » puis « npm run seed ».',
+  )
+  process.exit(1)
+}
 
 const app = initializeApp({ projectId: PROJECT_ID })
 const db = getFirestore(app)

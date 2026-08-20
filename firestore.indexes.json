@@ -5,9 +5,18 @@
       "collectionGroup": "occurrences",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "audienceKeys", "arrayConfig": "CONTAINS" },
-        { "fieldPath": "localDate", "order": "ASCENDING" },
-        { "fieldPath": "start", "order": "ASCENDING" }
+        {
+          "fieldPath": "audienceKeys",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "localDate",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "start",
+          "order": "ASCENDING"
+        }
       ]
     },
     {
@@ -15,8 +24,14 @@
       "collectionGroup": "occurrences",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "localDate", "order": "ASCENDING" },
-        { "fieldPath": "start", "order": "ASCENDING" }
+        {
+          "fieldPath": "localDate",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "start",
+          "order": "ASCENDING"
+        }
       ]
     },
     {
@@ -24,8 +39,14 @@
       "collectionGroup": "occurrences",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "activityId", "order": "ASCENDING" },
-        { "fieldPath": "localDate", "order": "ASCENDING" }
+        {
+          "fieldPath": "activityId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "localDate",
+          "order": "ASCENDING"
+        }
       ]
     },
     {
@@ -33,8 +54,14 @@
       "collectionGroup": "registrations",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "occurrenceId", "order": "ASCENDING" },
-        { "fieldPath": "queuedAt", "order": "ASCENDING" }
+        {
+          "fieldPath": "occurrenceId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "queuedAt",
+          "order": "ASCENDING"
+        }
       ]
     },
     {
@@ -42,8 +69,33 @@
       "collectionGroup": "registrations",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "patientUid", "order": "ASCENDING" },
-        { "fieldPath": "status", "order": "ASCENDING" }
+        {
+          "fieldPath": "patientUid",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "//": "Position en liste d'attente : la file d'une occurrence, dans l'ordre d'arrivée.",
+      "collectionGroup": "registrations",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "occurrenceId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "queuedAt",
+          "order": "ASCENDING"
+        }
       ]
     }
   ],

@@ -11,7 +11,7 @@ import { CODE_LENGTH, formatCodeForPrint, generateCode, hashCode, newPatientUid 
 import { COLLECTIONS, db } from './lib/firestore'
 import { generationWindow, regenerateActivity, regenerateAll } from './lib/occurrences'
 import { assertNotRateLimited, clearFailures, recordFailure } from './lib/rateLimit'
-import { promoteTx, registerTx, rosterFor, unregisterTx } from './lib/registration'
+import { myRegistrationsFor, promoteTx, registerTx, rosterFor, unregisterTx } from './lib/registration'
 import type { LocalDate } from './domain/types'
 
 // Bruxelles : les fonctions vivent au plus près des données et des utilisateurs.
@@ -34,12 +34,20 @@ async function readConfig<T>(field: string, fallback: T): Promise<T> {
  * Une activité change : ses occurrences sont recalculées sur la fenêtre glissante.
  * `mergeOccurrences` protège les exceptions saisies par les soignants et n'efface
  * jamais une occurrence portant des inscriptions.
+ *
+ * Le déclencheur passe par Eventarc. Sur certaines machines de développement, l'émulateur
+ * n'arrive pas à l'enregistrer et refuse alors de démarrer ; `LEUZE_NO_FIRESTORE_TRIGGER=1`
+ * permet de lancer les émulateurs sans lui. La régénération reste disponible par l'appel
+ * `regenerateSeries`, et la variable n'est jamais définie en production.
  */
-export const onActivityWritten = onDocumentWritten('activities/{activityId}', async (event) => {
-  const activityId = event.params.activityId
-  const report = await regenerateActivity(db(), activityId)
-  logger.info('Occurrences régénérées', { activityId, ...report })
-})
+export const onActivityWritten =
+  process.env.LEUZE_NO_FIRESTORE_TRIGGER === '1'
+    ? undefined
+    : onDocumentWritten('activities/{activityId}', async (event) => {
+        const activityId = event.params.activityId
+        const report = await regenerateActivity(db(), activityId)
+        logger.info('Occurrences régénérées', { activityId, ...report })
+      })
 
 /** Chaque nuit : la fenêtre de 12 semaines est repoussée d'un jour. */
 export const extendOccurrenceWindow = onSchedule(
@@ -80,6 +88,12 @@ export const unregister = onCall(async (request: CallableRequest) => {
   const patient = requirePatient(request)
   const occurrenceId = requireString(request.data?.occurrenceId, 'occurrenceId')
   return unregisterTx(db(), { occurrenceId, patientUid: patient.uid })
+})
+
+/** Les inscriptions du patient connecté, avec sa position en liste d'attente. */
+export const myRegistrations = onCall(async (request: CallableRequest) => {
+  const patient = requirePatient(request)
+  return { registrations: await myRegistrationsFor(db(), patient.uid) }
 })
 
 /** Le soignant inscrit quelqu'un à sa place — un patient sans borne, une demande orale. */
