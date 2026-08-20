@@ -244,11 +244,13 @@ sur données mockées.
 **Critère d'acceptation** : `npm run dev` → calendrier jour/semaine/mois navigable, fiche activité,
 inscription simulée. Montrable à la direction sans backend. `npm test` vert.
 
-### L1 — Backend Firebase
-Schéma, `firestore.rules` + **tests de règles** sur émulateur, Functions (`expandOccurrences`,
-`register`, `unregister`, `exchangeCode`, `purge` planifiée), index, script de seed vers émulateur.
-**Critère d'acceptation** : suite de tests de règles verte (dont « un patient ne peut pas lire les
-inscriptions d'un autre ») ; test de concurrence sur la dernière place.
+### L1 — Backend Firebase ✅ *livré*
+Schéma, `firestore.rules` + **tests de règles** sur émulateur, Functions (génération d'occurrences,
+inscription, désinscription, échange de code, purge planifiée), index, script de seed vers émulateur.
+**Critères d'acceptation, tenus** : 40 tests de règles verts (dont « un patient ne peut pas lire les
+inscriptions d'un autre » et « une activité d'un autre service n'est pas servie ») ; 16 tests sur
+émulateur, dont la concurrence sur la dernière place — cinq inscriptions simultanées donnent un seul
+confirmé et quatre positions d'attente distinctes.
 
 ### L2 — App patient réelle
 Branchement de l'adapter Firestore, écran de saisie de code, « Mes inscriptions », inscription /

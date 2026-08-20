@@ -1,0 +1,22 @@
+{
+  "name": "leuze-activites-functions",
+  "version": "0.1.0",
+  "private": true,
+  "main": "lib/index.js",
+  "engines": { "node": "22" },
+  "scripts": {
+    "sync:domain": "node scripts/sync-domain.mjs",
+    "check:domain": "node scripts/sync-domain.mjs --check",
+    "build": "npm run sync:domain && tsc",
+    "check": "npm run sync:domain && tsc --noEmit"
+  },
+  "dependencies": {
+    "date-fns": "^4.1.0",
+    "date-fns-tz": "^3.2.0",
+    "firebase-admin": "^13.0.2",
+    "firebase-functions": "^6.3.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.3"
+  }
+}

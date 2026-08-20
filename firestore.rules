@@ -1,0 +1,165 @@
+rules_version = '2';
+
+// Règles de sécurité Firestore — hôpital Saint-Jean-de-Dieu, Leuze-en-Hainaut.
+//
+// Trois invariants que ces règles doivent garantir, et que les tests de `tests/rules/`
+// vérifient un par un :
+//   1. Un patient ne reçoit jamais une activité réservée à un autre service — pas même
+//      son titre. Le filtre par service vit ici, pas dans l'interface.
+//   2. Un patient ne lit jamais l'inscription de quelqu'un d'autre, ni la liste des
+//      inscrits d'une activité.
+//   3. Aucune écriture client sur `registrations` ni `patients` : la capacité et la liste
+//      d'attente ne sont modifiées que par une transaction de Cloud Function.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // --- identité -------------------------------------------------------------
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function hasRole(name) {
+      return signedIn() && 'role' in request.auth.token && request.auth.token.role == name;
+    }
+
+    function isStaff() {
+      return hasRole('staff') || hasRole('admin');
+    }
+
+    function isAdmin() {
+      return hasRole('admin');
+    }
+
+    // Le patient reçoit un jeton personnalisé en échange de son code court.
+    // Son service est porté par le jeton : il n'est donc pas modifiable côté client.
+    function isPatient() {
+      return signedIn() && 'patient' in request.auth.token && request.auth.token.patient == true;
+    }
+
+    function patientService() {
+      return 'serviceId' in request.auth.token ? request.auth.token.serviceId : '';
+    }
+
+    // --- catalogue ------------------------------------------------------------
+    // Lieux, catégories et services : lisibles par toute personne connectée (les noms
+    // des unités sont publics, ils figurent sur le site de l'établissement).
+    // Modifiables par l'administrateur, y compris pour ajouter un lieu ou un service.
+
+    match /locations/{locationId} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+
+    match /categories/{categoryId} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+
+    match /services/{serviceId} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+
+    match /config/{document} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+
+    // --- activités ------------------------------------------------------------
+    // Réservées au personnel : le patient n'en a pas besoin, tout ce qu'il doit voir
+    // est dénormalisé sur l'occurrence. Moins de surface, moins de fuites.
+
+    function validAudience(data) {
+      return data.audience in ['all', 'services']
+        && data.serviceIds is list
+        && (data.audience == 'all' ? data.serviceIds.size() == 0 : true);
+    }
+
+    function validActivity(data) {
+      return data.title is string && data.title.size() > 0 && data.title.size() <= 120
+        && data.description is string && data.description.size() <= 2000
+        && data.categoryId is string
+        && data.locationId is string
+        && (data.capacity == null || (data.capacity is int && data.capacity >= 0))
+        && data.registrationRequired is bool
+        && data.waitlistEnabled is bool
+        && data.isActive is bool
+        && validAudience(data);
+    }
+
+    match /activities/{activityId} {
+      allow read: if isStaff();
+      allow create, update: if isStaff() && validActivity(request.resource.data);
+      // Jamais de suppression physique : une activité se désactive (`isActive: false`).
+      allow delete: if false;
+    }
+
+    // --- occurrences ----------------------------------------------------------
+
+    function visibleToPatient() {
+      return resource.data.audienceKeys.hasAny(['all', patientService()]);
+    }
+
+    // Ce qu'un soignant peut modifier directement sur une occurrence isolée :
+    // l'annuler, la déplacer de salle. Ni les compteurs, ni l'audience, ni l'horaire
+    // (changer l'horaire change l'identifiant déterministe : cela passe par une
+    // Cloud Function, qui recrée l'occurrence et déplace les inscriptions).
+    function staffOccurrencePatch() {
+      // `hasOnly` protège d'un seul coup les compteurs, l'audience, l'horaire et tout
+      // champ futur : ce qui n'est pas dans cette liste ne peut pas bouger.
+      // Note : sur un refus, l'émulateur journalise « evaluation error » avant de
+      // conclure au refus. Le refus est bien le résultat — les tests le vérifient,
+      // ainsi que le fait qu'une annulation légitime, elle, passe.
+      return request.resource.data.diff(resource.data).affectedKeys()
+               .hasOnly(['status', 'cancellationReason', 'locationId', 'overridden'])
+        && request.resource.data.status in ['scheduled', 'cancelled', 'moved'];
+    }
+
+    match /occurrences/{occurrenceId} {
+      // `list` est soumis à la même condition : une requête qui ne filtre pas sur
+      // `audienceKeys` est refusée en bloc, elle ne renvoie pas un sous-ensemble.
+      allow get, list: if isStaff() || (isPatient() && visibleToPatient());
+      // Créées et supprimées par la génération d'occurrences (Cloud Function).
+      allow create, delete: if false;
+      allow update: if isStaff() && staffOccurrencePatch();
+    }
+
+    // --- inscriptions ---------------------------------------------------------
+    // Aucune écriture client : tout passe par les callables `register` / `unregister`,
+    // qui exécutent une transaction. Sans cela, deux patients pourraient confirmer
+    // la même dernière place.
+
+    match /registrations/{registrationId} {
+      allow get, list: if isStaff()
+        || (isPatient() && resource.data.patientUid == request.auth.uid);
+      allow write: if false;
+    }
+
+    // --- patients -------------------------------------------------------------
+    // Prénom, service, dates. L'identifiant du document est le hachage du code d'accès.
+    // Rien de tout cela n'est lisible par un client, y compris par le personnel :
+    // les listes d'inscrits sont servies par une Cloud Function.
+
+    match /patients/{patientId} {
+      allow read, write: if false;
+    }
+
+    // --- comptes du personnel -------------------------------------------------
+    // Le rôle qui fait autorité est le « custom claim » du jeton, posé par une
+    // Cloud Function. Ce document ne sert qu'à l'affichage (prénom, actif ou non).
+
+    match /staff/{uid} {
+      allow get: if isAdmin() || (signedIn() && request.auth.uid == uid);
+      allow list: if isAdmin();
+      allow write: if false;
+    }
+
+    // --- refus par défaut -----------------------------------------------------
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

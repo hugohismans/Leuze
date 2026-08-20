@@ -157,6 +157,86 @@ Le logo est celui du groupe ACIS, récupéré sur le site public de l'associatio
 doit être validé par le service communication avant la mise en service. La palette de
 l'application (marine `#1a1a38`, bleu `#236bc3`, vert `#299b5c`) est reprise de ce logo.
 
+## Le backend Firebase
+
+### Démarrer en local
+
+```bash
+npm run emulators          # Firestore, Auth et Functions, sur les ports de firebase.json
+npm run seed               # dans un autre terminal
+```
+
+Le seed crée deux comptes du personnel (`admin@exemple.test` et `soignant@exemple.test`,
+mot de passe `demonstration`) et un code patient fixe : **4KT9RM** (Camille, Le Mazurel).
+Il est idempotent — les identifiants d'occurrence sont déterministes.
+
+### Tests
+
+| Commande | Ce qui est vérifié |
+|---|---|
+| `npm test` | le domaine, sans émulateur |
+| `npm run test:rules` | les règles Firestore : isolement des services, des inscriptions, des identités |
+| `npm run test:backend` | les transactions d'inscription et la génération d'occurrences |
+
+Les deux dernières démarrent l'émulateur autour de la suite. Java est nécessaire.
+
+### Ce que les règles garantissent
+
+1. Une activité réservée à un autre service **n'atteint pas** le navigateur du patient,
+   ni par une requête, ni par une adresse devinée. Le calendrier est servi par une seule
+   requête `array-contains-any ['all', service]`, et les règles vérifient la même condition.
+2. Un patient ne lit **que** sa propre inscription ; la liste des inscrits n'est jamais
+   servie à un client patient.
+3. **Aucune** écriture client sur `registrations` ni `patients` : la capacité et la liste
+   d'attente ne changent que dans une transaction de Cloud Function.
+4. `patients` et `patientCodes` ne sont lisibles par personne — pas même par le personnel.
+   Les prénoms des listes d'inscrits passent par la fonction `staffRoster`.
+
+### Les Cloud Functions
+
+| Fonction | Rôle |
+|---|---|
+| `onActivityWritten` | régénère les occurrences d'une série dès qu'elle change |
+| `extendOccurrenceWindow` | chaque nuit à 3 h, repousse la fenêtre de 12 semaines |
+| `register` / `unregister` | inscription et désinscription du patient, en transaction |
+| `staffRegister` / `staffUnregister` / `staffPromote` | les mêmes gestes, faits par un soignant |
+| `staffRoster` | liste des inscrits avec les prénoms |
+| `createPatientCode` / `revokePatientCode` | délivrance et révocation d'un code |
+| `exchangeCode` | échange d'un code contre une session Firebase |
+| `setStaffRole` | attribution des rôles |
+| `purgeExpiredData` | chaque nuit à 3 h 30, efface ce qui a dépassé la durée de conservation |
+
+Le code du domaine (récurrence, capacité, liste d'attente, audience) est **recopié** dans
+`functions/src/domain/` au moment du build : Firebase ne téléverse que le dossier `functions/`.
+La source reste `src/lib/domain/`. `npm run check:functions` échoue si la copie a divergé.
+
+### Codes patients
+
+Un code fait six caractères d'un alphabet sans ambiguïté (ni I, ni L, ni O, ni U). Il n'est
+**jamais stocké en clair** : l'identifiant du document `patientCodes` est son empreinte,
+dérivée par scrypt avec un poivre secret. Une fuite de la base ne donne donc aucun code
+utilisable, et un code de six caractères ne se devine pas à l'échelle par force brute.
+
+En production, le poivre est obligatoire :
+
+```bash
+firebase functions:secrets:set CODE_PEPPER
+```
+
+Sans lui, les fonctions refusent de démarrer — sauf sur l'émulateur, qui utilise une valeur
+de développement.
+
+### Mise en service d'un projet Firebase
+
+```bash
+cp .firebaserc.example .firebaserc     # y mettre l'identifiant du projet
+firebase deploy --only firestore:rules,firestore:indexes,functions,hosting
+npm run promote:admin -- prenom.nom@acis-asbl.be
+```
+
+Le premier administrateur doit être promu par script : un rôle est un « custom claim » du
+jeton, il ne se pose pas depuis la console. Ensuite, tout se fait dans l'application.
+
 ## Déploiement
 
 Cible retenue : **Firebase Hosting** (justification dans `PLAN.md` §4.7). La configuration arrive

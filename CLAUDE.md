@@ -20,7 +20,9 @@ Lire `PLAN.md` avant toute modification d'architecture.
    testées. C'est la seule partie du code où un bug est cher.
 5. **Ne jamais supprimer physiquement** une activité ou une occurrence portant des inscriptions.
    `isActive: false` / `status: 'cancelled'` avec motif.
-6. **Pas de librairie de calendrier générique** (FullCalendar & co). Vues construites à la main
+6. **Le rôle qui fait autorité est le « custom claim »**, pas le document `staff/`.
+   Un document Firestore ne décide jamais d'un droit : les règles lisent le jeton.
+7. **Pas de librairie de calendrier générique** (FullCalendar & co). Vues construites à la main
    avec `date-fns` (locale `fr`, `weekStartsOn: 1`, fuseau `Europe/Brussels`).
 
 ---
@@ -65,9 +67,15 @@ src/lib/domain/    logique pure (récurrence, capacité, liste d'attente, audien
 src/lib/data/      ports.ts (interfaces) + firestore/ + mock/ + seed/
 src/lib/ui/        design system
 src/routes/        écrans : patient/, staff/, admin/, demo/
-functions/         Cloud Functions
+functions/         Cloud Functions (le domaine y est recopié, voir plus bas)
 tests/rules/       tests des règles Firestore
+tests/backend/     transactions et génération d'occurrences, sur émulateur
 ```
+
+`functions/src/domain/` et `functions/src/config.ts` sont des **copies générées** de
+`src/lib/domain/` et `src/lib/config.ts` — Firebase ne téléverse que le dossier `functions/`.
+Ne jamais les modifier directement : corriger la source, puis
+`npm --prefix functions run sync:domain`. `npm run check:functions` échoue si la copie a divergé.
 
 L'UI n'importe **jamais** `firebase/*` directement : elle consomme les interfaces de
 `src/lib/data/ports.ts`. L'écran `/demo` est la même app branchée sur l'adapter mock.
@@ -82,10 +90,13 @@ L'UI n'importe **jamais** `firebase/*` directement : elle consomme les interface
 |---|---|
 | `npm run dev` | app en dev (adapter mock par défaut si les émulateurs sont éteints) |
 | `npm run emulators` | Firestore + Auth + Functions en local |
-| `npm run seed` | injecte lieux, catégories et activités d'exemple dans l'émulateur |
-| `npm test` | Vitest (domaine + composants) |
-| `npm run test:rules` | tests des règles Firestore (émulateur requis) |
+| `npm run seed` | injecte services, lieux, catégories, activités, comptes et code patient |
+| `npm test` | Vitest (domaine + composants) — sans émulateur |
+| `npm run test:rules` | règles Firestore, sur émulateur (démarré automatiquement) |
+| `npm run test:backend` | transactions d'inscription et génération d'occurrences, sur émulateur |
 | `npm run check` | `svelte-check` + `tsc --noEmit` |
+| `npm run check:functions` | typage des Cloud Functions |
+| `npm run promote:admin` | donne le rôle administrateur à un compte existant |
 | `npm run build` | build de production |
 
 ---
