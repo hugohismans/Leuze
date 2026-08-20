@@ -53,8 +53,12 @@ function build(now: Date): MockWorld {
   // activités complètes et des listes d'attente. Elles sont attribuées à de vrais
   // patients de la démonstration, pour que la réunion du lundi soit crédible.
   const registrations: Registration[] = []
+  const finDuPreRemplissage = addLocalDays(today, 15)
   for (const occurrence of occurrences.values()) {
     if (!occurrence.registrationRequired || occurrence.capacity === null) continue
+    // Au-delà de quinze jours, les activités restent libres : une démonstration où
+    // chacun est déjà inscrit partout ne ressemble à rien de réel.
+    if (occurrence.localDate > finDuPreRemplissage) continue
     const eligibles = patientsSeed.filter(
       (p) => occurrence.audienceKeys.includes('all') || occurrence.audienceKeys.includes(p.serviceId),
     )

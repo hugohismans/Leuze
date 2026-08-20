@@ -178,6 +178,20 @@ body {
     margin: 8mm;
   }
 
+  /*
+    La semaine d'un patient tient dans une colonne : elle s'imprime en portrait, et se
+    plie en quatre pour une poche. Les pages nommées ne sont pas comprises partout ;
+    au pire, la feuille sort en paysage, ce qui reste lisible.
+  */
+  @page ma-semaine {
+    size: A4 portrait;
+    margin: 12mm;
+  }
+
+  .ma-semaine {
+    page: ma-semaine;
+  }
+
   html,
   body {
     background: #fff;

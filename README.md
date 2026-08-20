@@ -121,6 +121,16 @@ inscriptions passées restent jusqu'à la purge automatique.
 Cet écran demande les Cloud Functions, donc le plan Blaze : le code est dérivé côté
 serveur avec un poivre secret, ce qu'un navigateur ne peut pas faire.
 
+## « Ma semaine », côté patient
+
+Depuis « Mes inscriptions », le patient ouvre sa propre semaine : ses activités et ses
+rendez-vous mêlés, dans l'ordre de chaque journée. La page sert à trois usages avec la
+même mise en page — la consulter, en faire une **capture d'écran** à garder dans son
+téléphone, ou l'**imprimer** (A4 portrait, une page).
+
+Elle indique toujours que les horaires peuvent changer : une feuille imprimée devient
+fausse dès qu'une activité est annulée, et l'écrire est la seule façon honnête de le dire.
+
 ## Rendez-vous individuels
 
 Un patient demande à voir le psychiatre, le psychologue, le kinésithérapeute… depuis

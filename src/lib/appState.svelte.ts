@@ -174,6 +174,13 @@ class AppStore {
    * Le catalogue ne change quasiment jamais : il n'est chargé qu'une fois. L'écran
    * d'administration, lui, doit forcer la relecture après avoir ajouté un lieu.
    */
+  /**
+   * Les inscriptions encore à venir. C'est ce qu'on montre au patient : une séance
+   * passée n'appelle aucune décision, et la faire figurer noierait ce qui compte.
+   * « Ma semaine », elle, garde tout, pour pouvoir revenir sur une semaine écoulée.
+   */
+  readonly upcomingMine = $derived(this.mine.filter((r) => r.occurrence.end.getTime() >= Date.now()))
+
   /** Les rendez-vous fixés, qui apparaissent dans « Mes inscriptions ». */
   readonly scheduledAppointments = $derived(
     this.appointments

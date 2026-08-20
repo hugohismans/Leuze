@@ -4,7 +4,7 @@
   import { formatFullWhen } from '../lib/domain/time'
   import { navigate } from '../lib/router.svelte'
 
-  const registrations = $derived(store.mine)
+  const registrations = $derived(store.upcomingMine)
 
   // Un rendez-vous peut avoir été fixé pendant que l'écran était ailleurs : on relit
   // en arrivant, plutôt que d'afficher un état périmé.
@@ -50,9 +50,14 @@
     </section>
   {/if}
 
-  <button type="button" class="btn btn-secondary" onclick={() => navigate('/rendez-vous')}>
-    <span aria-hidden="true">📅</span> Demander un rendez-vous
-  </button>
+  <div class="grid gap-3 sm:grid-cols-2">
+    <button type="button" class="btn btn-primary" onclick={() => navigate('/ma-semaine')}>
+      <span aria-hidden="true">🗓️</span> Voir ma semaine
+    </button>
+    <button type="button" class="btn btn-secondary" onclick={() => navigate('/rendez-vous')}>
+      <span aria-hidden="true">📅</span> Demander un rendez-vous
+    </button>
+  </div>
 
   {#if registrations.length === 0}
     <p class="card p-6 text-xl">

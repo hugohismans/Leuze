@@ -5,7 +5,7 @@
   import { navigate, router } from '../router.svelte'
 
   const today = todayLocalDate()
-  const registeredCount = $derived(store.mine.length)
+  const registeredCount = $derived(store.upcomingMine.length + store.scheduledAppointments.length)
 </script>
 
 <header class="bg-brand-900 text-white">

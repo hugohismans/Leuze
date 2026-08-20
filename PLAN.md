@@ -168,6 +168,25 @@ suffisent. **Cette fonctionnalité marche donc sur le plan gratuit**, contrairem
 inscriptions. Un rendez-vous n'apparaît que dans « Mes inscriptions » du patient concerné,
 jamais dans le calendrier commun ni sur la feuille imprimée.
 
+### 4.0 quater « Ma semaine » : la feuille que le patient garde
+
+Le patient s'inscrit le lundi, puis oublie. Il lui faut donc un endroit unique qui réunit
+ce que le calendrier commun sépare : ses activités **et** ses rendez-vous, jour par jour.
+
+Une seule mise en page sert trois usages — consulter, capturer d'écran, imprimer. C'est
+délibéré : une page conçue pour la capture d'écran est une page sobre, verticale et
+compacte, ce qui est exactement ce qu'il faut pour l'imprimer et pour la lire sur un
+téléphone. Aucune image n'est générée : tous les téléphones savent faire une capture, et
+un fichier à télécharger puis à retrouver dans une galerie serait un obstacle de plus.
+
+Deux détails qui comptent plus qu'ils n'en ont l'air :
+
+- **les activités annulées restent, barrées.** Les faire disparaître d'un programme
+  peut-être déjà imprimé serait pire que de les montrer barrées ;
+- la feuille dit **« Les horaires peuvent changer. En cas de doute, demandez à un
+  soignant. »** Une feuille imprimée devient fausse dès la première annulation ; c'est la
+  seule façon honnête de le reconnaître.
+
 ### 4.1 Récurrence — « série + occurrences matérialisées + exceptions portées par l'occurrence »
 
 C'est bien le modèle demandé, avec une simplification : **pas de collection d'exceptions**.
