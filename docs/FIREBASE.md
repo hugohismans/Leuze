@@ -145,6 +145,42 @@ la console — d'où le script `npm run promote:admin`.
 C'est là qu'on récupère la configuration Web (`apiKey`, `projectId`…), à coller dans `.env`.
 Ces valeurs ne sont pas des secrets : elles partent dans le navigateur de chaque visiteur.
 
+### La clé Web n'est pas un secret — mais elle se restreint
+
+GitHub signale la clé `AIza…` du fichier `src/lib/data/firestore/options.ts` comme un
+« secret exposé ». C'est un faux positif au sens strict : une clé Web Firebase **part dans
+le navigateur de chaque visiteur**, elle est lisible dans le code source de n'importe
+quelle application Firebase. Google le documente explicitement. Elle identifie le projet,
+elle n'autorise rien par elle-même — ce sont les règles de sécurité et l'authentification
+qui décident de ce qui est lisible.
+
+Deux précautions restent utiles :
+
+1. **Déployer les règles.** Tant que la base est en « mode test », la clé et l'identifiant
+   du projet suffisent à lire et écrire toute la base. Ce n'est pas la clé qui est le
+   problème, c'est la règle ouverte. `npm run deploy:regles`.
+2. **Restreindre la clé**, dans la console Google Cloud → *API et services* → *Identifiants*
+   → la clé « Browser key (auto created by Firebase) » :
+   - *Restrictions relatives aux applications* → **Sites web**, en ajoutant
+     `leuze-d23b5.web.app/*`, `leuze-d23b5.firebaseapp.com/*` et `localhost` ;
+   - *Restrictions relatives aux API* → limiter à *Identity Toolkit API*, *Token Service
+     API*, *Cloud Firestore API* et *Cloud Functions API*.
+
+   Cela empêche un tiers d'utiliser la clé depuis son propre site pour consommer le quota
+   d'authentification du projet.
+
+Une fois ces deux points faits, l'alerte GitHub peut être close en « Won't fix », avec pour
+motif : clé Web Firebase, publique par conception, restreinte par domaine.
+
+**Ne pas révoquer cette clé** : cela casserait l'application sans rien protéger.
+
+### Le dépôt est public
+
+Le dépôt GitHub est public. Rien de sensible n'y figure — pas de clé de compte de service,
+pas de poivre, aucune donnée de patient — et les noms des unités de soins sont déjà publiés
+sur le site de l'établissement. C'est donc tenable, mais c'est un choix à assumer :
+tout ce qui est écrit ici est lisible par n'importe qui, définitivement.
+
 ### Paramètres du projet > Comptes de service
 
 À ne pas toucher. Le fichier JSON qu'on y télécharge contient une `private_key` qui
