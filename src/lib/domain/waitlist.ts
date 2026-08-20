@@ -52,11 +52,12 @@ export function register(
   const confirmed = board.registrations.filter((r) => r.status === 'confirmed').length
   const goesToWaitlist = capacity !== null && confirmed >= capacity
 
+  const status = goesToWaitlist ? ('waitlist' as const) : ('confirmed' as const)
   const registration: Registration = {
     id: options.registrationId,
     occurrenceId: board.occurrence.id,
     patientUid,
-    status: goesToWaitlist ? 'waitlist' : 'confirmed',
+    status,
     createdAt: options.now,
     queuedAt: options.now,
     createdBy: options.by,
@@ -65,7 +66,7 @@ export function register(
   const next = recount({ ...board, registrations: [...board.registrations, registration] })
   return {
     ok: true,
-    status: registration.status,
+    status,
     position: goesToWaitlist ? waitlistPosition(next, patientUid) : null,
     board: next,
   }

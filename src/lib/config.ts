@@ -3,8 +3,12 @@
  * Les valeurs par défaut sont celles argumentées dans PLAN.md §6.
  */
 export const config = {
-  /** Vue mois côté patient. Par défaut réservée au personnel (PLAN.md §6.1). */
-  patientMonthView: false,
+  /**
+   * Vue mois côté patient. Le brief la demande (§5), elle est donc active.
+   * Ma recommandation reste de la réserver au personnel (PLAN.md §6.1) :
+   * passer cette valeur à `false` la retire de l'interface patient, sans autre changement.
+   */
+  patientMonthView: true,
   /** Nombre exact de places restantes côté patient. Par défaut : formulation qualitative (§6.7). */
   patientShowsExactPlaces: false,
   /** En dessous de ce seuil, on affiche « Dernières places ». */

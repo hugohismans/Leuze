@@ -262,7 +262,14 @@ sauvegardes Firestore.
 7. **Le compteur « il reste 4 places »** peut créer une course et de l'anxiété. Proposition :
    afficher « Il reste des places » / « Dernières places » / « Complet » côté patient, et le chiffre
    exact côté soignant. À trancher : c'est un vrai désaccord possible, le chiffre rassure aussi.
-8. **Suppression d'activité.** Jamais de suppression physique d'une occurrence portant des
+8. **La grille 7 colonnes n'existe pas en dessous de 1536 px** — constat de mesure, pas
+   d'opinion. Avec une police de base à 18 px, une colonne de semaine à 1024 px fait 126 px de
+   contenu utile ; un titre comme « Gymnastique douce » n'y tient qu'en coupant un mot en deux
+   (« Gymnasti-que »), ce qui est précisément illisible pour un lecteur en difficulté. La vue
+   semaine affiche donc 7 colonnes à partir de 1536 px (postes du personnel) et dégrade en liste
+   groupée par jour en dessous — y compris sur tablette. Sur borne, la vue par défaut reste
+   « jour », qui est de toute façon la bonne.
+9. **Suppression d'activité.** Jamais de suppression physique d'une occurrence portant des
    inscriptions : `isActive: false` et `status: 'cancelled'`, toujours.
 
 ---

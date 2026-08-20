@@ -1,0 +1,164 @@
+@import 'tailwindcss';
+
+/*
+ * Design system minimal.
+ * Base 112,5 % = 18 px avec les réglages par défaut du navigateur, tout en
+ * respectant la taille de police choisie par l'utilisateur (jamais de px figé
+ * sur <html>, sinon on écrase sa préférence d'accessibilité).
+ */
+
+@theme {
+  --color-brand-50: #eef5f9;
+  --color-brand-100: #d6e6f0;
+  --color-brand-500: #2b6c93;
+  --color-brand-700: #1b4965;
+  --color-brand-900: #12324a;
+
+  --color-ink: #16202b;
+  --color-ink-soft: #45535f;
+  --color-surface: #ffffff;
+  --color-surface-soft: #f4f7f9;
+  --color-line: #c9d3da;
+
+  --color-ok-bg: #d1fae5;
+  --color-ok-fg: #064e3b;
+  --color-warn-bg: #fef3c7;
+  --color-warn-fg: #713f12;
+  --color-stop-bg: #fee2e2;
+  --color-stop-fg: #7f1d1d;
+}
+
+:root {
+  font-size: 112.5%;
+
+  /* Couleurs de catégorie : toujours doublées d'une icône et d'un texte. */
+  --cat-sport-bg: #dbeafe;
+  --cat-sport-fg: #1c3f66;
+  --cat-creatif-bg: #fce7f3;
+  --cat-creatif-fg: #6b1d47;
+  --cat-culturel-bg: #ede9fe;
+  --cat-culturel-fg: #4c1d95;
+  --cat-relaxation-bg: #d1fae5;
+  --cat-relaxation-fg: #064e3b;
+  --cat-parole-bg: #fef3c7;
+  --cat-parole-fg: #713f12;
+  --cat-cuisine-bg: #ffedd5;
+  --cat-cuisine-fg: #7c2d12;
+  --cat-musique-bg: #e0e7ff;
+  --cat-musique-fg: #312e81;
+  --cat-nature-bg: #dcfce7;
+  --cat-nature-fg: #14532d;
+  --cat-defaut-bg: #e5e7eb;
+  --cat-defaut-fg: #1f2937;
+}
+
+body {
+  background: var(--color-surface-soft);
+  color: var(--color-ink);
+  font-family: 'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif;
+  line-height: 1.55;
+  -webkit-text-size-adjust: 100%;
+}
+
+/* Focus visible partout, jamais supprimé. */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 4px solid var(--color-brand-700);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+
+/* Exigence non négociable : aucune animation superflue. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@layer components {
+  /* Toutes les cibles tactiles font au moins 56 px de haut. */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    min-height: 56px;
+    padding: 0.75rem 1.5rem;
+    border-radius: 12px;
+    border: 2px solid transparent;
+    font-size: 1.05rem;
+    font-weight: 600;
+    text-align: center;
+    cursor: pointer;
+  }
+  .btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+  }
+  .btn-primary {
+    background: var(--color-brand-700);
+    color: #fff;
+  }
+  .btn-primary:hover:not(:disabled) {
+    background: var(--color-brand-900);
+  }
+  .btn-secondary {
+    background: var(--color-surface);
+    color: var(--color-brand-900);
+    border-color: var(--color-brand-700);
+  }
+  .btn-secondary:hover:not(:disabled) {
+    background: var(--color-brand-50);
+  }
+  .btn-quiet {
+    background: transparent;
+    color: var(--color-ink);
+    border-color: var(--color-line);
+  }
+  .btn-quiet[aria-pressed='true'] {
+    background: var(--color-brand-700);
+    border-color: var(--color-brand-700);
+    color: #fff;
+  }
+  .btn-huge {
+    min-height: 76px;
+    font-size: 1.35rem;
+    width: 100%;
+  }
+
+  .card {
+    background: var(--color-surface);
+    border: 2px solid var(--color-line);
+    border-radius: 14px;
+  }
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    /* Peut rétrécir dans une colonne étroite, mais ne coupe jamais un mot en deux. */
+    min-width: 0;
+    padding: 0.3rem 0.7rem;
+    border-radius: 999px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    border: 2px solid transparent;
+  }
+
+  /* Lien d'évitement, premier élément focalisable de la page. */
+  .skip-link {
+    position: absolute;
+    left: -9999px;
+    top: 0;
+    z-index: 100;
+    background: var(--color-brand-900);
+    color: #fff;
+    padding: 1rem 1.5rem;
+  }
+  .skip-link:focus {
+    left: 0;
+  }
+}
