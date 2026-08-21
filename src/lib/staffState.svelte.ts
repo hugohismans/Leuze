@@ -12,6 +12,7 @@ import type {
   StaffPatient,
 } from './data/staffPorts'
 import { describeGeneration } from './data/generation'
+import type { Account } from './domain/impersonation'
 import type { PatientPlanning } from './data/staffPorts'
 import type { CatalogKind } from './domain/catalog'
 import { store } from './appState.svelte'
@@ -77,6 +78,16 @@ class StaffStore {
       await Promise.all([store.loadCatalog(true), this.refresh(), this.loadPatients(), this.loadAppointments()])
     }
     return result.ok ? { ok: true } : { ok: false, message: result.message }
+  }
+
+  /** Les comptes auxquels un administrateur peut se substituer, pour vérifier ce qu'ils voient. */
+  async listAccounts(): Promise<Account[]> {
+    return (await this.app$()).superAdmin.listAccounts()
+  }
+
+  /** Ouvre la session de quelqu'un d'autre. La page est rechargée juste après. */
+  async impersonate(uid: string) {
+    return (await this.app$()).superAdmin.impersonate(uid)
   }
 
   async signOut(): Promise<void> {

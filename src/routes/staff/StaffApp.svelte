@@ -9,6 +9,7 @@
   import StaffAppointmentsPage from './AppointmentsPage.svelte'
   import PatientsPage from './PatientsPage.svelte'
   import PersonnelPage from './PersonnelPage.svelte'
+  import ImpersonatePage from './ImpersonatePage.svelte'
   import ActivityFormPage from './ActivityFormPage.svelte'
   import CatalogPage from './CatalogPage.svelte'
   import PatientWeekPage from './PatientWeekPage.svelte'
@@ -52,6 +53,8 @@
     <PatientsPage />
   {:else if router.path === '/soignant/personnel'}
     <PersonnelPage />
+  {:else if router.path === '/soignant/a-leur-place'}
+    <ImpersonatePage />
   {:else if router.path === '/soignant/rendez-vous'}
     <StaffAppointmentsPage />
   {:else if router.path === '/soignant/plannings'}

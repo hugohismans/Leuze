@@ -24,12 +24,15 @@
     { chemin: '/soignant/rendez-vous', libelle: 'Rendez-vous' },
   ])
 
-  const occasionnels = [
+  // « Voir à leur place » est un outil de mise au point, réservé à l'administrateur :
+  // l'entrée ne s'affiche pas pour les autres, et le serveur revérifie de toute façon.
+  const occasionnels = $derived([
     { chemin: '/soignant/patients', libelle: 'Les patients' },
     { chemin: '/soignant/personnel', libelle: 'Le personnel' },
     { chemin: '/soignant/activites', libelle: 'Les activités' },
     { chemin: '/soignant/catalogue', libelle: 'Le catalogue' },
-  ]
+    ...(staffStore.isAdmin ? [{ chemin: '/soignant/a-leur-place', libelle: 'Voir à leur place' }] : []),
+  ])
 
   const REQUETE = '(min-width: 1100px)'
   let large = $state(typeof window === 'undefined' ? true : window.matchMedia(REQUETE).matches)

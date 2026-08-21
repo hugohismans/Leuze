@@ -12,6 +12,7 @@
  * les deux chemins produisent exactement le même résultat.
  */
 import {
+  signInWithCustomToken,
   signInWithEmailAndPassword,
   onAuthStateChanged,
   signOut,
@@ -35,6 +36,7 @@ import {
 } from 'firebase/firestore'
 import { httpsCallable } from 'firebase/functions'
 import type { CatalogRemoval } from '../../domain/catalog'
+import type { Account } from '../../domain/impersonation'
 import { addMinutes, instantOf } from '../../domain/time'
 import type { Activity, Appointment, LocalDate, LocalTime, Occurrence } from '../../domain/types'
 import { generationWindow, planGeneration } from '../generation'
@@ -49,8 +51,10 @@ import type {
   StaffApp,
   StaffIdentity,
   StaffRole,
+  SuperAdminService,
 } from '../staffPorts'
 import { firebase } from './app'
+import { FIRST_NAME_KEY } from './keys'
 
 const SIGNED_OUT: StaffIdentity = {
   uid: null,
@@ -546,5 +550,60 @@ export function createFirestoreStaffApp(): StaffApp {
         return (await call({ kind, id })).data
       },
     },
+
+    superAdmin: superAdmin(),
+  }
+
+  /**
+   * Firebase ne tient qu'une session par navigateur : prendre la place de quelqu'un
+   * remplace donc la sienne, pour de bon. C'est voulu — c'est la seule façon de voir
+   * exactement ce que cette personne voit, règles Firestore comprises.
+   */
+  function superAdmin(): SuperAdminService {
+    return {
+      async listAccounts(): Promise<Account[]> {
+        const call = httpsCallable<Record<string, never>, { accounts: Account[] }>(
+          functions,
+          'listAccounts',
+        )
+        return (await call({})).data.accounts
+      },
+
+      async impersonate(uid: string) {
+        try {
+          const call = httpsCallable<
+            { uid: string },
+            { token: string; back: string; label: string; kind: 'patient' | 'staff'; firstName: string }
+          >(functions, 'impersonate')
+          const { token, back, label, kind, firstName } = (await call({ uid })).data
+          // Le prénom du patient est lu au même endroit que par `signInWithCode` :
+          // sans lui, l'écran patient dirait « Bonjour » à personne.
+          if (kind === 'patient') localStorage.setItem(FIRST_NAME_KEY, firstName)
+          else localStorage.removeItem(FIRST_NAME_KEY)
+          const credential = await signInWithCustomToken(auth, token)
+          await readIdentity(credential.user)
+          return { ok: true as const, label, kind, back }
+        } catch (error) {
+          return { ok: false as const, message: messageDErreur(error) }
+        }
+      },
+
+      async resume(back: string) {
+        try {
+          localStorage.removeItem(FIRST_NAME_KEY)
+          const credential = await signInWithCustomToken(auth, back)
+          await readIdentity(credential.user)
+          return { ok: true, message: 'Vous êtes revenu à votre compte.' }
+        } catch {
+          // Le jeton de retour ne vit qu'une heure. Passé ce délai, il faut se
+          // reconnecter — on le dit, plutôt que de laisser l'écran sans réponse.
+          await signOut(auth).catch(() => undefined)
+          return {
+            ok: false,
+            message: 'Le retour a expiré. Connectez-vous à nouveau avec votre adresse.',
+          }
+        }
+      },
+    }
   }
 }

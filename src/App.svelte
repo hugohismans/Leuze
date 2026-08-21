@@ -3,6 +3,7 @@
   import { store } from './lib/appState.svelte'
   import { router } from './lib/router.svelte'
   import AppHeader from './lib/ui/AppHeader.svelte'
+  import ImpersonationBanner from './lib/ui/ImpersonationBanner.svelte'
   import BackLink from './lib/ui/BackLink.svelte'
   import ActivityPage from './routes/ActivityPage.svelte'
   import CalendarPage from './routes/CalendarPage.svelte'
@@ -53,6 +54,7 @@
 <a class="skip-link" href="#contenu">Aller au contenu</a>
 
 <AppHeader />
+<ImpersonationBanner />
 
 {#if !espaceSoignant && (occurrenceId !== null || router.path === '/mes-inscriptions' || router.path === '/rendez-vous' || router.path === '/ma-semaine')}
   <BackLink />

@@ -659,6 +659,124 @@ export const createStaffAccount = onCall(async (request: CallableRequest) => {
   return { uid, email, practitionerId, password: motDePasse }
 })
 
+// ---------------------------------------------------------------------------
+// « Voir à leur place » — outil de mise au point, réservé à l'administrateur
+// ---------------------------------------------------------------------------
+
+/**
+ * La liste des comptes auxquels on peut se substituer : les patients et le personnel.
+ *
+ * Rien de médical n'en sort — un prénom, un service, un poste, une adresse
+ * professionnelle. C'est déjà ce que l'administrateur voit ailleurs dans l'application.
+ */
+export const listAccounts = onCall(async (request: CallableRequest) => {
+  requireAdmin(request)
+  const maintenant = Date.now()
+
+  const patients = (await db().collection(COLLECTIONS.patients).get()).docs
+    .map((document) => {
+      const data = document.data() as { firstName?: string; serviceId?: string; expiresAt?: Timestamp }
+      return {
+        uid: document.id,
+        label: data.firstName ?? 'Prénom inconnu',
+        detail: data.serviceId ?? '',
+        kind: 'patient' as const,
+        expiresAtMs: data.expiresAt?.toMillis() ?? Number.MAX_SAFE_INTEGER,
+      }
+    })
+    .filter((patient) => patient.expiresAtMs > maintenant)
+    .map(({ expiresAtMs: _expiresAtMs, ...patient }) => patient)
+
+  // Le personnel se lit dans Auth, pas dans `staff/` : le rôle qui fait autorité est le
+  // jeton, et c'est aussi là que vit l'adresse de connexion.
+  const comptes = await auth().listUsers(1000)
+  const personnel = comptes.users
+    .filter((utilisateur) => {
+      const role = (utilisateur.customClaims ?? {})['role']
+      return role === 'staff' || role === 'admin'
+    })
+    .map((utilisateur) => {
+      const claims = (utilisateur.customClaims ?? {}) as { role?: string; practitionerId?: string }
+      return {
+        uid: utilisateur.uid,
+        label: utilisateur.displayName ?? utilisateur.email ?? utilisateur.uid,
+        detail: `${claims.role === 'admin' ? 'Administrateur' : 'Soignant'} · ${utilisateur.email ?? ''}`.trim(),
+        kind: 'staff' as const,
+      }
+    })
+
+  return { accounts: [...personnel, ...patients] }
+})
+
+/**
+ * Ouvre une session à la place de quelqu'un, et met de côté de quoi revenir.
+ *
+ * C'est un outil de mise au point, assumé comme tel : préparer l'application demande de
+ * créer des dizaines de comptes, puis de vérifier ce que chacun voit — un patient du
+ * Mazurel n'a pas le même calendrier qu'un patient de la Ferme, et l'appel n'est ouvert
+ * qu'à la personne qui anime l'activité. Retenir autant de mots de passe est intenable.
+ *
+ * Deux garde-fous, et pas un de plus : seul un administrateur peut appeler, et chaque
+ * passage est écrit au journal, avec qui a pris la place de qui. Le jeton de retour est
+ * un jeton pour le compte de l'administrateur lui-même — il ne donne donc rien de plus
+ * que ce qu'il avait déjà — et il vit une heure, dans l'onglet seulement.
+ *
+ * Rien ici ne relâche les règles : la session ouverte est une vraie session, avec
+ * exactement les droits de la personne. C'est précisément ce qu'on veut vérifier.
+ */
+export const impersonate = onCall(async (request: CallableRequest) => {
+  const administrateur = requireAdmin(request)
+  const uid = requireString(request.data?.uid, 'compte', 128)
+  if (uid === administrateur.uid) {
+    throw new HttpsError('invalid-argument', 'Vous êtes déjà à votre place.')
+  }
+
+  // Un patient n'a pas forcément de compte Auth : il n'en a un qu'une fois son code
+  // saisi. Sa fiche, elle, existe dès sa création — c'est elle qui fait foi, et le
+  // service voyage dans le jeton comme le fait `exchangeCode`.
+  const fiche = await db().collection(COLLECTIONS.patients).doc(uid).get()
+  const patient = fiche.data() as { firstName?: string; serviceId?: string } | undefined
+
+  let claims: Record<string, unknown>
+  let label: string
+  let kind: 'patient' | 'staff'
+  if (patient !== undefined) {
+    claims = { patient: true, serviceId: patient.serviceId ?? '' }
+    label = patient.firstName ?? 'Prénom inconnu'
+    kind = 'patient'
+  } else {
+    const compte = await auth()
+      .getUser(uid)
+      .catch(() => null)
+    if (compte === null) throw new HttpsError('not-found', "Ce compte n'existe pas.")
+    // Les droits du personnel vivent sur le compte : ils reviendront d'eux-mêmes dans
+    // le jeton. Rien à recopier ici.
+    claims = {}
+    label = compte.displayName ?? compte.email ?? uid
+    kind = 'staff'
+  }
+
+  let token: string
+  let back: string
+  try {
+    token = await auth().createCustomToken(uid, claims)
+    back = await auth().createCustomToken(administrateur.uid)
+  } catch (error) {
+    logger.error('Signature du jeton impossible', { error })
+    throw new HttpsError(
+      'internal',
+      "La session n'a pas pu être ouverte. Prévenez la personne qui a installé l'application.",
+    )
+  }
+
+  logger.info('Session ouverte à la place de quelqu’un', {
+    administrateur: administrateur.uid,
+    cible: uid,
+    kind,
+  })
+  return { token, back, label, kind, firstName: label }
+})
+
 export const setStaffRole = onCall(async (request: CallableRequest) => {
   requireAdmin(request)
   const uid = requireString(request.data?.uid, 'uid')

@@ -39,7 +39,46 @@ export type MockWorld = {
   appointments: Appointment[]
   patients: (SeedPatient & { expiresAt?: Date })[]
   session: PatientSession
+  /**
+   * « Voir à leur place » : le compte dont on a pris la place, s'il y en a un. Rangé
+   * dans le `sessionStorage` pour survivre au rechargement — une vraie session y survit,
+   * la démonstration doit en faire autant, sans quoi le détour s'arrêterait au premier
+   * clic. Il disparaît avec l'onglet.
+   */
+  impersonating: string | null
 }
+
+/**
+ * Le peu que la démonstration garde d'un rechargement à l'autre : la session soignante
+ * ouverte, et le compte dont on a pris la place. Tout le reste est reconstruit — c'est
+ * ce qui fait qu'une démonstration repart toujours propre.
+ *
+ * Lecture et écriture prudentes : ni onglet privé, ni test sans stockage ne doivent
+ * faire échouer la construction du monde.
+ */
+export function readDemo(key: string): string | null {
+  try {
+    return typeof sessionStorage === 'undefined' ? null : sessionStorage.getItem(key)
+  } catch {
+    return null
+  }
+}
+
+export function writeDemo(key: string, value: string | null): void {
+  try {
+    if (typeof sessionStorage === 'undefined') return
+    if (value === null) sessionStorage.removeItem(key)
+    else sessionStorage.setItem(key, value)
+  } catch {
+    // Sans stockage, rien ne survit au rechargement. Ce n'est pas une erreur.
+  }
+}
+
+export const CLE_DETOUR = 'leuze.demo.aLaPlaceDe'
+export const CLE_SESSION_SOIGNANT = 'leuze.demo.soignant'
+
+export const storedDetour = (): string | null => readDemo(CLE_DETOUR)
+export const storeDetour = (uid: string | null): void => writeDemo(CLE_DETOUR, uid)
 
 function build(now: Date): MockWorld {
   const today = todayLocalDate(now)
@@ -113,13 +152,22 @@ function build(now: Date): MockWorld {
     },
   ]
 
+  const patients = patientsSeed.map((p) => ({ ...p }))
+  // Si l'on regardait à la place de quelqu'un avant le rechargement, on y est encore.
+  const detour = storedDetour()
+  const aLaPlaceDe = detour === null ? undefined : patients.find((p) => p.uid === detour)
+
   const monde: MockWorld = {
     occurrences,
     attendance: new Map(),
     registrations,
     appointments,
-    patients: patientsSeed.map((p) => ({ ...p })),
-    session: { patientUid: DEMO_PATIENT_UID, firstName: 'Camille', serviceId: DEMO_SERVICE_ID },
+    patients,
+    session:
+      aLaPlaceDe === undefined
+        ? { patientUid: DEMO_PATIENT_UID, firstName: 'Camille', serviceId: DEMO_SERVICE_ID }
+        : { patientUid: aLaPlaceDe.uid, firstName: aLaPlaceDe.firstName, serviceId: aLaPlaceDe.serviceId },
+    impersonating: detour,
   }
   for (const occurrence of occurrences.values()) syncCounts(monde, occurrence.id)
   return monde

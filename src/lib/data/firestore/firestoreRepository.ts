@@ -43,11 +43,11 @@ import type {
   RegisterResult,
 } from '../ports'
 import { firebase } from './app'
+import { FIRST_NAME_KEY } from './keys'
 
 const SIGNED_OUT: PatientSession = { patientUid: null, firstName: null, serviceId: null }
 
 /** Le prénom n'est pas dans le jeton : il est conservé sur l'appareil, et effacé à la déconnexion. */
-const FIRST_NAME_KEY = 'leuze.prenom'
 
 function toOccurrence(snapshot: DocumentSnapshot | QueryDocumentSnapshot): Occurrence {
   const data = snapshot.data() as Record<string, unknown>

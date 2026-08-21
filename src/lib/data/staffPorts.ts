@@ -3,6 +3,7 @@
  * jamais Firebase. Deux adapters les implémentent : `firestore/` et `mock/`.
  */
 import type { CatalogKind, CatalogRemoval } from '../domain/catalog'
+import type { Account } from '../domain/impersonation'
 import type {
   Activity,
   Appointment,
@@ -230,8 +231,32 @@ export interface CatalogAdminService {
   removeEntry(kind: CatalogKind, id: string): Promise<CatalogRemoval>
 }
 
+/**
+ * « Voir à leur place » : ouvrir la session de quelqu'un d'autre pour vérifier ce qu'il
+ * voit. Outil de mise au point, réservé à l'administrateur — le serveur le revérifie.
+ */
+export interface SuperAdminService {
+  /** Les comptes auxquels on peut se substituer : le personnel, puis les patients. */
+  listAccounts(): Promise<Account[]>
+
+  /**
+   * Ouvre la session de ce compte à la place de la sienne, et rend de quoi revenir.
+   * `back` est à garder le temps de l'onglet, et pas une seconde de plus.
+   */
+  impersonate(
+    uid: string,
+  ): Promise<
+    | { ok: true; label: string; kind: 'patient' | 'staff'; back: string }
+    | { ok: false; message: string }
+  >
+
+  /** Reprend sa propre session à partir du jeton mis de côté. */
+  resume(back: string): Promise<{ ok: boolean; message: string }>
+}
+
 export type StaffApp = {
   session: StaffSessionService
   repository: StaffRepository
   catalogAdmin: CatalogAdminService
+  superAdmin: SuperAdminService
 }

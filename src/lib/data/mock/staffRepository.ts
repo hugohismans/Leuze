@@ -9,8 +9,19 @@ import { generationWindow, planGeneration } from '../generation'
 import { activitiesSeed } from '../seed/activities.seed'
 import { attendanceRefusal, canMarkAttendance } from '../../domain/attendance'
 import { planActivityRemoval, planRemoval } from '../../domain/catalog'
+import type { Account } from '../../domain/impersonation'
 import { mockCatalog } from './catalog'
-import { applyBoard, boardOf, world } from './state'
+import {
+  applyBoard,
+  boardOf,
+  CLE_SESSION_SOIGNANT,
+  DEMO_PATIENT_UID,
+  DEMO_SERVICE_ID,
+  readDemo,
+  storeDetour,
+  world,
+  writeDemo,
+} from './state'
 import { registrationBlockMessage } from '../../domain/capacity'
 import {
   register as domainRegister,
@@ -27,6 +38,7 @@ import type {
   StaffApp,
   StaffIdentity,
   StaffPatient,
+  SuperAdminService,
 } from '../staffPorts'
 
 const DEMO_STAFF: StaffIdentity = {
@@ -64,6 +76,24 @@ export function createMockStaffApp(): StaffApp {
   const activities = new Map<string, Activity>(activitiesSeed.map((a) => [a.id, a]))
   let identity: StaffIdentity = SIGNED_OUT
 
+  // Comme une vraie session Firebase, celle de la démonstration survit au rechargement.
+  // Sans cela, revenir d'un détour ramènerait à l'écran de connexion.
+  if (readDemo(CLE_SESSION_SOIGNANT) === 'ouverte') identity = DEMO_STAFF
+
+  // « Voir à leur place » : si l'on était à la place d'un membre du personnel avant le
+  // rechargement, on y revient. Les patients, eux, sont repris par le monde partagé.
+  const repris = mockCatalog.practitioners().find((i) => `staff-${i.id}` === world.impersonating)
+  if (world.impersonating !== null) identity = SIGNED_OUT
+  if (repris !== undefined) {
+    identity = {
+      uid: `staff-${repris.id}`,
+      email: `${repris.id}@exemple.test`,
+      firstName: repris.name,
+      role: 'staff',
+      practitionerId: repris.id,
+    }
+  }
+
   const regenerate = (activityId: string, activity: Activity | null): GenerationReport => {
     const window = generationWindow()
     const existing = [...world.occurrences.values()].filter(
@@ -84,10 +114,14 @@ export function createMockStaffApp(): StaffApp {
           return { ok: false as const, message: "L'adresse ou le mot de passe ne correspond pas." }
         }
         identity = { ...DEMO_STAFF, email: email.trim() }
+        writeDemo(CLE_SESSION_SOIGNANT, 'ouverte')
         return { ok: true as const }
       },
       async signOut() {
         identity = SIGNED_OUT
+        writeDemo(CLE_SESSION_SOIGNANT, null)
+        storeDetour(null)
+        world.impersonating = null
       },
     },
 
@@ -467,5 +501,76 @@ export function createMockStaffApp(): StaffApp {
         return { ...plan, activityTitles: concernees.slice(0, 8).map((a) => a.title) }
       },
     },
+
+    superAdmin: superAdmin(),
+  }
+
+  /**
+   * En démonstration, prendre la place de quelqu'un ne demande aucun jeton : il suffit
+   * de changer d'identité dans le monde en mémoire. Le geste est le même qu'en service,
+   * et c'est ce qui compte — l'écran se vérifie ici avant d'être vérifié là-bas.
+   */
+  function superAdmin(): SuperAdminService {
+    return {
+      async listAccounts(): Promise<Account[]> {
+        const personnel: Account[] = mockCatalog
+          .practitioners()
+          .filter((i) => i.isActive)
+          .map((i) => ({ uid: `staff-${i.id}`, label: i.name, detail: i.role, kind: 'staff' as const }))
+        const patients: Account[] = world.patients.map((p) => ({
+          uid: p.uid,
+          label: p.firstName,
+          detail: mockCatalog.services().find((s) => s.id === p.serviceId)?.name ?? p.serviceId,
+          kind: 'patient' as const,
+        }))
+        return [...personnel, ...patients]
+      },
+
+      async impersonate(uid: string) {
+        const patient = world.patients.find((p) => p.uid === uid)
+        if (patient !== undefined) {
+          world.session = {
+            patientUid: patient.uid,
+            firstName: patient.firstName,
+            serviceId: patient.serviceId,
+          }
+          identity = SIGNED_OUT
+          world.impersonating = uid
+          storeDetour(uid)
+          return { ok: true as const, label: patient.firstName, kind: 'patient' as const, back: 'demo' }
+        }
+
+        const intervenant = mockCatalog.practitioners().find((i) => `staff-${i.id}` === uid)
+        if (intervenant === undefined) {
+          return { ok: false as const, message: "Ce compte n'existe pas." }
+        }
+        // Un intervenant ordinaire n'est pas administrateur : c'est justement ce qu'on
+        // vient vérifier — il ne doit voir que l'appel de ses propres activités.
+        identity = {
+          uid,
+          email: `${intervenant.id}@exemple.test`,
+          firstName: intervenant.name,
+          role: 'staff',
+          practitionerId: intervenant.id,
+        }
+        world.session = { patientUid: null, firstName: null, serviceId: null }
+        world.impersonating = uid
+        storeDetour(uid)
+        return { ok: true as const, label: intervenant.name, kind: 'staff' as const, back: 'demo' }
+      },
+
+      async resume(_back: string) {
+        // La démonstration n'a qu'un compte d'administrateur : on y revient toujours.
+        identity = DEMO_STAFF
+        world.session = {
+          patientUid: DEMO_PATIENT_UID,
+          firstName: 'Camille',
+          serviceId: DEMO_SERVICE_ID,
+        }
+        world.impersonating = null
+        storeDetour(null)
+        return { ok: true, message: 'Vous êtes revenu à votre compte.' }
+      },
+    }
   }
 }
