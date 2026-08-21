@@ -68,27 +68,9 @@ else
 fi
 
 bleu "5/6  Cloud Functions"
-# Au tout premier déploiement, les API Cloud Build et Cloud Run viennent d'être activées
-# et une partie des fonctions échoue à se créer. Une seconde passe suffit presque
-# toujours ; au-delà, c'est une vraie erreur et il faut la lire.
-if ! npm run deploy:fonctions; then
-  rouge "Une partie des fonctions n'est pas passée — seconde tentative."
-  if ! npm run deploy:fonctions; then
-    rouge "Les mêmes fonctions échouent : ce n'est pas un aléa."
-    cat <<'AIDE'
-
-La cause la plus fréquente est le quota de CPU de Cloud Run dans la région, qu'un projet
-neuf a bas. Pour lire la vraie raison :
-
-  npx firebase deploy --only functions --debug 2>&1 | grep -iA4 "quota\|denied\|error:" | head -40
-
-Et pour voir les quotas de la région :
-  https://console.cloud.google.com/iam-admin/quotas?project=leuze-d23b5&service=run.googleapis.com
-
-AIDE
-    exit 1
-  fi
-fi
+# La seconde tentative et l'aide au diagnostic vivent dans le script dédié, pour qu'un
+# « npm run deploy:fonctions » lancé seul en profite aussi.
+GCLOUD_PROJECT="$PROJET" npm run deploy:fonctions
 
 # Sans politique de nettoyage, les images de construction s'accumulent et finissent par
 # coûter quelques centimes par mois. Trois jours suffisent largement.
