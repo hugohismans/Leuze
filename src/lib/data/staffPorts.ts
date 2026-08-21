@@ -203,6 +203,16 @@ export interface StaffRepository {
   unregisterPatient(occurrenceId: string, patientUid: string): Promise<{ ok: boolean; message: string }>
 
   /**
+   * Réveille la fonction d'inscription, sans rien inscrire.
+   *
+   * Une fonction endormie met plusieurs secondes à repartir, et ce retard tombe toujours
+   * sur le premier prénom de la réunion. L'écran l'appelle en s'ouvrant : le clic qui
+   * suit ne paie plus le démarrage. Sans effet si tout est déjà chaud, et sans effet du
+   * tout sur la démonstration.
+   */
+  warmRegistration(): Promise<void>
+
+  /**
    * Crée un patient et son code d'accès. Le strict minimum est enregistré :
    * un prénom et un service.
    */

@@ -108,6 +108,17 @@
     })),
   )
 
+  /*
+    Réveiller la fonction d'inscription dès l'ouverture de l'écran.
+
+    Elle s'endort au bout d'un quart d'heure sans usage, et le premier appel paie alors
+    son démarrage : plusieurs secondes, exactement au moment où l'on clique sur le
+    premier prénom. On l'appelle donc à vide pendant qu'on lit la liste.
+  */
+  $effect(() => {
+    void staffStore.warmRegistration()
+  })
+
   // À chaque changement d'activité, on relit la liste des inscrits.
   let chargeePour = $state<string | null>(null)
   $effect(() => {
@@ -144,7 +155,12 @@
     patientUid: string,
     options: { depassement?: boolean; malgreLeChevauchement?: boolean } = {},
   ): Promise<void> {
-    if (courante === null || enCours !== null) return
+    /*
+      Un même prénom ne part pas deux fois en même temps ; les autres, si.
+      Bloquer toute la liste le temps d'un aller-retour, c'était rendre la réunion
+      impraticable — on y clique dix prénoms à la suite.
+    */
+    if (courante === null || enCours === patientUid) return
     const board = { occurrence: courante, registrations: inscriptionsCourantes }
     if (
       options.depassement !== true &&
@@ -354,7 +370,6 @@
                     class:bg-brand-100={inscrit}
                     class:border-line={!inscrit}
                     aria-pressed={inscrit}
-                    disabled={enCours !== null}
                     onclick={() => basculer(patient.uid)}
                   >
                     <span class="text-lg font-semibold text-ink">
