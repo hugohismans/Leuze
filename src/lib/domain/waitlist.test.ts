@@ -68,10 +68,12 @@ describe('inscription et capacité', () => {
     expect(board.occurrence.waitlistCount).toBe(0)
   })
 
-  it('laisse le personnel inscrire quelqu’un sur une activité sans inscription obligatoire', () => {
+  it('laisse s’inscrire sur une activité sans inscription obligatoire', () => {
+    // Des deux côtés : le patient pour retrouver l'activité dans sa semaine, le soignant
+    // pour noter qui vient pendant la réunion du lundi.
     const board = emptyBoard(null, { registrationRequired: false })
-    expect(register(board, 'a', { now, registrationId: 'r', by: 'patient' }).ok).toBe(false)
-    expect(register(board, 'a', { now, registrationId: 'r', by: 'staff' }).ok).toBe(true)
+    expect(register(board, 'a', { now, registrationId: 'r', by: 'patient' }).ok).toBe(true)
+    expect(register(board, 'b', { now, registrationId: 's', by: 'staff' }).ok).toBe(true)
   })
 })
 

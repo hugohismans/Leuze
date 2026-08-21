@@ -327,13 +327,21 @@
       <div class="mt-2 flex flex-col gap-2">
         <label class="flex items-center gap-3 text-lg text-ink" style="min-height: 56px;">
           <input type="radio" name="places" checked={!placesLimitees} onchange={() => (placesLimitees = false)} class="size-6" />
-          Ouvert à tous, sans inscription
+          Ouvert à tous, sans inscription obligatoire
         </label>
         <label class="flex items-center gap-3 text-lg text-ink" style="min-height: 56px;">
           <input type="radio" name="places" checked={placesLimitees} onchange={() => (placesLimitees = true)} class="size-6" />
           Places limitées, avec inscription
         </label>
       </div>
+
+      {#if !placesLimitees}
+        <p class="mt-2 text-base text-ink-soft">
+          Personne n'est refusé faute d'être inscrit. Les patients pourront tout de même
+          noter qu'ils viennent, pour retrouver l'activité dans leur semaine — et vous
+          pourrez les noter pendant la réunion du lundi.
+        </p>
+      {/if}
 
       {#if placesLimitees}
         <div class="mt-3 grid gap-4 sm:grid-cols-2">

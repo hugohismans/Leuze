@@ -56,7 +56,10 @@
   const maintenant = new Date()
   const aInscription = $derived(
     staffStore.occurrences
-      .filter((o) => o.status !== 'cancelled' && o.registrationRequired)
+      // Les activités sans inscription obligatoire sont passées en revue elles aussi :
+      // noter qui vient les fait apparaître dans la semaine de chacun, et c'est bien la
+      // question que pose la réunion — « qui veut faire du ping-pong ? ».
+      .filter((o) => o.status !== 'cancelled')
       // Réservée à un autre service : personne ici ne peut y aller.
       .filter((o) => serviceId === null || isVisibleToService(o, serviceId)),
   )
@@ -207,7 +210,13 @@
                   {formatDayLabel(occurrence.localDate)} · {formatTimeRange(occurrence.start, occurrence.end)}
                 </p>
                 <p class="text-base text-ink-soft">
-                  {occurrence.confirmedCount}{occurrence.capacity !== null ? ` / ${occurrence.capacity}` : ''} inscrits
+                  {#if !occurrence.registrationRequired && occurrence.capacity === null}
+                    <span aria-hidden="true">🚪</span> Ouverte à tous · {occurrence.confirmedCount} notés
+                  {:else}
+                    {occurrence.confirmedCount}{occurrence.capacity !== null
+                      ? ` / ${occurrence.capacity}`
+                      : ''} inscrits
+                  {/if}
                 </p>
               </button>
             </li>
@@ -242,6 +251,14 @@
               </span>
             {/if}
           </p>
+
+          {#if !courante.registrationRequired}
+            <p class="mt-2 rounded-xl bg-surface-soft p-3 text-base text-ink">
+              <span aria-hidden="true">🚪</span>
+              Cette activité est ouverte à tous : personne n'est refusé faute d'être noté.
+              Noter les prénoms la fait apparaître dans la semaine de chacun.
+            </p>
+          {/if}
 
           <h3 class="mt-4 mb-2 text-lg font-bold text-ink">Qui souhaite participer ?</h3>
           <p class="mb-3 text-base text-ink-soft">

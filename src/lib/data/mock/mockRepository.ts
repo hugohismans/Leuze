@@ -43,7 +43,6 @@ export { DEMO_PATIENT_UID, DEMO_SERVICE_ID }
 const REFUS: Record<RegistrationBlock | 'already-registered', string> = {
   cancelled: registrationBlockMessage('cancelled'),
   past: registrationBlockMessage('past'),
-  'no-registration-required': registrationBlockMessage('no-registration-required'),
   'full-no-waitlist': registrationBlockMessage('full-no-waitlist'),
   'already-registered': 'Vous êtes déjà inscrit à cette activité.',
 }

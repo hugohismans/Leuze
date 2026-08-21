@@ -1,7 +1,12 @@
 <script lang="ts">
   import { store } from '../lib/appState.svelte'
-  import { registrationBlock, registrationBlockMessage } from '../lib/domain/capacity'
-  import { formatDuration, formatFullWhen, formatTime } from '../lib/domain/time'
+  import {
+    registrationActionLabel,
+    registrationBlock,
+    registrationBlockMessage,
+    registrationInvitation,
+  } from '../lib/domain/capacity'
+  import { formatDuration, formatFullWhen } from '../lib/domain/time'
   import type { Occurrence } from '../lib/domain/types'
   import AudienceBadge from '../lib/ui/AudienceBadge.svelte'
   import CategoryBadge from '../lib/ui/CategoryBadge.svelte'
@@ -30,6 +35,7 @@
   const location = $derived(occurrence ? store.locationOf(occurrence.locationId) : null)
   const mine = $derived(occurrence ? store.myStatusFor(occurrence.id) : null)
   const block = $derived(occurrence ? registrationBlock(occurrence, new Date()) : null)
+  const invitation = $derived(occurrence ? registrationInvitation(occurrence) : null)
   const complet = $derived(
     occurrence !== null && occurrence.capacity !== null && occurrence.confirmedCount >= occurrence.capacity,
   )
@@ -170,8 +176,11 @@
         </button>
       {:else if block === null}
         <button type="button" class="btn btn-primary btn-huge" disabled={busy} onclick={inscrire}>
-          {complet ? "Je m'inscris sur la liste d'attente" : "Je m'inscris"}
+          {registrationActionLabel(occurrence)}
         </button>
+        {#if invitation !== null}
+          <p class="text-lg text-ink-soft">{invitation}</p>
+        {/if}
         {#if complet}
           <p class="text-lg text-ink-soft">
             Cette activité est complète. En vous inscrivant, vous êtes placé sur la liste d'attente.
@@ -183,15 +192,8 @@
           pour toutes les fois suivantes et ne revienne pas.
         -->
         <p class="text-lg text-ink-soft">Vous vous inscrivez pour cette séance seulement.</p>
-      {:else if block === 'full-no-waitlist' || block === 'cancelled' || block === 'past'}
-        <p class="card p-5 text-xl">{registrationBlockMessage(block)}</p>
       {:else}
-        <p
-          class="card p-5 text-xl"
-          style="background: var(--color-ok-bg); color: var(--color-ok-fg); border-color: var(--color-ok-fg);"
-        >
-          Vous pouvez venir sans vous inscrire. Présentez-vous à {formatTime(occurrence.start)}.
-        </p>
+        <p class="card p-5 text-xl">{registrationBlockMessage(block)}</p>
       {/if}
 
       <p

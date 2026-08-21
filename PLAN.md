@@ -242,6 +242,27 @@ Une annulation en série (congé de l'animateur du 12 au 26) est une opération 
 « annuler du … au … avec motif » qui passe les occurrences concernées en `cancelled` — pas une
 suppression, pas une modification de la règle.
 
+### 4.2 bis « Sans inscription » ne veut pas dire « inscription interdite »
+
+Une activité ouverte à tous accepte les inscriptions comme les autres. Le drapeau
+`registrationRequired` ne dit qu'une chose : **venir sans s'être inscrit reste possible**.
+Il ne ferme aucune porte.
+
+Deux raisons, et la seconde est la plus importante :
+
+1. Un patient qui note qu'il vient retrouve l'activité dans « Ma semaine » et sur sa
+   feuille imprimée. Sans cela, la moitié du programme n'y figurait jamais.
+2. La réunion du lundi passe en revue **toutes** les activités. La question qu'on y pose
+   est « qui veut faire du ping-pong ? », pas « qui doit s'inscrire au ping-pong ? ».
+   Exclure les activités libres de la revue revenait à les rendre invisibles au seul
+   moment où l'équipe en parle.
+
+Conséquences : `registrationBlock` ne refuse plus que les cas réels — séance annulée,
+déjà commencée, complète sans liste d'attente. Une capacité fixée compte, que l'inscription
+soit obligatoire ou non. Et le vocabulaire change côté patient : « Je note que je viens »
+plutôt que « Je m'inscris », parce que le mot « inscription » laisserait croire qu'on ne
+peut pas venir sans.
+
 ### 4.3 Capacité et liste d'attente — **serveur uniquement**
 
 Toutes les écritures sur `registrations` passent par des **Cloud Functions callables**

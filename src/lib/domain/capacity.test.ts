@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { capacityOf, patientCapacityLabel, registrationBlock, staffCapacityLabel } from './capacity'
+import {
+  capacityOf,
+  patientCapacityLabel,
+  registrationActionLabel,
+  registrationBlock,
+  registrationInvitation,
+  staffCapacityLabel,
+} from './capacity'
 import { makeOccurrence } from './fixtures'
 import { instantOf } from './time'
 
@@ -8,7 +15,11 @@ const avant = new Date('2025-08-19T09:00:00Z')
 describe('capacité', () => {
   it('distingue les cinq états', () => {
     expect(capacityOf(makeOccurrence({ status: 'cancelled' })).kind).toBe('cancelled')
-    expect(capacityOf(makeOccurrence({ registrationRequired: false })).kind).toBe('no-registration')
+    expect(capacityOf(makeOccurrence({ registrationRequired: false, capacity: null })).kind).toBe('no-registration')
+    // Une activité ouverte à tous mais à places limitées reste comptée comme les autres.
+    expect(capacityOf(makeOccurrence({ registrationRequired: false, capacity: 12, confirmedCount: 4 })).kind).toBe(
+      'available',
+    )
     expect(capacityOf(makeOccurrence({ capacity: null })).kind).toBe('unlimited')
     expect(capacityOf(makeOccurrence({ capacity: 12, confirmedCount: 4 })).kind).toBe('available')
     expect(capacityOf(makeOccurrence({ capacity: 12, confirmedCount: 10 })).kind).toBe('last-places')
@@ -21,7 +32,7 @@ describe('capacité', () => {
   })
 
   it('parle au patient en français simple, sans chiffre anxiogène par défaut', () => {
-    expect(patientCapacityLabel(makeOccurrence({ registrationRequired: false }))).toBe(
+    expect(patientCapacityLabel(makeOccurrence({ registrationRequired: false, capacity: null }))).toBe(
       'Ouvert à tous, sans inscription',
     )
     expect(patientCapacityLabel(makeOccurrence({ capacity: 12, confirmedCount: 2 }))).toBe(
@@ -47,9 +58,9 @@ describe('capacité', () => {
   it('refuse l’inscription dans les cas prévus, et dit pourquoi', () => {
     expect(registrationBlock(makeOccurrence({ capacity: 12 }), avant)).toBeNull()
     expect(registrationBlock(makeOccurrence({ status: 'cancelled' }), avant)).toBe('cancelled')
-    expect(registrationBlock(makeOccurrence({ registrationRequired: false }), avant)).toBe(
-      'no-registration-required',
-    )
+    // « Sans inscription » n'est pas un refus : on peut s'inscrire pour l'avoir dans sa
+    // semaine, et le soignant peut noter qui vient pendant la réunion du lundi.
+    expect(registrationBlock(makeOccurrence({ registrationRequired: false }), avant)).toBeNull()
     expect(registrationBlock(makeOccurrence({ capacity: 2, confirmedCount: 2, waitlistEnabled: false }), avant)).toBe(
       'full-no-waitlist',
     )
@@ -59,5 +70,34 @@ describe('capacité', () => {
     const occurrence = makeOccurrence({ localDate: '2025-08-19', capacity: 12 })
     const pendant = new Date(instantOf('2025-08-19', '14:30').getTime())
     expect(registrationBlock(occurrence, pendant)).toBe('past')
+  })
+})
+
+describe('ce que propose le bouton', () => {
+  it('parle d’inscription quand elle est nécessaire', () => {
+    expect(registrationActionLabel(makeOccurrence({ capacity: 12 }))).toBe("Je m'inscris")
+    expect(registrationInvitation(makeOccurrence({ capacity: 12 }))).toBeNull()
+  })
+
+  it('parle de noter sa venue quand l’activité est ouverte à tous', () => {
+    const ouverte = makeOccurrence({ registrationRequired: false, capacity: null })
+    expect(registrationActionLabel(ouverte)).toBe('Je note que je viens')
+    expect(registrationInvitation(ouverte)).toContain('sans vous inscrire')
+  })
+
+  it('bascule sur la liste d’attente quand c’est complet', () => {
+    const complete = makeOccurrence({ capacity: 2, confirmedCount: 2 })
+    expect(registrationActionLabel(complete)).toBe("Je m'inscris sur la liste d'attente")
+  })
+})
+
+describe('ce que lit le personnel', () => {
+  it('compte les personnes notées sur une activité sans inscription', () => {
+    expect(
+      staffCapacityLabel(makeOccurrence({ registrationRequired: false, capacity: null, confirmedCount: 0 })),
+    ).toBe('Sans inscription — 0 personne notée')
+    expect(
+      staffCapacityLabel(makeOccurrence({ registrationRequired: false, capacity: null, confirmedCount: 3 })),
+    ).toBe('Sans inscription — 3 personnes notées')
   })
 })

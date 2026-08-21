@@ -43,10 +43,10 @@ export function register(
 ): RegisterOutcome {
   if (registrationOf(board, patientUid) !== null) return { ok: false, reason: 'already-registered' }
 
+  // « Sans inscription » n'empêche plus de s'inscrire : ne restent que les refus réels —
+  // séance annulée, déjà commencée, ou complète sans liste d'attente.
   const block = registrationBlock(board.occurrence, options.now)
-  // Le personnel peut inscrire quelqu'un sur une activité sans inscription obligatoire.
-  const blocking = block !== null && !(block === 'no-registration-required' && options.by === 'staff')
-  if (blocking && block !== null) return { ok: false, reason: block }
+  if (block !== null) return { ok: false, reason: block }
 
   const capacity = board.occurrence.capacity
   const confirmed = board.registrations.filter((r) => r.status === 'confirmed').length
