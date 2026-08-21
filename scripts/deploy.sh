@@ -63,7 +63,17 @@ else
 fi
 
 bleu "5/6  Cloud Functions"
-npm run deploy:fonctions
+# Au tout premier déploiement, les API Cloud Build et Cloud Run viennent d'être activées
+# et une partie des fonctions échoue à se créer. Une seconde passe suffit presque
+# toujours ; au-delà, c'est une vraie erreur et il faut la lire.
+if ! npm run deploy:fonctions; then
+  rouge "Une partie des fonctions n'est pas passée — seconde tentative."
+  npm run deploy:fonctions
+fi
+
+# Sans politique de nettoyage, les images de construction s'accumulent et finissent par
+# coûter quelques centimes par mois. Trois jours suffisent largement.
+npx firebase functions:artifacts:setpolicy --days 3 --force --project "$PROJET" >/dev/null 2>&1 || true
 
 bleu "6/6  Catalogue et application"
 # Services, lieux, catégories, motifs de rendez-vous. Aucune donnée de démonstration.
