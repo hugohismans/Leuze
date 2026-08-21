@@ -173,11 +173,17 @@
     aConfirmer = null
     chevauchement = null
     enCours = patientUid
-    const resultat = await staffStore.togglePatient(courante.id, patientUid, {
-      ...(options.depassement === true ? { overCapacity: true } : {}),
-      ...(options.malgreLeChevauchement === true ? { overrideConflict: true } : {}),
-    })
-    enCours = null
+    let resultat
+    try {
+      resultat = await staffStore.togglePatient(courante.id, patientUid, {
+        ...(options.depassement === true ? { overCapacity: true } : {}),
+        ...(options.malgreLeChevauchement === true ? { overrideConflict: true } : {}),
+      })
+    } finally {
+      // Quoi qu'il arrive — y compris une erreur qu'on n'attendait pas — le prénom
+      // redevient cliquable. Sans cela, un seul incident le figeait pour toute la réunion.
+      enCours = null
+    }
     // Refusé faute de confirmation : on montre ce qui tombe en même temps, on demande.
     if (resultat.conflicts !== undefined && resultat.conflicts.length > 0) {
       chevauchement = { patientUid, conflicts: resultat.conflicts }
@@ -295,11 +301,12 @@
                 </p>
                 <p class="text-base text-ink-soft">
                   {#if !occurrence.registrationRequired && occurrence.capacity === null}
-                    <span aria-hidden="true">🚪</span> Ouverte à tous · {occurrence.confirmedCount} notés
+                    <span aria-hidden="true">🚪</span>
+                    Ouverte à tous · {occurrence.confirmedCount} noté{occurrence.confirmedCount > 1 ? 's' : ''}
+                  {:else if occurrence.capacity !== null}
+                    {occurrence.confirmedCount} / {occurrence.capacity} inscrits
                   {:else}
-                    {occurrence.confirmedCount}{occurrence.capacity !== null
-                      ? ` / ${occurrence.capacity}`
-                      : ''} inscrits
+                    {occurrence.confirmedCount} inscrit{occurrence.confirmedCount > 1 ? 's' : ''}
                   {/if}
                 </p>
               </button>
@@ -348,6 +355,27 @@
           <p class="mb-3 text-base text-ink-soft">
             Touchez un prénom pour l'inscrire. Touchez-le à nouveau pour le retirer.
           </p>
+
+          <!--
+            Une liste vide et une liste qu'on n'a pas pu lire se ressemblent à l'écran, et
+            l'on n'inscrit pas les mêmes gens selon qu'on croit l'une ou l'autre. On le dit.
+          -->
+          {#if staffStore.rosterIllisible}
+            <div role="alert" class="mb-3 rounded-xl border-4 border-amber-500 bg-amber-50 p-3">
+              <p class="text-lg text-ink">
+                <span aria-hidden="true">⚠️</span>
+                La liste des inscrits n'a pas pu être lue. Personne n'est perdu : vérifiez la
+                connexion, puis touchez « Réessayer ».
+              </p>
+              <button
+                type="button"
+                class="btn btn-secondary mt-3"
+                onclick={() => { if (courante !== null) void staffStore.openRoster(courante.id) }}
+              >
+                Réessayer
+              </button>
+            </div>
+          {/if}
 
           {#if eligibles.length === 0}
             <p class="text-lg text-ink-soft">

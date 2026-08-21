@@ -18,6 +18,7 @@ import type { Account } from './domain/impersonation'
 import type { PatientPlanning } from './data/staffPorts'
 import type { CatalogKind, CatalogRemoval } from './domain/catalog'
 import { store } from './appState.svelte'
+import { countsOf, undoToggle, withToggled } from './domain/roster'
 import { todayLocalDate, weekDays } from './domain/time'
 import { enClair } from './erreurs'
 import type {
@@ -147,6 +148,15 @@ class StaffStore {
     ])
     this.activities = activities
     this.occurrences = occurrences
+    /*
+      Le programme relu écrasait le nombre d'inscrits de la séance ouverte.
+
+      Pendant la réunion, le compteur du serveur a toujours un train de retard : une
+      relecture partie avant un clic revient après lui. On voyait alors quatre prénoms
+      cochés et « 3 personnes notées » juste en dessous — deux chiffres pour un même
+      fait, dont l'un venait du passé. La liste qu'on a sous les yeux tranche.
+    */
+    if (this.rosterOf !== null) this.accorderLeCompteur(this.rosterOf, this.roster)
     this.loading = false
   }
 
@@ -271,23 +281,68 @@ class StaffStore {
    */
   #versionRoster = 0
   #ecrituresEnCours = 0
-  /** L'activité dont la liste est affichée : une réponse pour une autre ne vaut rien. */
+  /** L'activité dont la liste est demandée : une réponse pour une autre ne vaut rien. */
   #rosterDe: string | null = null
+  /**
+   * L'activité dont la liste est effectivement à l'écran, ou `null` quand on n'a pas pu
+   * la lire. Elle seule fait foi pour le nombre d'inscrits affiché.
+   */
+  rosterOf = $state<string | null>(null)
+  /**
+   * Vrai quand la dernière lecture de la liste a échoué. L'écran doit le dire : une liste
+   * vide et une liste illisible se ressemblent, et l'on n'inscrit pas les mêmes gens
+   * selon qu'on croit l'une ou l'autre.
+   */
+  rosterIllisible = $state(false)
 
   async openRoster(occurrenceId: string): Promise<void> {
     const version = this.#versionRoster
     this.#rosterDe = occurrenceId
-    const resultat = await (await this.app$()).repository
-      .roster(occurrenceId)
-      .catch(() => ({ lines: [], canMarkAttendance: false }))
+    // On change d'activité : les prénoms de la précédente n'ont plus rien à faire là.
+    // Une relecture de la même activité, elle, ne vide rien — sinon l'écran clignoterait.
+    if (this.rosterOf !== occurrenceId) {
+      this.roster = []
+      this.rosterOf = null
+    }
+
+    /*
+      Une lecture qui échoue ne dit pas « personne ». Elle ne dit rien.
+
+      On rendait une liste vide en cas d'erreur : un réseau qui hoquette affichait alors
+      « 0 inscrit » sur une activité complète, et l'on réinscrivait tout le monde. On
+      garde donc ce qui est à l'écran, et l'on réessaie au prochain passage.
+    */
+    const resultat = await (await this.app$()).repository.roster(occurrenceId).catch(() => null)
 
     // Périmée : on a cliqué entre-temps, ou une écriture est encore en route, ou l'on
     // regarde déjà une autre activité. Dans les trois cas, l'écran a raison, pas nous.
     if (version !== this.#versionRoster || this.#ecrituresEnCours > 0) return
     if (this.#rosterDe !== occurrenceId) return
+    if (resultat === null) {
+      this.rosterIllisible = true
+      return
+    }
 
+    this.rosterIllisible = false
     this.roster = resultat.lines
     this.canMarkAttendance = resultat.canMarkAttendance
+    this.rosterOf = occurrenceId
+    this.accorderLeCompteur(occurrenceId, resultat.lines)
+  }
+
+  /**
+   * Le nombre d'inscrits d'une séance, recompté sur la liste affichée.
+   *
+   * Un même fait ne doit avoir qu'une source. La liste des prénoms et le compteur de la
+   * séance venaient de deux endroits différents, mis à jour à deux moments différents :
+   * ils finissaient toujours par se contredire à l'écran, et c'est le genre de
+   * contradiction qui fait douter de tout le reste.
+   */
+  private accorderLeCompteur(occurrenceId: string, lignes: RosterLine[]): void {
+    const compte = countsOf(lignes)
+    this.occurrences = this.occurrences.map((occurrence) =>
+      occurrence.id === occurrenceId ? { ...occurrence, ...compte } : occurrence,
+    )
   }
 
   /** L'appel. Inscrit d'office la personne qui se présente sans l'être. */
@@ -354,28 +409,28 @@ class StaffStore {
       évitées de justesse, et une réunion qui traîne.
 
       On affiche donc ce qui va se passer, puis on le vérifie. En cas de refus — activité
-      complète, chevauchement, réseau coupé — la liste revient exactement dans l'état
-      d'avant, et le message dit pourquoi. C'est ce que fait n'importe quelle application
-      qui « répond du tac au tac » : elle n'attend pas le serveur pour se redessiner.
+      complète, rendez-vous à la même heure, réseau coupé — ce prénom-là seul revient
+      dans l'état d'avant, et le message dit pourquoi. C'est ce que fait n'importe quelle
+      application qui « répond du tac au tac » : elle n'attend pas le serveur pour se
+      redessiner.
     */
-    const avant = this.roster
     const personne = this.patients.find((p) => p.uid === patientUid)
+    const ligneAvant = this.roster.find((ligne) => ligne.patientUid === patientUid) ?? null
     // Toute modification locale périme les relectures déjà parties.
     this.#versionRoster += 1
     this.#ecrituresEnCours += 1
     this.ajusterCompteur(occurrenceId, inscrit ? -1 : 1)
-    this.roster = inscrit
-      ? this.roster.filter((ligne) => ligne.patientUid !== patientUid)
-      : [
-          ...this.roster,
-          {
-            patientUid,
-            firstName: personne?.firstName ?? 'Cette personne',
-            serviceId: personne?.serviceId ?? null,
-            status: 'confirmed' as const,
-            position: null,
-          },
-        ]
+    this.roster = withToggled(
+      this.roster,
+      ligneAvant ?? {
+        patientUid,
+        firstName: personne?.firstName ?? 'Cette personne',
+        serviceId: personne?.serviceId ?? null,
+        status: 'confirmed' as const,
+        position: null,
+      },
+      inscrit,
+    )
 
     let resultat
     try {
@@ -386,22 +441,31 @@ class StaffStore {
       this.#ecrituresEnCours -= 1
     }
 
-    // Refusé : on remet la liste telle qu'elle était. Le message, lui, vient du serveur.
+    /*
+      Refusé : on défait ce prénom-là, et rien d'autre.
+
+      On remettait la liste entière telle qu'elle était avant le clic. Pendant une réunion
+      on en clique dix à la suite : la photographie prise avant le premier ne connaissait
+      pas les neuf suivants, et un refus arrivé en retard les effaçait tous d'un coup. Ils
+      revenaient à la relecture — d'où des prénoms qui se décochaient puis se recochaient
+      seuls. Une réponse ne doit jamais défaire un geste qu'elle n'a pas vu.
+    */
     if (!resultat.ok) {
       this.#versionRoster += 1
       this.ajusterCompteur(occurrenceId, inscrit ? 1 : -1)
-      this.roster = avant
+      this.roster = undoToggle(this.roster, patientUid, inscrit ? ligneAvant : null)
     }
 
     /*
       La vérité vient ensuite, sans faire attendre — mais seulement quand plus rien n'est
       en route. Relire pendant qu'une autre inscription est partie rapporterait un état
       déjà dépassé, et ferait clignoter l'écran.
+
+      Seule la liste est relue. Recharger tout le programme de la semaine à chaque prénom,
+      c'était la plus grosse lecture de l'application répétée dix fois en deux minutes —
+      pour un chiffre que la liste donne déjà. `openRoster` accorde le compteur au passage.
     */
-    if (this.#ecrituresEnCours === 0) {
-      void this.openRoster(occurrenceId)
-      void this.refresh()
-    }
+    if (this.#ecrituresEnCours === 0) void this.openRoster(occurrenceId)
     // La désinscription ne rend jamais de chevauchement : le champ n'existe que sur
     // l'autre chemin, d'où la vérification plutôt qu'un accès direct.
     const conflits = (resultat as { conflicts?: TimeConflict[] }).conflicts

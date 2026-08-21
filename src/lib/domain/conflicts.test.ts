@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   blockingConflict,
+  blockingConflicts,
   conflictsWith,
   describeConflict,
   localDateOfOccurrenceId,
@@ -116,5 +117,24 @@ describe('le jour lu dans l’identifiant d’une séance', () => {
 describe('la description d’un créneau occupé', () => {
   it('se lit en français, avec des heures en toutes lettres', () => {
     expect(describeConflict(rendezVous)).toBe('Rendez-vous avec le psychiatre, de 10h00 à 10h30')
+  })
+})
+
+describe('ce qui justifie de s’arrêter et de demander', () => {
+  it('ne retient que les rendez-vous', () => {
+    expect(blockingConflicts([atelier, rendezVous])).toEqual([rendezVous])
+  })
+
+  it('ne retient rien quand il n’y a que des activités', () => {
+    /*
+      C'est la règle de la réunion : deux activités qui se recouvrent se voient sur la
+      feuille et s'arrangent de vive voix. Demander confirmation à chaque prénom, c'était
+      une réunion qui n'avance plus — et un « oui » cliqué sans lire.
+    */
+    expect(blockingConflicts([atelier])).toEqual([])
+  })
+
+  it('ne retient rien quand rien ne gêne', () => {
+    expect(blockingConflicts([])).toEqual([])
   })
 })

@@ -12,6 +12,7 @@ import { auth, COLLECTIONS, db, docToOccurrence } from './lib/firestore'
 import { generationWindow, regenerateActivity, regenerateAll } from './lib/occurrences'
 import { assertNotRateLimited, clearFailures, recordFailure } from './lib/rateLimit'
 import {
+  appointmentConflictsFor,
   busyBetween,
   conflictsFor,
   myRegistrationsFor,
@@ -55,7 +56,31 @@ import type { AvailabilityWindow, LocalDate } from './domain/types'
  * alors à se créer. Trois suffisent très largement — un hôpital de 133 lits, c'est
  * quelques dizaines d'appels par jour, jamais simultanés.
  */
-setGlobalOptions({ region: 'europe-west1', maxInstances: 3 })
+/*
+  Où tournent les fonctions, et combien de demandes une même instance sert à la fois.
+
+  C'est ce dernier point qui décidait de la lenteur, et il était invisible. Sans processeur
+  entier, une instance de fonction ne traite **qu'une demande à la fois** : c'est la règle
+  de Cloud Run, et la mémoire par défaut donne un peu plus d'un demi-processeur. En
+  réunion, où l'on clique dix prénoms à la suite, les dix appels partaient ensemble — donc
+  vers dix instances, dont neuf devaient démarrer. Un démarrage prend plusieurs secondes.
+
+  D'où les deux secondes par clic, les appuis qui « ne marchent pas » et qu'on répète, et
+  l'appel de réveil qui ne servait presque à rien : il réveillait une instance, la
+  deuxième demande en réclamait une autre, froide.
+
+  Un processeur entier, et vingt demandes servies de front : la même instance, déjà
+  chaude, absorbe toute la réunion. On paie le temps de calcul, pas l'attente — une
+  instance au repos ne coûte rien — et vingt clics partagent désormais une seconde
+  d'instance au lieu d'en réserver vingt. Cela reste très en dessous du gratuit.
+*/
+setGlobalOptions({
+  region: 'europe-west1',
+  maxInstances: 3,
+  memory: '512MiB',
+  cpu: 1,
+  concurrency: 20,
+})
 
 /**
  * Le poivre qui dérive les empreintes des codes patients. Un secret n'est pas
@@ -195,9 +220,15 @@ export const staffRegister = onCall(async (request: CallableRequest) => {
     Rien n'est interdit au soignant : il connaît la situation, il peut déplacer le
     rendez-vous. Mais il doit le savoir avant d'inscrire, pas le découvrir le jour même.
     L'écran le lui demande, puis renvoie la même demande avec `overrideConflict`.
+
+    Seuls les rendez-vous arrêtent le geste. On avait d'abord fait s'arrêter l'application
+    sur n'importe quel chevauchement — y compris deux activités qui se recouvrent d'un
+    quart d'heure, ce qui est le cas courant d'un programme chargé. En réunion, cela
+    donnait une question à chaque prénom, et une réunion qui n'avance plus. Deux activités
+    en même temps, on le voit sur la feuille et l'on s'arrange ; un rendez-vous, non.
   */
   if (!overrideConflict) {
-    const conflits = await conflictsFor(db(), patientUid, occurrenceId)
+    const conflits = await appointmentConflictsFor(db(), patientUid, occurrenceId)
     if (conflits.length > 0) {
       return {
         ok: false,
