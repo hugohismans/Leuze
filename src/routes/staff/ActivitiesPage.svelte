@@ -3,6 +3,7 @@
   import { store } from '../../lib/appState.svelte'
   import { audienceLabelForStaff, isPublished } from '../../lib/domain/audience'
   import { byChronology } from '../../lib/domain/activityOrder'
+  import { deletionWarning } from '../../lib/domain/catalog'
   import { formatDuration, todayLocalDate } from '../../lib/domain/time'
   import type { Activity } from '../../lib/domain/types'
   import { navigate } from '../../lib/router.svelte'
@@ -22,13 +23,35 @@
   let busy = $state(false)
   let erreur = $state<string | null>(null)
 
-  async function supprimer(activityId: string): Promise<void> {
+  /**
+   * La suppression se fait en deux temps, et c'est délibéré.
+   *
+   * Le premier geste efface ce que personne n'a jamais utilisé. Dès qu'une inscription
+   * existe, le serveur se contente de retirer l'activité du programme et le dit — c'est
+   * seulement là qu'on découvre ce qu'une suppression coûterait vraiment, et qu'on peut
+   * décider en connaissance de cause.
+   *
+   * Le second geste efface tout, sans retour. On ne le propose donc jamais avant d'avoir
+   * nommé ce qui va disparaître.
+   */
+  let aEffacer = $state<{ id: string; titre: string; message: string } | null>(null)
+
+  async function supprimer(activityId: string, force = false): Promise<void> {
     if (busy) return
     busy = true
     erreur = null
     try {
-      await staffStore.removeActivity(activityId)
+      const activite = staffStore.activities.find((a) => a.id === activityId)
+      const plan = await staffStore.removeActivity(activityId, force ? { force: true } : {})
       aSupprimer = null
+      const avertissement =
+        plan.action === 'deactivated' && plan.usage !== undefined
+          ? deletionWarning(activite?.title ?? 'Cette activité', plan.usage)
+          : null
+      aEffacer =
+        avertissement === null
+          ? null
+          : { id: activityId, titre: activite?.title ?? '', message: avertissement }
     } catch (error) {
       erreur = enClair(error)
     } finally {
@@ -109,12 +132,38 @@
             </button>
           </div>
 
+          {#if aEffacer !== null && aEffacer.id === activity.id}
+            <!--
+              Le second temps : on sait maintenant ce que l'on efface, et on le dit avant
+              de le proposer. Le bouton est explicite — « tout effacer », pas « continuer ».
+            -->
+            <div role="alert" class="mt-3 rounded-xl border-4 border-red-600 bg-red-50 p-4">
+              <h3 class="text-xl font-bold text-red-900">
+                <span aria-hidden="true">⚠️</span> Effacer pour de bon ?
+              </h3>
+              <p class="mt-2 text-lg text-ink">{aEffacer.message}</p>
+              <div class="mt-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  class="btn btn-primary"
+                  disabled={busy}
+                  onclick={() => supprimer(activity.id, true)}
+                >
+                  {busy ? 'Un instant…' : 'Oui, tout effacer'}
+                </button>
+                <button type="button" class="btn btn-secondary" onclick={() => (aEffacer = null)}>
+                  Non, la laisser retirée du programme
+                </button>
+              </div>
+            </div>
+          {/if}
+
           {#if aSupprimer === activity.id}
             <div class="mt-3 rounded-xl border-2 border-line p-4">
               <p class="text-lg text-ink">
                 Supprimer « {activity.title} » et toutes ses séances ? Si quelqu'un s'y est
-                déjà inscrit, elle sera seulement retirée du programme : les inscriptions
-                sont conservées.
+                déjà inscrit, elle sera d'abord seulement retirée du programme — on vous
+                dira alors ce qu'effacer pour de bon ferait disparaître.
               </p>
               <div class="mt-3 flex flex-wrap gap-2">
                 <button type="button" class="btn btn-primary" disabled={busy} onclick={() => supprimer(activity.id)}>

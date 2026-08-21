@@ -8,7 +8,7 @@ import type { Activity, Appointment, LocalDate, LocalTime, Occurrence } from '..
 import { generationWindow, planGeneration } from '../generation'
 import { activitiesSeed } from '../seed/activities.seed'
 import { attendanceRefusal, canMarkAttendance } from '../../domain/attendance'
-import { planActivityRemoval, planRemoval } from '../../domain/catalog'
+import { planActivityRemoval, planForcedRemoval, planRemoval } from '../../domain/catalog'
 import type { Account } from '../../domain/impersonation'
 import { canScheduleAs, visibleAppointments } from '../../domain/appointmentAccess'
 import { mockCatalog } from './catalog'
@@ -182,24 +182,57 @@ export function createMockStaffApp(): StaffApp {
         return nouvelId
       },
 
-      async deleteActivity(activityId: string) {
+      async deleteActivity(activityId: string, options = {}) {
         const activite = activities.get(activityId)
         if (!activite) throw new Error("Cette activité n'existe plus.")
+        // Même garde que le serveur : une suppression sans retour n'est pas confiée à tous.
+        if (identity.role !== 'admin' && activite.facilitatorId !== identity.practitionerId) {
+          throw new Error(
+            "Seul un administrateur, ou la personne qui anime cette activité, peut la supprimer.",
+          )
+        }
         const seances = [...world.occurrences.values()].filter((o) => o.activityId === activityId)
         const identifiants = new Set(seances.map((o) => o.id))
         const inscriptions = world.registrations.filter((r) => identifiants.has(r.occurrenceId))
+        const usage = { registrations: inscriptions.length, sessions: seances.length }
 
-        const plan = planActivityRemoval(activite.title, {
-          registrations: inscriptions.length,
-          sessions: seances.length,
-        })
+        const plan =
+          options.force === true
+            ? planForcedRemoval(activite.title, usage)
+            : planActivityRemoval(activite.title, usage)
+
         if (plan.action === 'deleted') {
+          if (options.force === true) {
+            world.registrations = world.registrations.filter((r) => !identifiants.has(r.occurrenceId))
+          }
           for (const seance of seances) world.occurrences.delete(seance.id)
           activities.delete(activityId)
         } else {
           activities.set(activityId, { ...activite, isActive: false })
         }
         return plan
+      },
+
+      async deleteOccurrence(occurrenceId: string) {
+        const seance = world.occurrences.get(occurrenceId)
+        if (!seance) return { ok: false, message: "Cette séance n'existe plus." }
+        if (identity.role !== 'admin' && seance.facilitatorId !== identity.practitionerId) {
+          return {
+            ok: false,
+            message:
+              "Seul un administrateur, ou la personne qui anime cette activité, peut supprimer une séance.",
+          }
+        }
+        const inscriptions = world.registrations.filter((r) => r.occurrenceId === occurrenceId)
+        world.registrations = world.registrations.filter((r) => r.occurrenceId !== occurrenceId)
+        world.occurrences.delete(occurrenceId)
+        const combien =
+          inscriptions.length === 0
+            ? "Personne n'y était inscrit."
+            : inscriptions.length === 1
+              ? 'Une inscription a été effacée.'
+              : `${inscriptions.length} inscriptions ont été effacées.`
+        return { ok: true, message: `La séance de « ${seance.title} » est supprimée. ${combien}` }
       },
 
       async listOccurrences(from: LocalDate, to: LocalDate): Promise<Occurrence[]> {

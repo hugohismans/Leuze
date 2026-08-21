@@ -258,11 +258,26 @@ export function createFirestoreStaffApp(): StaffApp {
         return nouvelId
       },
 
-      async deleteActivity(activityId: string): Promise<CatalogRemoval> {
+      async deleteActivity(activityId: string, options = {}): Promise<CatalogRemoval> {
         // Les inscriptions ne sont pas lisibles côté client : le serveur seul peut dire
         // si l'activité a déjà réuni quelqu'un.
-        const call = httpsCallable<{ activityId: string }, CatalogRemoval>(functions, 'deleteActivity')
-        return (await call({ activityId })).data
+        const call = httpsCallable<{ activityId: string; force?: boolean }, CatalogRemoval>(
+          functions,
+          'deleteActivity',
+        )
+        return (await call({ activityId, ...(options.force === true ? { force: true } : {}) })).data
+      },
+
+      async deleteOccurrence(occurrenceId: string) {
+        try {
+          const call = httpsCallable<{ occurrenceId: string }, { ok: boolean; message: string }>(
+            functions,
+            'deleteOccurrence',
+          )
+          return (await call({ occurrenceId })).data
+        } catch (error) {
+          return { ok: false, message: messageDErreur(error) }
+        }
       },
 
       async listOccurrences(from: LocalDate, to: LocalDate): Promise<Occurrence[]> {

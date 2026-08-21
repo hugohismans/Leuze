@@ -13,7 +13,12 @@ import { generationWindow, regenerateActivity, regenerateAll } from './lib/occur
 import { assertNotRateLimited, clearFailures, recordFailure } from './lib/rateLimit'
 import { myRegistrationsFor, promoteTx, registerTx, rosterFor, unregisterTx } from './lib/registration'
 import { attendanceRefusal, canMarkAttendance } from './domain/attendance'
-import { planActivityRemoval, planRemoval, type CatalogKind } from './domain/catalog'
+import {
+  planActivityRemoval,
+  planForcedRemoval,
+  planRemoval,
+  type CatalogKind,
+} from './domain/catalog'
 import type { LocalDate } from './domain/types'
 
 /**
@@ -486,19 +491,39 @@ export const exchangeCode = onCall({ secrets: [CODE_PEPPER] }, async (request: C
 })
 
 /**
- * Supprime une activité, ses séances comprises — mais seulement si personne ne s'y est
- * jamais inscrit. Dès qu'une inscription existe, fût-elle annulée, l'activité est
- * seulement retirée du programme : la trace sert à répondre à « qui est venu ? », et une
- * inscription orpheline ne se rattacherait plus à rien.
+ * Supprime une activité et ses séances.
+ *
+ * Deux gestes, et il faut les distinguer.
+ *
+ * **Sans `force`** : l'activité n'est réellement effacée que si personne ne s'y est jamais
+ * inscrit. Dès qu'une inscription existe, elle est seulement retirée du programme — la
+ * trace sert à répondre à « qui est venu ? ».
+ *
+ * **Avec `force`** : tout part, inscriptions comprises. C'est demandé quand une activité
+ * n'aurait jamais dû exister : la laisser barrée dans le calendrier de quelqu'un serait
+ * pire que de la faire disparaître. L'écran a nommé ce qui allait être effacé avant d'en
+ * arriver là, et le nombre est écrit au journal — c'est tout ce qui restera.
+ *
+ * Réservé à l'administrateur et à la personne qui anime l'activité : une suppression sans
+ * retour n'est pas un geste que l'on confie à tout le monde.
  */
 export const deleteActivity = onCall(async (request: CallableRequest) => {
-  requireStaff(request)
+  const staff = requireStaff(request)
   const activityId = requireString(request.data?.activityId, 'activityId', 200)
+  const force = request.data?.force === true
 
   const reference = db().collection(COLLECTIONS.activities).doc(activityId)
   const snapshot = await reference.get()
   if (!snapshot.exists) throw new HttpsError('not-found', "Cette activité n'existe plus.")
-  const title = (snapshot.data()?.['title'] as string | undefined) ?? activityId
+  const donnees = snapshot.data() ?? {}
+  const title = (donnees['title'] as string | undefined) ?? activityId
+  const anime = (donnees['facilitatorId'] as string | undefined) ?? ''
+  if (staff.role !== 'admin' && (anime === '' || anime !== staff.practitionerId)) {
+    throw new HttpsError(
+      'permission-denied',
+      "Seul un administrateur, ou la personne qui anime cette activité, peut la supprimer.",
+    )
+  }
 
   const occurrences = await db()
     .collection(COLLECTIONS.occurrences)
@@ -506,35 +531,91 @@ export const deleteActivity = onCall(async (request: CallableRequest) => {
     .get()
 
   // `in` accepte trente valeurs : on interroge par paquets plutôt que de faire confiance
-  // aux compteurs dénormalisés, qui retombent à zéro après une annulation.
-  let registrations = 0
+  // aux compteurs dénormalisés, qui retombent à zéro après une annulation. Sans `force`,
+  // une seule inscription suffit à trancher : on s'arrête là. Avec, il faut toutes les
+  // retrouver pour les effacer.
+  const inscriptions: FirebaseFirestore.QueryDocumentSnapshot[] = []
   const identifiants = occurrences.docs.map((d) => d.id)
-  for (let i = 0; i < identifiants.length && registrations === 0; i += 30) {
+  for (let i = 0; i < identifiants.length; i += 30) {
+    if (!force && inscriptions.length > 0) break
     const paquet = identifiants.slice(i, i + 30)
     const trouvees = await db()
       .collection(COLLECTIONS.registrations)
       .where('occurrenceId', 'in', paquet)
-      .limit(50)
       .get()
-    registrations += trouvees.size
+    inscriptions.push(...trouvees.docs)
   }
+  const registrations = inscriptions.length
+  const usage = { registrations, sessions: occurrences.size }
 
-  const plan = planActivityRemoval(title, { registrations, sessions: occurrences.size })
+  const plan = force ? planForcedRemoval(title, usage) : planActivityRemoval(title, usage)
 
   if (plan.action === 'deleted') {
-    // Les séances d'abord : le déclencheur sur l'activité les régénérerait sinon.
-    for (let i = 0; i < occurrences.docs.length; i += 400) {
-      const batch = db().batch()
-      for (const document of occurrences.docs.slice(i, i + 400)) batch.delete(document.ref)
-      await batch.commit()
-    }
+    // Les inscriptions d'abord, puis les séances : le déclencheur posé sur l'activité
+    // régénérerait les secondes si l'activité partait avant elles.
+    await supprimerParPaquets(force ? inscriptions.map((d) => d.ref) : [])
+    await supprimerParPaquets(occurrences.docs.map((d) => d.ref))
     await reference.delete()
   } else {
     await reference.set({ isActive: false }, { merge: true })
   }
 
-  logger.info('Activité retirée', { activityId, action: plan.action, registrations, sessions: occurrences.size })
+  logger.info('Activité retirée', { activityId, action: plan.action, force, ...usage })
   return plan
+})
+
+/** Firestore refuse au-delà de 500 opérations par lot : on découpe. */
+async function supprimerParPaquets(references: FirebaseFirestore.DocumentReference[]): Promise<void> {
+  for (let i = 0; i < references.length; i += 400) {
+    const batch = db().batch()
+    for (const reference of references.slice(i, i + 400)) batch.delete(reference)
+    await batch.commit()
+  }
+}
+
+/**
+ * Supprime une séance et ses inscriptions — celle-là seule, les autres semaines restent.
+ *
+ * À ne pas confondre avec l'annulation, qui est le geste courant : une séance annulée
+ * reste visible, barrée, avec son motif, et la personne inscrite comprend pourquoi elle
+ * ne vient pas. Supprimer, c'est pour ce qui n'aurait jamais dû être créé — il ne reste
+ * alors rien à expliquer, et une ligne barrée dans un calendrier serait un mystère.
+ *
+ * L'activité, elle, n'est pas touchée : c'est une exception de plus dans sa série.
+ */
+export const deleteOccurrence = onCall(async (request: CallableRequest) => {
+  const staff = requireStaff(request)
+  const occurrenceId = requireString(request.data?.occurrenceId, 'occurrenceId', 200)
+
+  const reference = db().collection(COLLECTIONS.occurrences).doc(occurrenceId)
+  const snapshot = await reference.get()
+  if (!snapshot.exists) throw new HttpsError('not-found', "Cette séance n'existe plus.")
+  const donnees = snapshot.data() ?? {}
+  const anime = (donnees['facilitatorId'] as string | undefined) ?? ''
+  if (staff.role !== 'admin' && (anime === '' || anime !== staff.practitionerId)) {
+    throw new HttpsError(
+      'permission-denied',
+      "Seul un administrateur, ou la personne qui anime cette activité, peut supprimer une séance.",
+    )
+  }
+
+  const inscriptions = await db()
+    .collection(COLLECTIONS.registrations)
+    .where('occurrenceId', '==', occurrenceId)
+    .get()
+
+  await supprimerParPaquets(inscriptions.docs.map((d) => d.ref))
+  await reference.delete()
+
+  logger.info('Séance supprimée', { occurrenceId, registrations: inscriptions.size })
+  const titre = (donnees['title'] as string | undefined) ?? 'Cette séance'
+  const combien =
+    inscriptions.size === 0
+      ? "Personne n'y était inscrit."
+      : inscriptions.size === 1
+        ? 'Une inscription a été effacée.'
+        : `${inscriptions.size} inscriptions ont été effacées.`
+  return { ok: true, message: `La séance de « ${titre} » est supprimée. ${combien}` }
 })
 
 // ---------------------------------------------------------------------------

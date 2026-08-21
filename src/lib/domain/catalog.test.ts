@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { planActivityRemoval, planRemoval, proposed, totalUsage } from './catalog'
+import {
+  deletionWarning,
+  planActivityRemoval,
+  planForcedRemoval,
+  planRemoval,
+  proposed,
+  totalUsage,
+} from './catalog'
 
 const RIEN = { activities: 0, occurrences: 0, patients: 0, appointments: 0 }
 
@@ -87,5 +94,36 @@ describe('retrait d’un intervenant', () => {
   it('ne met pas « rendez-vous » au pluriel : le mot est invariable', () => {
     const plan = planRemoval('practitioner', 'Claire', { ...RIEN, appointments: 1 })
     expect(plan.message).toContain('1 rendez-vous')
+  })
+})
+
+describe('la suppression définitive d’une activité', () => {
+  it('ne prévient de rien quand personne n’était inscrit', () => {
+    expect(deletionWarning('Yoga', { registrations: 0, sessions: 4 })).toBeNull()
+  })
+
+  it('nomme ce qui va disparaître, et qu’il n’y a pas de retour', () => {
+    const message = deletionWarning('Yoga', { registrations: 6, sessions: 4 })
+    expect(message).toContain('6 inscriptions')
+    expect(message).toContain('4 séances')
+    expect(message).toContain('sans retour en arrière')
+  })
+
+  it('rappelle qu’annuler avec un motif prévient, alors que supprimer efface', () => {
+    const message = deletionWarning('Yoga', { registrations: 1, sessions: 1 })
+    expect(message).toContain('1 inscription')
+    expect(message).toContain('motif')
+  })
+
+  it('rend compte de ce qui a été effacé, une fois la suppression faite', () => {
+    const plan = planForcedRemoval('Yoga', { registrations: 6, sessions: 4 })
+    expect(plan.action).toBe('deleted')
+    expect(plan.message).toContain('6 inscriptions ont été effacées')
+  })
+
+  it('dit aussi quand il n’y avait personne', () => {
+    expect(planForcedRemoval('Yoga', { registrations: 0, sessions: 2 }).message).toContain(
+      'Personne n’y était inscrit',
+    )
   })
 })

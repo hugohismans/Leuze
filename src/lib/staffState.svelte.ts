@@ -14,7 +14,7 @@ import type {
 import { describeGeneration } from './data/generation'
 import type { Account } from './domain/impersonation'
 import type { PatientPlanning } from './data/staffPorts'
-import type { CatalogKind } from './domain/catalog'
+import type { CatalogKind, CatalogRemoval } from './domain/catalog'
 import { store } from './appState.svelte'
 import { todayLocalDate, weekDays } from './domain/time'
 import { enClair } from './erreurs'
@@ -351,10 +351,28 @@ class StaffStore {
    * qui vient de se passer.
    */
   /** Supprime l'activité, ou la retire du programme si quelqu'un s'y est déjà inscrit. */
-  async removeActivity(activityId: string): Promise<void> {
-    const plan = await (await this.app$()).repository.deleteActivity(activityId)
+  /**
+   * `force` supprime tout, inscriptions comprises et sans retour : réservé à ce qui
+   * n'aurait jamais dû exister. Sans lui, le serveur retire seulement du programme dès
+   * qu'une inscription existe.
+   */
+  async removeActivity(
+    activityId: string,
+    options: { force?: boolean } = {},
+  ): Promise<CatalogRemoval> {
+    const plan = await (await this.app$()).repository.deleteActivity(activityId, options)
     await this.refresh()
     this.message = plan.message
+    // Rendu à l'écran : c'est lui qui décide s'il propose d'aller plus loin.
+    return plan
+  }
+
+  /** Supprime une séance et ses inscriptions. L'activité et les autres semaines restent. */
+  async removeOccurrence(occurrenceId: string): Promise<string> {
+    const resultat = await (await this.app$()).repository.deleteOccurrence(occurrenceId)
+    await this.refresh()
+    this.message = resultat.message
+    return resultat.message
   }
 
   async removeCatalogEntry(kind: CatalogKind, id: string): Promise<string[]> {

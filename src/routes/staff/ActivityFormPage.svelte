@@ -282,6 +282,25 @@
       : staffStore.roster.filter((ligne) => ligne.status === 'waitlist'),
   )
 
+  /**
+   * Supprimer la séance, à ne pas confondre avec l'annuler.
+   *
+   * Annuler laisse la séance visible, barrée, avec son motif : la personne inscrite
+   * comprend pourquoi elle ne vient pas. Supprimer efface tout — c'est pour ce qui
+   * n'aurait jamais dû être créé, quand il ne reste rien à expliquer et qu'une ligne
+   * barrée dans un calendrier serait un mystère de plus.
+   */
+  let aSupprimerLaSeance = $state(false)
+
+  async function supprimerLaSeance(): Promise<void> {
+    if (seance === null || retirant !== null) return
+    retirant = 'seance'
+    await staffStore.removeOccurrence(seance.id)
+    retirant = null
+    aSupprimerLaSeance = false
+    navigate(retour)
+  }
+
   async function desinscrire(patientUid: string): Promise<void> {
     if (seance === null || retirant !== null) return
     retirant = patientUid
@@ -312,11 +331,54 @@
         {formatLongDayLabel(seance.localDate)} · {formatTimeRange(seance.start, seance.end)}
         — {staffCapacityLabel(seance)}
       </p>
-      <CancelButton occurrence={seance} />
+      <div class="flex flex-wrap items-center gap-2">
+        <CancelButton occurrence={seance} />
+        {#if refusDeModifier === null && !aSupprimerLaSeance}
+          <button type="button" class="btn btn-secondary" onclick={() => (aSupprimerLaSeance = true)}>
+            Supprimer cette séance
+          </button>
+        {/if}
+      </div>
       <p class="mt-3 text-base text-ink-soft">
         Annuler cette séance ne change rien aux autres semaines. Les personnes inscrites
         la voient barrée, avec le motif.
       </p>
+
+      {#if aSupprimerLaSeance}
+        <div role="alert" class="mt-3 rounded-xl border-4 border-red-600 bg-red-50 p-4">
+          <h3 class="text-xl font-bold text-red-900">
+            <span aria-hidden="true">⚠️</span> Supprimer, ou annuler ?
+          </h3>
+          <p class="mt-2 text-lg text-ink">
+            {inscrits.length + enAttente.length === 0
+              ? 'Cette séance disparaît complètement. Personne n’y est inscrit.'
+              : `Cette séance disparaît complètement, avec ses ${
+                  inscrits.length + enAttente.length
+                } inscriptions, sans retour en arrière possible. Ces personnes ne verront plus rien dans leur calendrier, et sans motif.`}
+          </p>
+          <p class="mt-2 text-lg text-ink">
+            Pour prévenir plutôt qu'effacer, fermez ceci et utilisez « Annuler cette
+            séance » : elle reste visible, barrée, avec la raison.
+          </p>
+          <div class="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              class="btn btn-primary"
+              disabled={retirant !== null}
+              onclick={supprimerLaSeance}
+            >
+              {retirant === 'seance' ? 'Un instant…' : 'Oui, supprimer la séance'}
+            </button>
+            <button
+              type="button"
+              class="btn btn-secondary"
+              onclick={() => (aSupprimerLaSeance = false)}
+            >
+              Annuler
+            </button>
+          </div>
+        </div>
+      {/if}
 
       {#if refusDeModifier === null}
         {#snippet ligneInscrite(ligne: RosterLine, attente: boolean)}

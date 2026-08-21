@@ -28,6 +28,12 @@ export type CatalogRemoval = {
   message: string
   /** Les activités qui l'utilisent encore, par leur titre. Vide après une suppression. */
   activityTitles?: string[]
+  /**
+   * Ce qui a été trouvé, pour qu'un écran puisse proposer d'aller plus loin en sachant ce
+   * qu'il propose. Les inscriptions ne sont pas lisibles côté client : sans ce compte,
+   * l'écran ne pourrait pas nommer ce qu'il s'apprête à effacer.
+   */
+  usage?: { registrations: number; sessions: number }
 }
 
 const NOMS: Record<CatalogKind, { article: string; singulier: string }> = {
@@ -92,6 +98,30 @@ export function proposed<T extends { isActive?: boolean }>(entries: T[]): T[] {
  * à laquelle quelqu'un s'est inscrit, même une seule fois, ne peut plus disparaître —
  * sa trace sert à répondre à « qui est venu ? ».
  */
+/**
+ * Ce qu'on s'apprête à effacer, dit avant de le faire.
+ *
+ * Une suppression définitive n'a pas de retour en arrière : les inscriptions partent avec
+ * l'activité, et la réponse à « qui est venu ? » avec elles. Ce n'est pas une raison de
+ * l'interdire — une activité créée par erreur n'a rien à faire dans le calendrier de
+ * quelqu'un — mais c'en est une de la nommer en toutes lettres.
+ *
+ * `null` quand il n'y a rien à perdre : personne n'était inscrit.
+ */
+export function deletionWarning(
+  title: string,
+  usage: { registrations: number; sessions: number },
+): string | null {
+  if (usage.registrations === 0) return null
+  return (
+    `« ${title} » compte ${compte(usage.registrations, 'inscription', 'inscriptions')} ` +
+    `sur ${compte(usage.sessions, 'séance', 'séances')}. ` +
+    'Les supprimer efface aussi ces inscriptions, sans retour en arrière possible : ' +
+    'les personnes concernées ne verront plus rien dans leur calendrier, et sans motif. ' +
+    "Pour prévenir plutôt qu'effacer, annulez la séance avec un motif."
+  )
+}
+
 export function planActivityRemoval(
   title: string,
   usage: { registrations: number; sessions: number },
@@ -100,14 +130,36 @@ export function planActivityRemoval(
     const seances = usage.sessions > 0 ? `, avec ${compte(usage.sessions, 'séance', 'séances')}` : ''
     return {
       action: 'deleted',
+      usage,
       message: `L'activité « ${title} » est supprimée${seances}. Personne n'y était inscrit.`,
     }
   }
   return {
     action: 'deactivated',
+    usage,
     message:
       `L'activité « ${title} » est retirée du programme. ` +
       `${compte(usage.registrations, 'personne s’y est inscrite', 'personnes s’y sont inscrites')} : ` +
       "rien n'a été effacé.",
+  }
+}
+
+/**
+ * Le compte rendu d'une suppression assumée. Elle est demandée en connaissance de cause :
+ * ce message dit ce qui vient de disparaître, pas ce qui a été épargné.
+ */
+export function planForcedRemoval(
+  title: string,
+  usage: { registrations: number; sessions: number },
+): CatalogRemoval {
+  const seances = usage.sessions > 0 ? `, avec ${compte(usage.sessions, 'séance', 'séances')}` : ''
+  const inscriptions =
+    usage.registrations > 0
+      ? ` ${compte(usage.registrations, 'inscription a été effacée', 'inscriptions ont été effacées')}.`
+      : ' Personne n’y était inscrit.'
+  return {
+    action: 'deleted',
+    usage,
+    message: `L'activité « ${title} » est supprimée${seances}.${inscriptions}`,
   }
 }

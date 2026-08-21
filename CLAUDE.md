@@ -23,8 +23,16 @@ Lire `PLAN.md` avant toute modification d'architecture.
    ni bouton « toutes les séances », ni report automatique d'une semaine sur l'autre.
    Une personne qui ne vient plus doit simplement cesser de s'inscrire, sans avoir à
    défaire quoi que ce soit.
-6. **Ne jamais supprimer physiquement** une activité ou une occurrence portant des inscriptions.
-   `isActive: false` / `status: 'cancelled'` avec motif.
+6. **Annuler est le geste par défaut ; supprimer est un geste demandé.** Une séance qui
+   n'aura pas lieu s'annule avec un motif (`status: 'cancelled'`) : elle reste visible,
+   barrée, et la personne inscrite comprend pourquoi. Une activité qui n'a plus lieu se
+   retire du programme (`isActive: false`).
+   La suppression définitive existe pour ce qui **n'aurait jamais dû être créé** : elle
+   efface l'activité ou la séance **et ses inscriptions**, sans retour. Elle n'est jamais
+   proposée sans avoir nommé ce qui va disparaître, elle passe par une Cloud Function
+   (jamais par le client), et elle est réservée à l'administrateur ou à la personne qui
+   anime l'activité. Décision de l'hôpital, contre ma réserve : une activité créée par
+   erreur, laissée barrée à jamais dans le calendrier de quelqu'un, est pire qu'effacée.
 7. **Le rôle qui fait autorité est le « custom claim »**, pas le document `staff/`.
    Un document Firestore ne décide jamais d'un droit : les règles lisent le jeton.
 8. **Pas de librairie de calendrier générique** (FullCalendar & co). Vues construites à la main

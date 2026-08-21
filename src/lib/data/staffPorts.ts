@@ -106,8 +106,18 @@ export interface StaffRepository {
   /**
    * Supprime une activité et ses séances si personne ne s'y est jamais inscrit ; la
    * retire du programme sinon. C'est le serveur qui tranche, seul à voir les inscriptions.
+   *
+   * `force` supprime tout, inscriptions comprises et sans retour possible : c'est le
+   * geste réservé à ce qui n'aurait jamais dû exister. L'écran l'a demandé en nommant ce
+   * qui allait disparaître.
    */
-  deleteActivity(activityId: string): Promise<CatalogRemoval>
+  deleteActivity(activityId: string, options?: { force?: boolean }): Promise<CatalogRemoval>
+
+  /**
+   * Supprime une séance et ses inscriptions — celle-là seule. À ne pas confondre avec
+   * l'annulation, qui laisse la séance visible et barrée, avec son motif.
+   */
+  deleteOccurrence(occurrenceId: string): Promise<{ ok: boolean; message: string }>
 
   /** Le calendrier du personnel : tout le programme, sans filtre de service. */
   listOccurrences(from: LocalDate, to: LocalDate): Promise<Occurrence[]>
