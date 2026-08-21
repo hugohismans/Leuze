@@ -19,6 +19,7 @@ import {
 } from 'firebase/auth'
 import {
   Timestamp,
+  addDoc,
   collection,
   doc,
   getDoc,
@@ -383,6 +384,37 @@ export function createFirestoreStaffApp(): StaffApp {
         try {
           await updateDoc(doc(db, 'appointments', appointmentId), {
             status: 'scheduled',
+            localDate: rendezVous.date,
+            start: Timestamp.fromDate(start),
+            end: Timestamp.fromDate(addMinutes(start, rendezVous.durationMin)),
+            withWhom: rendezVous.withWhom,
+            ...(rendezVous.locationId ? { locationId: rendezVous.locationId } : {}),
+          })
+          return { ok: true, message: 'Rendez-vous fixé. Le patient le voit dans son calendrier.' }
+        } catch {
+          return { ok: false, message: "Le rendez-vous n'a pas pu être enregistré." }
+        }
+      },
+
+      async createAppointment(rendezVous: {
+        patientUid: string
+        kindId: string
+        date: LocalDate
+        time: LocalTime
+        durationMin: number
+        withWhom: string
+        locationId?: string
+      }) {
+        const start = instantOf(rendezVous.date, rendezVous.time)
+        try {
+          // Créé déjà fixé : il n'y a jamais eu de demande à transformer.
+          await addDoc(collection(db, 'appointments'), {
+            patientUid: rendezVous.patientUid,
+            kindId: rendezVous.kindId,
+            // Le moment souhaité n'a pas de sens ici : le rendez-vous est déjà posé.
+            preference: 'peu-importe',
+            status: 'scheduled',
+            createdAt: Timestamp.now(),
             localDate: rendezVous.date,
             start: Timestamp.fromDate(start),
             end: Timestamp.fromDate(addMinutes(start, rendezVous.durationMin)),

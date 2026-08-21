@@ -181,6 +181,30 @@ service cloud.firestore {
         && !('start' in data) && !('withWhom' in data) && !('localDate' in data);
     }
 
+    /**
+     * Un soignant fixe un rendez-vous sans demande préalable.
+     *
+     * Beaucoup de patients ne se serviront jamais de l'application : ils demandent leur
+     * rendez-vous de vive voix. Le refuser reviendrait à réserver l'agenda à ceux qui ont
+     * un téléphone. Le rendez-vous est donc créé déjà fixé, par le personnel.
+     *
+     * `hasOnly` ferme la porte à tout champ imprévu : c'est ce qui empêche qu'un texte
+     * libre — donc du contenu clinique — s'installe un jour ici.
+     */
+    function validStaffAppointment(data) {
+      return data.keys().hasOnly([
+          'patientUid', 'kindId', 'preference', 'status',
+          'createdAt', 'start', 'end', 'localDate', 'withWhom', 'locationId'
+        ])
+        && data.patientUid is string && data.patientUid.size() > 0
+        && data.kindId is string && data.kindId.size() > 0
+        && data.preference in ['matin', 'apres-midi', 'peu-importe']
+        && data.status == 'scheduled'
+        && data.withWhom is string && data.withWhom.size() > 0
+        && data.localDate is string && data.localDate.size() == 10
+        && data.start is timestamp && data.end is timestamp;
+    }
+
     // Le patient peut retirer sa demande tant qu'elle n'est pas fixée. Il ne peut
     // pas la transformer en autre chose : ni changer de patient, ni la programmer.
     function patientWithdrawal() {
@@ -196,7 +220,8 @@ service cloud.firestore {
     match /appointments/{appointmentId} {
       allow get, list: if isStaff()
         || (isPatient() && resource.data.patientUid == request.auth.uid);
-      allow create: if isPatient() && validAppointmentRequest(request.resource.data);
+      allow create: if (isPatient() && validAppointmentRequest(request.resource.data))
+        || (isStaff() && validStaffAppointment(request.resource.data));
       allow update: if isStaff()
         || (isPatient() && patientWithdrawal());
       // Un rendez-vous ne se supprime pas : il s'annule, avec un motif.

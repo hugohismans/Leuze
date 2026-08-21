@@ -40,6 +40,64 @@
 
   const patient = (uid: string) => staffStore.patients.find((p) => p.uid === uid)
 
+  /**
+   * Fixer un rendez-vous sans demande préalable.
+   *
+   * Beaucoup de patients ne se serviront jamais de l'application : ils en parlent à un
+   * soignant, qui note. Ne pas le permettre reviendrait à réserver l'agenda à ceux qui
+   * ont un téléphone — exactement l'inverse de ce que cette application doit faire.
+   */
+  let formulaireOuvert = $state(false)
+  let quiUid = $state('')
+  let quelKind = $state('')
+  let dateDirecte = $state<LocalDate>(todayLocalDate())
+  let heureDirecte = $state<LocalTime>('10:00')
+  let dureeDirecte = $state(30)
+  let avecQuiDirecte = $state('')
+  let lieuDirecte = $state('')
+
+  // Les personnes sont groupées par service : c'est ainsi qu'un soignant les cherche.
+  const patientsParService = $derived(
+    proposed(store.services)
+      .map((service) => ({
+        service,
+        patients: staffStore.patients
+          .filter((p) => p.serviceId === service.id)
+          .sort((a, b) => a.firstName.localeCompare(b.firstName, 'fr')),
+      }))
+      .filter((groupe) => groupe.patients.length > 0),
+  )
+
+  $effect(() => {
+    if (quelKind === '' && kinds.length > 0) quelKind = kinds[0]!.id
+  })
+
+  // Le professionnel est pré-rempli par son rôle ; le soignant met un prénom s'il veut.
+  $effect(() => {
+    const choisi = kinds.find((k) => k.id === quelKind)
+    if (choisi !== undefined && avecQuiDirecte === '') avecQuiDirecte = choisi.name
+  })
+
+  async function fixerDirectement(): Promise<void> {
+    if (busy || quiUid === '' || quelKind === '' || avecQuiDirecte.trim().length === 0) return
+    busy = true
+    const ok = await staffStore.createAppointment({
+      patientUid: quiUid,
+      kindId: quelKind,
+      date: dateDirecte,
+      time: heureDirecte,
+      durationMin: dureeDirecte,
+      withWhom: avecQuiDirecte.trim(),
+      ...(lieuDirecte ? { locationId: lieuDirecte } : {}),
+    })
+    if (ok) {
+      formulaireOuvert = false
+      quiUid = ''
+      lieuDirecte = ''
+    }
+    busy = false
+  }
+
   function ouvrir(appointmentId: string, kindId: string): void {
     ouvert = appointmentId
     date = todayLocalDate()
@@ -78,6 +136,94 @@
     <p role="status" class="mb-4 rounded-xl bg-brand-100 p-3 text-lg font-semibold text-brand-900">
       {staffStore.message}
     </p>
+  {/if}
+
+  <!--
+    Avant la file : c'est le geste le plus courant. La plupart des rendez-vous seront
+    demandés de vive voix, pas par l'application.
+  -->
+  {#if !formulaireOuvert}
+    <button type="button" class="btn btn-primary mb-6" onclick={() => (formulaireOuvert = true)}>
+      <span aria-hidden="true">＋</span> Fixer un rendez-vous
+    </button>
+  {:else}
+    <form
+      class="card mb-6 p-4"
+      onsubmit={(event) => {
+        event.preventDefault()
+        void fixerDirectement()
+      }}
+    >
+      <h2 class="mb-1 text-2xl font-bold text-ink">Fixer un rendez-vous</h2>
+      <p class="mb-3 text-lg text-ink-soft">
+        Pour une personne qui vous l'a demandé de vive voix. Elle n'a rien à faire dans
+        l'application : le rendez-vous apparaîtra dans son calendrier.
+      </p>
+
+      <label for="qui" class="mb-2 block text-lg font-semibold text-ink">Pour qui</label>
+      <select id="qui" bind:value={quiUid} class={champ} style="min-height: 56px;">
+        <option value="">Choisissez une personne</option>
+        {#each patientsParService as groupe (groupe.service.id)}
+          <optgroup label={groupe.service.name}>
+            {#each groupe.patients as personne (personne.uid)}
+              <option value={personne.uid}>{personne.firstName}</option>
+            {/each}
+          </optgroup>
+        {/each}
+      </select>
+
+      <label for="motif" class="mt-4 mb-2 block text-lg font-semibold text-ink">Avec quel professionnel</label>
+      <select id="motif" bind:value={quelKind} class={champ} style="min-height: 56px;">
+        {#each kinds as genre (genre.id)}
+          <option value={genre.id}>{genre.icon} {genre.name}</option>
+        {/each}
+      </select>
+
+      <div class="mt-4 grid gap-4 sm:grid-cols-3">
+        <div>
+          <label for="jour" class="mb-2 block text-lg font-semibold text-ink">Le jour</label>
+          <input id="jour" type="date" bind:value={dateDirecte} class={champ} style="min-height: 56px;" />
+        </div>
+        <div>
+          <label for="quand" class="mb-2 block text-lg font-semibold text-ink">À quelle heure</label>
+          <input id="quand" type="time" bind:value={heureDirecte} class={champ} style="min-height: 56px;" />
+        </div>
+        <div>
+          <label for="combien" class="mb-2 block text-lg font-semibold text-ink">Combien de temps</label>
+          <select id="combien" bind:value={dureeDirecte} class={champ} style="min-height: 56px;">
+            {#each DUREES as minutes (minutes)}
+              <option value={minutes}>{minutes} minutes</option>
+            {/each}
+          </select>
+        </div>
+      </div>
+
+      <label for="nom" class="mt-4 mb-2 block text-lg font-semibold text-ink">
+        Nom du professionnel — le patient le lira
+      </label>
+      <input id="nom" bind:value={avecQuiDirecte} class={champ} style="min-height: 56px;" />
+
+      <label for="ou" class="mt-4 mb-2 block text-lg font-semibold text-ink">Où — facultatif</label>
+      <select id="ou" bind:value={lieuDirecte} class={champ} style="min-height: 56px;">
+        <option value="">Non précisé</option>
+        {#each proposed(store.locations) as endroit (endroit.id)}
+          <option value={endroit.id}>{endroit.name}</option>
+        {/each}
+      </select>
+
+      <div class="mt-4 flex flex-wrap gap-2">
+        <button
+          type="submit"
+          class="btn btn-primary"
+          disabled={busy || quiUid === '' || avecQuiDirecte.trim().length === 0}
+        >
+          {busy ? 'Un instant…' : 'Enregistrer ce rendez-vous'}
+        </button>
+        <button type="button" class="btn btn-secondary" onclick={() => (formulaireOuvert = false)}>
+          Annuler
+        </button>
+      </div>
+    </form>
   {/if}
 
   <h2 class="mb-3 text-2xl font-bold text-ink">

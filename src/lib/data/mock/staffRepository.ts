@@ -298,6 +298,35 @@ export function createMockStaffApp(): StaffApp {
         return { ok: true, message: 'Rendez-vous fixé. Le patient le voit dans son calendrier.' }
       },
 
+      async createAppointment(rendezVous: {
+        patientUid: string
+        kindId: string
+        date: LocalDate
+        time: LocalTime
+        durationMin: number
+        withWhom: string
+        locationId?: string
+      }) {
+        const start = instantOf(rendezVous.date, rendezVous.time)
+        world.appointments = [
+          ...world.appointments,
+          {
+            id: `rdv-${rendezVous.patientUid}-${start.getTime()}`,
+            patientUid: rendezVous.patientUid,
+            kindId: rendezVous.kindId,
+            preference: 'peu-importe',
+            status: 'scheduled',
+            createdAt: new Date(),
+            localDate: rendezVous.date,
+            start,
+            end: addMinutes(start, rendezVous.durationMin),
+            withWhom: rendezVous.withWhom,
+            ...(rendezVous.locationId ? { locationId: rendezVous.locationId } : {}),
+          },
+        ]
+        return { ok: true, message: 'Rendez-vous fixé. Le patient le voit dans son calendrier.' }
+      },
+
       async cancelAppointment(appointmentId: string, reason: string) {
         world.appointments = world.appointments.map((a) =>
           a.id === appointmentId ? { ...a, status: 'cancelled' as const, cancellationReason: reason } : a,

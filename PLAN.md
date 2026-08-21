@@ -168,6 +168,20 @@ suffisent. **Cette fonctionnalité marche donc sur le plan gratuit**, contrairem
 inscriptions. Un rendez-vous n'apparaît que dans « Mes inscriptions » du patient concerné,
 jamais dans le calendrier commun ni sur la feuille imprimée.
 
+### 4.0 quinquies Un rendez-vous se fixe aussi sans demande
+
+Le parcours prévu — le patient demande, le soignant fixe — supposait que le patient se
+serve de l'application. Beaucoup ne le feront jamais : ils demandent de vive voix.
+
+Un soignant peut donc créer un rendez-vous **déjà fixé**, sans demande préalable, depuis
+l'onglet « Rendez-vous ». C'est même le geste le plus courant : le formulaire est placé
+avant la file d'attente.
+
+Les règles Firestore l'autorisent par `validStaffAppointment`, qui impose la même
+discipline que pour une demande : un `hasOnly` sur la liste exacte des champs. C'est ce
+qui tient le texte libre à distance — sans lui, un champ « motif » finirait par apparaître,
+et avec lui du contenu clinique, que ce projet s'interdit.
+
 ### 4.0 quater « Ma semaine » : la feuille que le patient garde
 
 Le patient s'inscrit le lundi, puis oublie. Il lui faut donc un endroit unique qui réunit

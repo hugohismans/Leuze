@@ -146,3 +146,58 @@ describe('fixer et retirer', () => {
     await assertFails(deleteDoc(doc(asAdmin(env), 'appointments', 'rdv-camille')))
   })
 })
+
+/**
+ * Beaucoup de patients ne se serviront jamais de l'application : ils demandent leur
+ * rendez-vous de vive voix. Le soignant doit pouvoir le fixer directement, sans demande
+ * préalable — sans quoi l'agenda serait réservé à ceux qui ont un téléphone.
+ */
+describe('fixer un rendez-vous sans demande', () => {
+  const fixe = (overrides: Record<string, unknown> = {}) => ({
+    patientUid: 'p_camille',
+    kindId: 'psychiatre',
+    preference: 'peu-importe',
+    status: 'scheduled',
+    createdAt: new Date('2026-08-21T09:00:00Z'),
+    start: new Date('2026-08-25T12:00:00Z'),
+    end: new Date('2026-08-25T12:30:00Z'),
+    localDate: '2026-08-25',
+    withWhom: 'Docteur Lemaire',
+    ...overrides,
+  })
+
+  it('laisse le soignant le créer déjà fixé', async () => {
+    await assertSucceeds(setDoc(doc(asStaff(env), 'appointments', 'rdv-direct'), fixe()))
+  })
+
+  it('accepte un lieu', async () => {
+    await assertSucceeds(
+      setDoc(doc(asStaff(env), 'appointments', 'rdv-lieu'), fixe({ locationId: 'salon-daccueil' })),
+    )
+  })
+
+  it('refuse un rendez-vous sans date', async () => {
+    const sansDate = fixe()
+    delete (sansDate as Record<string, unknown>).start
+    await assertFails(setDoc(doc(asStaff(env), 'appointments', 'rdv-flou'), sansDate))
+  })
+
+  it('refuse un rendez-vous sans professionnel nommé', async () => {
+    await assertFails(setDoc(doc(asStaff(env), 'appointments', 'rdv-anonyme'), fixe({ withWhom: '' })))
+  })
+
+  it('refuse tout champ imprévu — c’est ce qui tient le texte libre à distance', async () => {
+    await assertFails(
+      setDoc(doc(asStaff(env), 'appointments', 'rdv-note'), fixe({ motif: 'angoisses' })),
+    )
+  })
+
+  it('refuse à un patient de s’en créer un déjà fixé', async () => {
+    const database = asPatient(env, 'p_camille', MAZUREL)
+    await assertFails(setDoc(doc(database, 'appointments', 'rdv-triche-2'), fixe()))
+  })
+
+  it('refuse à un visiteur d’en créer un', async () => {
+    await assertFails(setDoc(doc(asVisitor(env), 'appointments', 'rdv-inconnu'), fixe()))
+  })
+})

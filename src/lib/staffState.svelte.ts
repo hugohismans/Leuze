@@ -134,6 +134,22 @@ class StaffStore {
     return resultat.message
   }
 
+  /** Un rendez-vous fixé d'emblée, pour qui n'a pas fait la demande dans l'application. */
+  async createAppointment(rendezVous: {
+    patientUid: string
+    kindId: string
+    date: LocalDate
+    time: LocalTime
+    durationMin: number
+    withWhom: string
+    locationId?: string
+  }): Promise<boolean> {
+    const resultat = await (await this.app$()).repository.createAppointment(rendezVous)
+    await this.loadAppointments()
+    this.message = resultat.message
+    return resultat.ok
+  }
+
   async cancelAppointment(appointmentId: string, reason: string): Promise<void> {
     const resultat = await (await this.app$()).repository.cancelAppointment(appointmentId, reason)
     await this.loadAppointments()

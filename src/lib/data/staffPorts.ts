@@ -162,6 +162,20 @@ export interface StaffRepository {
     rendezVous: { date: LocalDate; time: LocalTime; durationMin: number; withWhom: string; locationId?: string },
   ): Promise<{ ok: boolean; message: string }>
 
+  /**
+   * Un rendez-vous fixé d'emblée, sans demande préalable. Beaucoup de patients ne se
+   * serviront jamais de l'application : ils demandent de vive voix, et le soignant note.
+   */
+  createAppointment(rendezVous: {
+    patientUid: string
+    kindId: string
+    date: LocalDate
+    time: LocalTime
+    durationMin: number
+    withWhom: string
+    locationId?: string
+  }): Promise<{ ok: boolean; message: string }>
+
   cancelAppointment(appointmentId: string, reason: string): Promise<{ ok: boolean; message: string }>
 }
 
