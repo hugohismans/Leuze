@@ -22,13 +22,17 @@ bleu "1/6  Installation des dépendances"
 npm ci
 npm --prefix functions ci
 
-bleu "2/6  Vérification de l'accès à Firebase"
+bleu "2/6  Accès à Firebase"
 if ! npx firebase projects:list >/dev/null 2>&1; then
-  rouge "Vous n'êtes pas connecté à Firebase."
-  echo "Depuis ce dossier, lancez :  npx firebase login --no-localhost"
-  echo "puis relancez ce script."
-  exit 1
+  # Connexion menée ici plutôt que renvoyée à l'utilisateur : sur un téléphone,
+  # chaque commande à retaper est une occasion de se tromper.
+  echo "Connexion nécessaire. Ouvrez l'adresse affichée, puis recopiez le code ici."
+  npx firebase login --no-localhost
 fi
+npx firebase projects:list >/dev/null 2>&1 || {
+  rouge "La connexion n'a pas abouti. Relancez le script."
+  exit 1
+}
 vert "Connecté. Projet visé : $PROJET"
 
 bleu "3/6  Règles de sécurité et index"

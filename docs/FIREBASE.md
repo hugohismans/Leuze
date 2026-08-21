@@ -259,6 +259,16 @@ Tout ce qui suit demande un terminal. Il n'en faut pas un sur soi : **Google Clo
 en fournit un dans le navigateur, déjà connecté au compte Google, y compris sur un
 téléphone.
 
+**Le plus simple : le bouton « Ouvrir dans Cloud Shell » du README.** Il ouvre le terminal,
+clone le dépôt et lance `scripts/deploy.sh` — rien à taper, rien à coller. Coller du texte
+dans le terminal de Cloud Shell ne fonctionne pas sur iPhone : mieux vaut ne rien avoir à
+coller.
+
+Si le bouton n'enchaîne pas jusqu'au script, le dépôt est déjà cloné : il ne reste que
+`bash scripts/deploy.sh` à taper.
+
+À la main, sinon :
+
 1. Ouvrir **shell.cloud.google.com** et se connecter avec le compte propriétaire du projet.
 2. Récupérer le dépôt et installer les dépendances :
 

@@ -1,5 +1,10 @@
 # Les activités — Hôpital psychiatrique Saint-Jean-de-Dieu, Leuze-en-Hainaut
 
+[![Ouvrir dans Cloud Shell](https://gstatic.com/cloudssh/images/open-btn.svg)](https://console.cloud.google.com/cloudshell/open?cloudshell_git_repo=https%3A%2F%2Fgithub.com%2Fhugohismans%2FLeuze&cloudshell_git_branch=main&cloudshell_working_dir=.&cloudshell_command=bash%20scripts%2Fdeploy.sh)
+
+Ce bouton ouvre un terminal dans le navigateur — y compris depuis un téléphone —, clone le
+dépôt et lance la mise en service. Voir `docs/FIREBASE.md` §6.
+
 Application web du programme des activités thérapeutiques : le patient consulte le calendrier,
 voit **où** chaque activité a lieu et s'inscrit quand les places sont limitées. Le personnel
 soignant crée et annule les activités, et voit les inscrits.
