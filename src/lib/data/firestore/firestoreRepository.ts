@@ -10,19 +10,39 @@
 import { signInWithCustomToken, onAuthStateChanged, signOut, type User } from 'firebase/auth'
 import {
   Timestamp,
-  addDoc,
+  addDoc as addDocSansLimite,
   collection,
   doc,
-  getDoc,
-  getDocs,
+  getDoc as getDocSansLimite,
+  getDocs as getDocsSansLimite,
   orderBy,
   query,
-  updateDoc,
+  updateDoc as updateDocSansLimite,
   where,
   type DocumentSnapshot,
   type QueryDocumentSnapshot,
 } from 'firebase/firestore'
-import { httpsCallable } from 'firebase/functions'
+import { httpsCallable as httpsCallableSansLimite } from 'firebase/functions'
+import { ecrire, lire } from './reseau'
+
+/*
+  Firebase ne renonce jamais de lui-même : une lecture lancée au moment où le téléphone
+  change de réseau attend indéfiniment, sans erreur. On redéfinit donc ici les quelques
+  fonctions qui traversent le réseau, chacune bornée dans le temps. Le reste du fichier
+  les utilise sans le savoir — c'est le seul moyen de ne pas en oublier une.
+*/
+const getDocs: typeof getDocsSansLimite = ((...args: Parameters<typeof getDocsSansLimite>) =>
+  lire(getDocsSansLimite(...args))) as typeof getDocsSansLimite
+const getDoc: typeof getDocSansLimite = ((...args: Parameters<typeof getDocSansLimite>) =>
+  lire(getDocSansLimite(...args))) as typeof getDocSansLimite
+const addDoc: typeof addDocSansLimite = ((...args: Parameters<typeof addDocSansLimite>) =>
+  ecrire(addDocSansLimite(...args))) as typeof addDocSansLimite
+const updateDoc: typeof updateDocSansLimite = ((...args: Parameters<typeof updateDocSansLimite>) =>
+  ecrire(updateDocSansLimite(...args))) as typeof updateDocSansLimite
+const httpsCallable: typeof httpsCallableSansLimite = ((...args: Parameters<typeof httpsCallableSansLimite>) => {
+  const appel = httpsCallableSansLimite(...args)
+  return ((donnees?: unknown) => ecrire(appel(donnees))) as ReturnType<typeof httpsCallableSansLimite>
+}) as typeof httpsCallableSansLimite
 import { audienceQueryKeys } from '../../domain/audience'
 import { enClair } from '../../erreurs'
 import { patientIdentityOf } from '../../domain/session'
@@ -103,10 +123,11 @@ export function createFirestoreRepository(): AppRepository {
 
   /**
    * Filet de sécurité : si Firebase ne rend jamais la main — réseau coupé au démarrage,
-   * service injoignable — on repart au bout de dix secondes comme si personne n'était
-   * connecté. Mieux vaut redemander le code qu'un écran qui ne bouge plus.
+   * service injoignable — on repart au bout de six secondes comme si personne n'était
+   * connecté. Mieux vaut redemander le code qu'un écran qui ne bouge plus, et six
+   * secondes à regarder « Un instant… » sont déjà très longues sur un téléphone.
    */
-  setTimeout(() => notifySessionReady(), 10_000)
+  setTimeout(() => notifySessionReady(), 6_000)
 
   /**
    * Les positions en liste d'attente exigent de lire les inscriptions des autres :

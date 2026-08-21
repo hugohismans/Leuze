@@ -467,6 +467,20 @@ class StaffStore {
   }
 
   /**
+   * Donne ou retire les droits d'administrateur. La personne devra se reconnecter :
+   * c'est le jeton qui porte le rôle, et il ne se réécrit pas à distance.
+   */
+  async setStaffRole(
+    uid: string,
+    role: 'staff' | 'admin',
+    options: { practitionerId?: string; firstName?: string } = {},
+  ): Promise<boolean> {
+    const resultat = await (await this.app$()).catalogAdmin.setStaffRole(uid, role, options)
+    this.message = resultat.message
+    return resultat.ok
+  }
+
+  /**
    * L'acceptation automatique des demandes de rendez-vous. Chacun décide pour lui ;
    * l'administrateur peut le faire pour n'importe qui, comme pour les plages.
    */

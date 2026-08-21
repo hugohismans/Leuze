@@ -20,21 +20,42 @@ import {
 } from 'firebase/auth'
 import {
   Timestamp,
-  addDoc,
+  addDoc as addDocSansLimite,
   collection,
   doc,
-  getDoc,
-  getDocs,
+  getDoc as getDocSansLimite,
+  getDocs as getDocsSansLimite,
   orderBy,
   query,
-  setDoc,
-  updateDoc,
+  setDoc as setDocSansLimite,
+  updateDoc as updateDocSansLimite,
   where,
   writeBatch,
   type DocumentSnapshot,
   type QueryDocumentSnapshot,
 } from 'firebase/firestore'
-import { httpsCallable } from 'firebase/functions'
+import { httpsCallable as httpsCallableSansLimite } from 'firebase/functions'
+import { ecrire, lire } from './reseau'
+
+/*
+  Comme du côté patient : Firebase n'abandonne jamais, alors on borne. Redéfinir les
+  fonctions plutôt que d'entourer chaque appel évite d'en oublier un — et il y en a une
+  trentaine dans ce fichier.
+*/
+const getDocs: typeof getDocsSansLimite = ((...args: Parameters<typeof getDocsSansLimite>) =>
+  lire(getDocsSansLimite(...args))) as typeof getDocsSansLimite
+const getDoc: typeof getDocSansLimite = ((...args: Parameters<typeof getDocSansLimite>) =>
+  lire(getDocSansLimite(...args))) as typeof getDocSansLimite
+const addDoc: typeof addDocSansLimite = ((...args: Parameters<typeof addDocSansLimite>) =>
+  ecrire(addDocSansLimite(...args))) as typeof addDocSansLimite
+const setDoc: typeof setDocSansLimite = ((...args: Parameters<typeof setDocSansLimite>) =>
+  ecrire(setDocSansLimite(...args))) as typeof setDocSansLimite
+const updateDoc: typeof updateDocSansLimite = ((...args: Parameters<typeof updateDocSansLimite>) =>
+  ecrire(updateDocSansLimite(...args))) as typeof updateDocSansLimite
+const httpsCallable: typeof httpsCallableSansLimite = ((...args: Parameters<typeof httpsCallableSansLimite>) => {
+  const appel = httpsCallableSansLimite(...args)
+  return ((donnees?: unknown) => ecrire(appel(donnees))) as ReturnType<typeof httpsCallableSansLimite>
+}) as typeof httpsCallableSansLimite
 import type { CatalogRemoval } from '../../domain/catalog'
 import { friendlyError } from '../../domain/errors'
 import type { Account } from '../../domain/impersonation'
@@ -649,6 +670,25 @@ export function createFirestoreStaffApp(): StaffApp {
         // l'intéressé. Une écriture plus large serait refusée, et à juste titre.
         await updateDoc(doc(db, 'practitioners', practitionerId), { availability: windows })
       },
+      async setStaffRole(uid, role, options = {}) {
+        try {
+          const call = httpsCallable<
+            { uid: string; role: string; practitionerId?: string; firstName?: string },
+            { uid: string; role: string }
+          >(functions, 'setStaffRole')
+          await call({ uid, role, ...options })
+          return {
+            ok: true,
+            message:
+              role === 'admin'
+                ? 'Cette personne est administratrice. Elle devra se reconnecter pour que cela s’applique.'
+                : 'Cette personne n’est plus administratrice. Elle devra se reconnecter pour que cela s’applique.',
+          }
+        } catch (error) {
+          return { ok: false, message: messageDErreur(error) }
+        }
+      },
+
       async setAutoAccept(practitionerId, autoAccept) {
         // Un seul champ, comme pour les plages : les règles n'en autorisent pas plus.
         await updateDoc(doc(db, 'practitioners', practitionerId), { autoAccept })

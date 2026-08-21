@@ -49,6 +49,14 @@ export function firebase(): { app: FirebaseApp; db: Firestore; auth: Auth; funct
   // L'inscription, elle, exige d'être en ligne — voir PLAN.md §4.6.
   const db = initializeFirestore(app, {
     localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+    /*
+      Firestore parle par défaut en flux continu, ce que certains réseaux mobiles et
+      certains pare-feux d'entreprise coupent sans le dire : la connexion reste ouverte,
+      les réponses n'arrivent jamais, et l'écran attend indéfiniment. Avec cette option,
+      la bibliothèque essaie, constate, et bascule d'elle-même sur des requêtes
+      ordinaires. C'est le remède connu à « ça tourne dans le vide sur mon téléphone ».
+    */
+    experimentalAutoDetectLongPolling: true,
   })
   const auth = getAuth(app)
   const functions = getFunctions(app, REGION)
