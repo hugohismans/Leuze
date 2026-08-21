@@ -1,4 +1,3 @@
-import { getAuth } from 'firebase-admin/auth'
 import { FieldValue, Timestamp } from 'firebase-admin/firestore'
 import { onDocumentWritten } from 'firebase-functions/v2/firestore'
 import { HttpsError, onCall, type CallableRequest } from 'firebase-functions/v2/https'
@@ -9,7 +8,7 @@ import { logger } from 'firebase-functions'
 
 import { requireAdmin, requirePatient, requireStaff, requireString } from './lib/auth'
 import { CODE_LENGTH, formatCodeForPrint, generateCode, hashCode, newPatientUid } from './lib/codes'
-import { COLLECTIONS, db } from './lib/firestore'
+import { auth, COLLECTIONS, db } from './lib/firestore'
 import { generationWindow, regenerateActivity, regenerateAll } from './lib/occurrences'
 import { assertNotRateLimited, clearFailures, recordFailure } from './lib/rateLimit'
 import { myRegistrationsFor, promoteTx, registerTx, rosterFor, unregisterTx } from './lib/registration'
@@ -238,7 +237,7 @@ export const regeneratePatientCode = onCall({ secrets: [CODE_PEPPER] }, async (r
   })
   batch.update(db().collection(COLLECTIONS.patients).doc(uid), { expiresAt })
   await batch.commit()
-  await getAuth().revokeRefreshTokens(uid).catch(() => undefined)
+  await auth().revokeRefreshTokens(uid).catch(() => undefined)
 
   return {
     uid,
@@ -262,7 +261,7 @@ export const endPatientStay = onCall(async (request: CallableRequest) => {
   codes.docs.forEach((document) => batch.delete(document.ref))
   batch.update(db().collection(COLLECTIONS.patients).doc(uid), { expiresAt: Timestamp.now() })
   await batch.commit()
-  await getAuth().revokeRefreshTokens(uid).catch(() => undefined)
+  await auth().revokeRefreshTokens(uid).catch(() => undefined)
 
   return { ok: true, message: 'Le séjour est clôturé. Le code ne fonctionne plus.' }
 })
@@ -275,7 +274,7 @@ export const revokePatientCode = onCall(async (request: CallableRequest) => {
   const batch = db().batch()
   codes.docs.forEach((document) => batch.delete(document.ref))
   await batch.commit()
-  await getAuth().revokeRefreshTokens(uid).catch(() => undefined)
+  await auth().revokeRefreshTokens(uid).catch(() => undefined)
   return { revoked: codes.size }
 })
 
@@ -313,7 +312,7 @@ export const exchangeCode = onCall({ secrets: [CODE_PEPPER] }, async (request: C
   await clearFailures(clientKey)
   // Le service voyage dans le jeton : le patient ne peut pas le changer, et les règles
   // Firestore s'en servent pour filtrer le calendrier.
-  const token = await getAuth().createCustomToken(codeData.uid, {
+  const token = await auth().createCustomToken(codeData.uid, {
     patient: true,
     serviceId: patient.serviceId,
   })
@@ -388,12 +387,12 @@ export const setStaffRole = onCall(async (request: CallableRequest) => {
   }
   const firstName = typeof request.data?.firstName === 'string' ? request.data.firstName : undefined
 
-  await getAuth().setCustomUserClaims(uid, role === null ? {} : { role })
+  await auth().setCustomUserClaims(uid, role === null ? {} : { role })
   await db()
     .collection(COLLECTIONS.staff)
     .doc(uid)
     .set({ role, firstName, isActive: role !== null, updatedAt: FieldValue.serverTimestamp() }, { merge: true })
-  await getAuth().revokeRefreshTokens(uid)
+  await auth().revokeRefreshTokens(uid)
   return { uid, role }
 })
 

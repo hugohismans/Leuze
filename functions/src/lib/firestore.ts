@@ -1,4 +1,5 @@
-import { initializeApp, getApps } from 'firebase-admin/app'
+import { getApp, initializeApp, type App } from 'firebase-admin/app'
+import { getAuth, type Auth } from 'firebase-admin/auth'
 import { getFirestore, Timestamp } from 'firebase-admin/firestore'
 import type { DocumentData, DocumentSnapshot, Firestore } from 'firebase-admin/firestore'
 import type { Activity, Occurrence, Registration } from '../domain/types'
@@ -12,14 +13,36 @@ export { Timestamp }
 
 let cached: Firestore | null = null
 
+/**
+ * L'application d'administration par défaut, créée si elle n'existe pas encore.
+ *
+ * Ne jamais décider d'après `getApps()`. Dès qu'un appel est authentifié, le SDK des
+ * fonctions initialise sa propre application — nommée `__FIREBASE_FUNCTIONS_SDK__` —
+ * pour vérifier le jeton. `getApps()` cesse alors d'être vide alors que l'application
+ * *par défaut*, elle, n'existe toujours pas : `getFirestore()` échouait sur « The
+ * default Firebase app does not exist ». D'où un symptôme déroutant — toutes les
+ * fonctions appelées par une personne connectée échouaient, les appels anonymes non.
+ */
+function defaultApp(): App {
+  try {
+    return getApp()
+  } catch {
+    return initializeApp()
+  }
+}
+
 export function db(): Firestore {
   if (cached) return cached
-  if (getApps().length === 0) initializeApp()
-  cached = getFirestore()
+  cached = getFirestore(defaultApp())
   // Les champs facultatifs du domaine (`facilitator`, `cancellationReason`) sont
   // `undefined` plutôt qu'absents : sans cette option, Firestore refuserait l'écriture.
   cached.settings({ ignoreUndefinedProperties: true })
   return cached
+}
+
+/** Même précaution que `db()` : l'authentification passe par l'application par défaut. */
+export function auth(): Auth {
+  return getAuth(defaultApp())
 }
 
 export const COLLECTIONS = {
