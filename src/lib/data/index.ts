@@ -19,8 +19,18 @@ import type { StaffApp } from './staffPorts'
 
 export type DataSource = 'mock' | 'firestore'
 
-export const DATA_SOURCE: DataSource =
-  import.meta.env.VITE_DATA_SOURCE === 'firestore' ? 'firestore' : 'mock'
+/**
+ * Source de données, figée à la construction.
+ *
+ * Le défaut est **l'application réelle**, et c'est délibéré : la démonstration est la
+ * seule qui exige un drapeau explicite. Un drapeau perdu en chemin publie donc la vraie
+ * application — inutile mais sans danger — au lieu de publier des données fictives sur
+ * le projet de l'hôpital, ce qui est exactement arrivé une fois.
+ *
+ * Écrit sous cette forme pour que Vite remplace l'expression à la construction :
+ * l'élagage retire alors tout le SDK Firebase de la version de démonstration.
+ */
+export const DATA_SOURCE: DataSource = import.meta.env.VITE_DATA_SOURCE === 'mock' ? 'mock' : 'firestore'
 
 /** `/demo` reste sur les données fictives même dans une version branchée sur Firestore. */
 export function isDemoRoute(): boolean {

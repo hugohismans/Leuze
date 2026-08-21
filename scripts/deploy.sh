@@ -92,7 +92,18 @@ npx firebase functions:artifacts:setpolicy --days 3 --force --project "$PROJET" 
 bleu "6/6  Catalogue et application"
 # Services, lieux, catégories, motifs de rendez-vous. Aucune donnée de démonstration.
 GCLOUD_PROJECT="$PROJET" npm run init:catalogue -- --confirmer
-npm run deploy:app
+
+npm run build:app
+# On vérifie ce qu'on s'apprête à publier plutôt que de faire confiance au drapeau :
+# la version de démonstration a déjà été publiée une fois sur le vrai projet, et rien
+# ne l'avait signalé. La configuration Firebase n'existe que dans la vraie version.
+if ! grep -rlq "firebaseapp.com" dist/assets/*.js 2>/dev/null; then
+  rouge "La version construite n'est pas branchée sur Firestore — publication annulée."
+  echo "Vérifiez que « npm run build:app » a bien tourné, puis relancez."
+  exit 1
+fi
+vert "Version vérifiée : branchée sur Firestore."
+npx firebase deploy --only hosting --project "$PROJET"
 
 bleu "Terminé."
 cat <<'FIN'

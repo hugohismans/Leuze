@@ -50,8 +50,18 @@ jobs:
       - name: Construction
         env:
           BASE_PATH: /Leuze/
-          VITE_DATA_SOURCE: mock
-        run: npm run build
+        run: npm run build:demo
+
+      # L'adresse publique ne doit contenir aucun code Firebase : une démonstration qui
+      # atteindrait la vraie base serait pire qu'inutile. La configuration du projet
+      # n'existe que dans la version réelle — sa présence ici est une erreur.
+      - name: La démonstration ne contient pas Firebase
+        run: |
+          if grep -rl "firebaseapp.com" dist/assets/*.js; then
+            echo "::error::La version de démonstration embarque le SDK Firebase."
+            exit 1
+          fi
+          echo "Vérifié : aucune trace de Firebase."
 
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
