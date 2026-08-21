@@ -12,16 +12,27 @@ PROJET="${GCLOUD_PROJECT:-leuze-d23b5}"
 rouge() { printf '\033[0;31m%s\033[0m\n' "$*"; }
 vert() { printf '\033[0;32m%s\033[0m\n' "$*"; }
 
+ouvre() {
+  # Une fonction reprise après un échec perd son droit d'être appelée depuis le
+  # navigateur. On le repose systématiquement : c'est sans effet quand il est déjà là.
+  GCLOUD_PROJECT="$PROJET" bash "$(dirname "$0")/ouvrir-fonctions.sh" || true
+}
+
 if npx firebase deploy --only functions --project "$PROJET"; then
+  ouvre
   vert "Fonctions déployées."
   exit 0
 fi
 
 rouge "Une partie des fonctions n'est pas passée — seconde tentative."
 if npx firebase deploy --only functions --project "$PROJET"; then
+  ouvre
   vert "Fonctions déployées à la seconde tentative."
   exit 0
 fi
+
+# Même après un échec partiel, les fonctions qui sont passées doivent être joignables.
+ouvre
 
 rouge "Les mêmes fonctions échouent : ce n'est plus un aléa."
 cat <<AIDE

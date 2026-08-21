@@ -472,6 +472,33 @@ sauvegardes Firestore.
 
 ---
 
+## 6 bis. Un piège de déploiement, pour mémoire
+
+Une fonction « callable » de Firebase est publiquement invocable : c'est la fonction
+elle-même qui vérifie le jeton (`requireStaff`, `requirePatient`). Firebase pose ce droit
+à la création. **Quand une fonction échoue à se créer puis est reprise à un déploiement
+suivant, le droit n'est pas reposé.**
+
+Le symptôme n'aide pas : Google refuse la requête *avant* la fonction, renvoie une page
+HTML sans en-tête CORS, et le navigateur ne voit donc aucun code d'erreur — seulement
+« internal [0] ». Rien dans le journal des fonctions, puisqu'aucune fonction ne tourne.
+
+Pour distinguer les deux cas depuis n'importe où :
+
+```
+curl -s -D - -o /dev/null -X POST \
+  https://europe-west1-leuze-d23b5.cloudfunctions.net/staffRegister \
+  -H 'Content-Type: application/json' -H 'Origin: https://leuze-d23b5.web.app' \
+  -d '{"data":{}}'
+```
+
+Un `403` avec `access-control-allow-origin` : la fonction a répondu, tout va bien.
+Un `403` en `text/html` sans cet en-tête : elle n'est pas joignable.
+
+`npm run ouvrir:fonctions` repose le droit sur toutes les fonctions appelables, et le
+déploiement le fait désormais tout seul. Le déclencheur Firestore et les tâches planifiées
+en sont exclus : Google les invoque avec un compte de service, les ouvrir serait une faute.
+
 ## 7. Risques
 
 | Risque | Parade |
