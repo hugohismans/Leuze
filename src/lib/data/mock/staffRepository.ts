@@ -94,6 +94,17 @@ export function createMockStaffApp(): StaffApp {
     }
   }
 
+  /**
+   * Ce que les fonctions appelables vérifient de leur côté. La démonstration doit
+   * refuser exactement ce que le serveur refuse : sans cela, prendre la place d'un
+   * soignant ne montrerait pas ce qu'il voit vraiment.
+   */
+  const exigeAdministrateur = (): void => {
+    if (identity.role !== 'admin') {
+      throw new Error("Cette action est réservée à l'administrateur.")
+    }
+  }
+
   const regenerate = (activityId: string, activity: Activity | null): GenerationReport => {
     const window = generationWindow()
     const existing = [...world.occurrences.values()].filter(
@@ -298,6 +309,7 @@ export function createMockStaffApp(): StaffApp {
       },
 
       async createPatient(firstName: string, serviceId: string): Promise<NewPatientCode> {
+        exigeAdministrateur()
         const uid = `demo-${slugify(firstName)}-${Date.now().toString(36)}`
         const expiresAt = new Date(Date.now() + 60 * 86_400_000)
         world.patients = [...world.patients, { uid, firstName, serviceId, expiresAt }]
@@ -307,6 +319,7 @@ export function createMockStaffApp(): StaffApp {
       },
 
       async regenerateCode(patientUid: string): Promise<NewPatientCode> {
+        exigeAdministrateur()
         const patient = world.patients.find((p) => p.uid === patientUid)
         const expiresAt = new Date(Date.now() + 60 * 86_400_000)
         world.patients = world.patients.map((p) => (p.uid === patientUid ? { ...p, expiresAt } : p))
@@ -321,6 +334,7 @@ export function createMockStaffApp(): StaffApp {
       },
 
       async endStay(patientUid: string) {
+        exigeAdministrateur()
         world.patients = world.patients.map((p) =>
           p.uid === patientUid ? { ...p, expiresAt: new Date(Date.now() - 1000) } : p,
         )

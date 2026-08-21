@@ -316,11 +316,14 @@ export const markAttendance = onCall(async (request: CallableRequest) => {
 // ---------------------------------------------------------------------------
 
 /**
- * Le soignant crée un code pour un patient. Le code en clair n'est renvoyé qu'ici,
+ * L'administrateur crée un code pour un patient. Le code en clair n'est renvoyé qu'ici,
  * une seule fois, pour être imprimé ou recopié : il n'est stocké nulle part.
+ *
+ * Réservé à l'administrateur, comme tout ce qui touche à la liste des personnes : faire
+ * entrer quelqu'un dans l'application relève de l'admission, pas du quotidien du service.
  */
 export const createPatientCode = onCall({ secrets: [CODE_PEPPER] }, async (request: CallableRequest) => {
-  const staff = requireStaff(request)
+  const staff = requireAdmin(request)
   const firstName = requireString(request.data?.firstName, 'prénom', 60)
   const serviceId = requireString(request.data?.serviceId, 'service', 60)
 
@@ -353,9 +356,13 @@ export const createPatientCode = onCall({ secrets: [CODE_PEPPER] }, async (reque
 /**
  * Nouveau code pour un patient existant : la feuille est perdue, l'identité ne change
  * pas. Les anciens codes cessent aussitôt de fonctionner.
+ *
+ * Réservé à l'administrateur, et pas seulement par symétrie : le code est affiché en
+ * clair à qui le demande. Qui peut en délivrer un peut donc ouvrir la session de cette
+ * personne et voir son programme à sa place.
  */
 export const regeneratePatientCode = onCall({ secrets: [CODE_PEPPER] }, async (request: CallableRequest) => {
-  const staff = requireStaff(request)
+  const staff = requireAdmin(request)
   const uid = requireString(request.data?.patientUid, 'patientUid')
 
   const patientSnapshot = await db().collection(COLLECTIONS.patients).doc(uid).get()
@@ -393,7 +400,7 @@ export const regeneratePatientCode = onCall({ secrets: [CODE_PEPPER] }, async (r
  * inscriptions restent, la purge planifiée s'en chargera le moment venu.
  */
 export const endPatientStay = onCall(async (request: CallableRequest) => {
-  requireStaff(request)
+  requireAdmin(request)
   const uid = requireString(request.data?.patientUid, 'patientUid')
 
   const codes = await db().collection(COLLECTIONS.patientCodes).where('uid', '==', uid).get()
@@ -408,7 +415,7 @@ export const endPatientStay = onCall(async (request: CallableRequest) => {
 
 /** Fin de séjour, code égaré : le code cesse de fonctionner, les inscriptions restent. */
 export const revokePatientCode = onCall(async (request: CallableRequest) => {
-  requireStaff(request)
+  requireAdmin(request)
   const uid = requireString(request.data?.patientUid, 'patientUid')
   const codes = await db().collection(COLLECTIONS.patientCodes).where('uid', '==', uid).get()
   const batch = db().batch()

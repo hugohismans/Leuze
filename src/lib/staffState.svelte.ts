@@ -143,9 +143,17 @@ class StaffStore {
   }
 
   async endStay(patientUid: string): Promise<void> {
-    const resultat = await (await this.app$()).repository.endStay(patientUid)
+    try {
+      const resultat = await (await this.app$()).repository.endStay(patientUid)
+      this.message = resultat.message
+    } catch (error) {
+      // Un refus du serveur doit se lire à l'écran, pas finir dans la console.
+      this.message =
+        error instanceof Error
+          ? error.message.replace(/^.*?:\s*/, '')
+          : "Le séjour n'a pas pu être clôturé."
+    }
     await this.loadPatients()
-    this.message = resultat.message
   }
 
   async loadAppointments(): Promise<void> {

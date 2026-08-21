@@ -108,10 +108,18 @@
 
 <section class="mx-auto max-w-4xl px-4 py-6">
   <h1 class="mb-2 text-3xl font-bold text-ink">Les patients</h1>
-  <p class="mb-5 text-lg text-ink-soft">
+  <p class="mb-4 text-lg text-ink-soft">
     Un prénom et un service, rien d'autre. Chaque personne reçoit un code, qui lui permet
     de voir son programme et de s'inscrire depuis une tablette.
   </p>
+
+  {#if !staffStore.isAdmin}
+    <p role="status" class="mb-5 rounded-xl bg-surface-soft p-3 text-lg text-ink">
+      <span aria-hidden="true">🔒</span>
+      Seul un administrateur ajoute une personne, délivre un code ou clôture un séjour.
+      Vous pouvez consulter la liste et ouvrir un planning.
+    </p>
+  {/if}
 
   {#if codeDelivre !== null}
     <!-- Le code, affiché une seule fois. La feuille se découpe et se remet en main propre. -->
@@ -139,7 +147,8 @@
     </div>
   {/if}
 
-  <form onsubmit={creer} class="card mb-6 p-4">
+  {#if staffStore.isAdmin}
+    <form onsubmit={creer} class="card mb-6 p-4">
     <h2 class="mb-3 text-2xl font-bold text-ink">Ajouter une personne</h2>
     <div class="grid gap-4 sm:grid-cols-2">
       <div>
@@ -167,7 +176,8 @@
     <button type="submit" class="btn btn-primary mt-4" disabled={busy || prenom.trim().length === 0}>
       {busy ? 'Un instant…' : 'Créer le code'}
     </button>
-  </form>
+    </form>
+  {/if}
 
   {#if staffStore.message !== null}
     <p role="status" class="mb-4 rounded-xl bg-brand-100 p-3 text-lg font-semibold text-brand-900">
@@ -177,8 +187,9 @@
 
   {#if staffStore.patients.length === 0}
     <p class="card p-5 text-lg text-ink-soft">
-      Aucune personne enregistrée. Ajoutez-en une ci-dessus : elle apparaîtra alors dans la
-      réunion du lundi.
+      {staffStore.isAdmin
+        ? 'Aucune personne enregistrée. Ajoutez-en une ci-dessus : elle apparaîtra alors dans la réunion du lundi.'
+        : 'Aucune personne enregistrée. Un administrateur doit en ajouter une pour qu’elle apparaisse ici.'}
     </p>
   {:else}
     {#each parService as groupe (groupe.service.id)}
@@ -223,12 +234,14 @@
                 >
                   Voir son planning
                 </button>
-                <button type="button" class="btn btn-secondary" disabled={busy} onclick={() => nouveauCode(patient.uid)}>
-                  Nouveau code
-                </button>
-                <button type="button" class="btn btn-secondary" disabled={busy} onclick={() => staffStore.endStay(patient.uid)}>
-                  Fin de séjour
-                </button>
+                {#if staffStore.isAdmin}
+                  <button type="button" class="btn btn-secondary" disabled={busy} onclick={() => nouveauCode(patient.uid)}>
+                    Nouveau code
+                  </button>
+                  <button type="button" class="btn btn-secondary" disabled={busy} onclick={() => staffStore.endStay(patient.uid)}>
+                    Fin de séjour
+                  </button>
+                {/if}
               </div>
             </div>
           </li>
@@ -237,9 +250,11 @@
     {/each}
   {/if}
 
-  <p class="mt-6 text-base text-ink-soft">
-    « Fin de séjour » retire la personne des listes et rend son code inutilisable. Ses
-    inscriptions passées ne sont pas effacées ici : la purge automatique s'en charge après
-    le délai de conservation.
-  </p>
+  {#if staffStore.isAdmin}
+    <p class="mt-6 text-base text-ink-soft">
+      « Fin de séjour » retire la personne des listes et rend son code inutilisable. Ses
+      inscriptions passées ne sont pas effacées ici : la purge automatique s'en charge après
+      le délai de conservation.
+    </p>
+  {/if}
 </section>
