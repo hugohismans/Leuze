@@ -10,7 +10,7 @@
  */
 import { config } from '../../config'
 import { expand } from '../../domain/recurrence'
-import { addLocalDays, todayLocalDate } from '../../domain/time'
+import { addLocalDays, instantOf, startOfIsoWeek, todayLocalDate } from '../../domain/time'
 import type { Appointment, Occurrence, Registration } from '../../domain/types'
 import { recount, type Board } from '../../domain/waitlist'
 import { activitiesSeed } from '../seed/activities.seed'
@@ -82,8 +82,10 @@ function build(now: Date): MockWorld {
     }
   }
 
-  // Une demande déjà en attente, pour que la file du soignant ne soit pas vide
-  // à l'ouverture de la démonstration.
+  // Une demande en attente, pour que la file du soignant ne soit pas vide, et un
+  // rendez-vous déjà fixé, pour que la semaine d'une personne et les plannings imprimés
+  // montrent ce qu'ils font d'un rendez-vous.
+  const jeudi = addLocalDays(startOfIsoWeek(today), 3)
   const appointments: Appointment[] = [
     {
       id: 'rdv-demo-1',
@@ -92,6 +94,19 @@ function build(now: Date): MockWorld {
       preference: 'matin',
       status: 'requested',
       createdAt: new Date(now.getTime() - 2 * 86_400_000),
+    },
+    {
+      id: 'rdv-demo-2',
+      patientUid: DEMO_PATIENT_UID,
+      kindId: 'psychiatre',
+      preference: 'matin',
+      status: 'scheduled',
+      createdAt: new Date(now.getTime() - 5 * 86_400_000),
+      start: instantOf(jeudi, '11:00'),
+      end: instantOf(jeudi, '11:30'),
+      localDate: jeudi,
+      withWhom: 'Docteur Lemaire',
+      locationId: 'salon-daccueil',
     },
   ]
 

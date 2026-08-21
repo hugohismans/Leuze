@@ -432,9 +432,12 @@ Trois décisions :
 
 1. **Tout le monde reçoit une feuille**, y compris qui n'est inscrit à rien. Une grille
    vide se remplit à la main, et c'est le but de la feuille.
-2. **Les rendez-vous individuels n'y figurent pas.** Une pile imprimée d'un coup passe de
-   main en main pendant la distribution : y écrire « rendez-vous avec le psychiatre »
-   reviendrait à le dire à qui trie la pile. Chacun retrouve les siens sur son écran.
+2. **Les rendez-vous individuels y figurent**, sur décision de l'hôpital. Ma réserve
+   tenait à la distribution : une pile imprimée d'un coup passe de main en main, et un
+   « rendez-vous avec le psychiatre » y est lisible par qui trie la pile. L'argument
+   inverse l'emporte — les personnes sans téléphone sont précisément celles qui ont le
+   plus besoin du papier, et ce sont elles qui manqueraient leur rendez-vous. L'écran
+   affiche donc un avertissement : remettre les feuilles en main propre, une par une.
 3. **Le rassemblement se fait côté serveur** (`staffWeekPlannings`) : les inscriptions ne
    sont lisibles par aucun client, et il faut croiser les séances de la semaine, les
    inscriptions et les prénoms — trois collections dont deux sont fermées au navigateur.

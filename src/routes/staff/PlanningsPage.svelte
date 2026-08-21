@@ -39,6 +39,10 @@
     chargement = true
     erreur = null
     try {
+      // Les rendez-vous sont lisibles par le personnel : ils viennent du magasin, pas
+      // d'un second appel. Ceux d'un patient d'un autre service ne seront pas retenus,
+      // la feuille étant construite prénom par prénom.
+      await staffStore.loadAppointments()
       plannings = await staffStore.weekPlannings(service)
     } catch (error) {
       erreur = error instanceof Error ? error.message.replace(/^.*?:\s*/, '') : "La liste n'a pas pu être lue."
@@ -53,6 +57,21 @@
     void staffStore.refresh()
   }
 
+  const debutSemaine = $derived(staffStore.week[0] ?? '')
+  const finSemaine = $derived(staffStore.week[6] ?? '')
+
+  /** Les rendez-vous fixés d'une personne, sur la semaine affichée. */
+  function rendezVousDe(patientUid: string) {
+    return staffStore.appointments.filter(
+      (rendezVous) =>
+        rendezVous.patientUid === patientUid &&
+        rendezVous.status === 'scheduled' &&
+        rendezVous.localDate !== undefined &&
+        rendezVous.localDate >= debutSemaine &&
+        rendezVous.localDate <= finSemaine,
+    )
+  }
+
   /** La semaine d'une personne, reconstruite à partir des séances déjà chargées. */
   function semaineDe(planning: PatientPlanning) {
     const inscriptions = planning.lines
@@ -61,7 +80,7 @@
         return occurrence === undefined ? null : { occurrence, status: ligne.status }
       })
       .filter((v) => v !== null)
-    return myWeek(staffStore.week, inscriptions, [])
+    return myWeek(staffStore.week, inscriptions, rendezVousDe(planning.patientUid))
   }
 
   const nomDuService = $derived(services.find((s) => s.id === serviceId)?.name ?? '')
@@ -134,16 +153,19 @@
           <li class="card flex flex-wrap items-baseline justify-between gap-2 p-3">
             <span class="text-xl font-bold text-ink">{planning.firstName}</span>
             <span class="text-base text-ink-soft">
-              {compte === 0 ? 'Aucune activité — feuille vierge' : `${compte} ${compte === 1 ? 'activité' : 'activités'}`}
+              {compte === 0
+                ? 'Rien de prévu — feuille vierge'
+                : `${compte} ${compte === 1 ? 'ligne' : 'lignes'} : activités et rendez-vous`}
             </span>
           </li>
         {/each}
       </ul>
 
-      <p class="mt-4 text-base text-ink-soft">
-        Les rendez-vous individuels ne figurent pas sur ces feuilles : une pile imprimée
-        passe de main en main pendant la distribution. Chacun retrouve les siens sur son
-        propre écran.
+      <p class="mt-4 rounded-xl bg-surface-soft p-3 text-base text-ink">
+        <span aria-hidden="true">⚠️</span>
+        Ces feuilles portent les rendez-vous individuels — psychiatre, psychologue,
+        kinésithérapeute. Remettez-les en main propre, une par une, et ne laissez pas la
+        pile sur une table.
       </p>
     {/if}
   </div>

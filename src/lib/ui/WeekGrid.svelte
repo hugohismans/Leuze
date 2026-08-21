@@ -90,6 +90,14 @@
         place.entry.kind === 'activity'
           ? (categorie?.icon ?? '•')
           : kindIcon(store.appointmentKinds, place.entry.kindId)}
+      {@const intitule =
+        place.entry.kind === 'activity'
+          ? place.entry.title
+          : (place.entry.withWhom ?? kindName(store.appointmentKinds, place.entry.kindId))}
+      {@const lieu =
+        place.entry.locationId === undefined
+          ? ''
+          : (store.locationOf(place.entry.locationId)?.name ?? '')}
       <div
         class="bloc"
         class:annule={place.entry.kind === 'activity' && place.entry.cancelled}
@@ -99,24 +107,27 @@
                 --teinte-fond: var(--cat-${teinte}-bg, var(--color-surface-soft));
                 --teinte-trait: var(--cat-${teinte}-fg, var(--color-ink));`}
       >
-        <p class="titre">
-          <span class="icone" aria-hidden="true">{icone}</span>
-          {#if place.entry.kind === 'activity'}
-            {place.entry.title}
-          {:else}
-            {place.entry.withWhom ?? kindName(store.appointmentKinds, place.entry.kindId)}
+        <!--
+          Une demi-heure ne laisse qu'une ligne : un rendez-vous chez le psychiatre y
+          était coupé au milieu. Le titre et l'heure y tiennent ensemble, et le lieu
+          cède la place — la grille dit déjà quand, et le lieu se demande.
+        -->
+        {#if place.toSlot - place.fromSlot <= 1}
+          <p class="titre serre">
+            <span class="icone" aria-hidden="true">{icone}</span>
+            {intitule}
+          </p>
+        {:else}
+          <p class="titre">
+            <span class="icone" aria-hidden="true">{icone}</span>
+            {intitule}
+          </p>
+          <p class="detail">
+            {formatTime(place.entry.start)}{lieu ? ` · ${lieu}` : ''}
+          </p>
+          {#if place.entry.kind === 'activity' && place.entry.cancelled}
+            <p class="detail">Annulée</p>
           {/if}
-        </p>
-        <p class="detail">
-          {formatTime(place.entry.start)}
-          {#if place.entry.kind === 'activity'}
-            · {store.locationOf(place.entry.locationId)?.name ?? ''}
-          {:else if place.entry.locationId}
-            · {store.locationOf(place.entry.locationId)?.name ?? ''}
-          {/if}
-        </p>
-        {#if place.entry.kind === 'activity' && place.entry.cancelled}
-          <p class="detail">Annulée</p>
         {/if}
       </div>
     {/each}
@@ -230,6 +241,15 @@
   }
   .icone {
     font-style: normal;
+  }
+  /*
+    Une demi-heure ne laisse presque pas de place. On garde le nom entier, plus petit et
+    sur deux lignes s'il le faut : l'heure se lit sur la colonne de gauche, le nom ne se
+    devine pas. Un rendez-vous coupé à « Docteur … » ne sert à personne.
+  */
+  .titre.serre {
+    font-size: 0.8em;
+    line-height: 1.05;
   }
   .detail {
     color: var(--color-ink);
