@@ -12,6 +12,25 @@ PROJET="${GCLOUD_PROJECT:-leuze-d23b5}"
 rouge() { printf '\033[0;31m%s\033[0m\n' "$*"; }
 vert() { printf '\033[0;32m%s\033[0m\n' "$*"; }
 
+# La session du CLI Firebase expire au bout de quelques heures. Sans cette vérification,
+# le script tentait de déployer deux fois, échouait deux fois sur la même raison, puis
+# reposait des droits pour rien — trois écrans d'erreurs pour un mot de passe à redonner.
+if ! npx firebase projects:list --project "$PROJET" >/dev/null 2>&1; then
+  rouge "La session Firebase a expiré."
+  cat <<AIDE
+
+Reconnectez-vous, puis relancez cette commande :
+
+  npx firebase login --reauth --no-localhost
+
+Une adresse s'affiche : ouvrez-la, choisissez votre compte Google, puis recopiez le
+code obtenu dans le terminal. Le code expire vite — faites-le d'une traite, et
+vérifiez qu'il est collé en entier.
+
+AIDE
+  exit 1
+fi
+
 ouvre() {
   # Une fonction reprise après un échec perd son droit d'être appelée depuis le
   # navigateur. On le repose systématiquement : c'est sans effet quand il est déjà là.
