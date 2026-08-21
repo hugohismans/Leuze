@@ -24,6 +24,7 @@ import {
 } from 'firebase/firestore'
 import { httpsCallable } from 'firebase/functions'
 import { audienceQueryKeys } from '../../domain/audience'
+import { patientIdentityOf } from '../../domain/session'
 import type {
   Appointment,
   AppointmentKind,
@@ -71,17 +72,15 @@ export function createFirestoreRepository(): AppRepository {
   })
 
   const readSession = async (user: User | null): Promise<void> => {
-    if (user === null) {
-      session = SIGNED_OUT
-    } else {
-      const token = await user.getIdTokenResult()
-      const serviceId = token.claims['serviceId']
-      session = {
-        patientUid: user.uid,
-        firstName: localStorage.getItem(FIRST_NAME_KEY),
-        serviceId: typeof serviceId === 'string' ? serviceId : null,
-      }
-    }
+    // Être connecté ne suffit pas : il faut l'être *en tant que patient*. Firebase ne
+    // tient qu'une session par navigateur, partagée avec l'espace soignant. La règle
+    // vit dans le domaine, testée : voir `patientIdentityOf`.
+    const token = user === null ? null : await user.getIdTokenResult()
+    const identite = patientIdentityOf(user?.uid ?? null, token?.claims ?? null)
+    session =
+      identite === null
+        ? SIGNED_OUT
+        : { ...identite, firstName: localStorage.getItem(FIRST_NAME_KEY) }
     notifySessionReady()
   }
 

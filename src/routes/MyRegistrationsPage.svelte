@@ -5,6 +5,18 @@
   import { navigate } from '../lib/router.svelte'
 
   const registrations = $derived(store.upcomingMine)
+  let fermeture = $state(false)
+
+  /**
+   * Sur une tablette de salle commune, la personne suivante ne doit rien voir de la
+   * précédente. Sans ce bouton, la session restait ouverte indéfiniment.
+   */
+  async function fermer(): Promise<void> {
+    if (fermeture) return
+    fermeture = true
+    await store.signOut()
+    navigate('/')
+  }
 
   // Un rendez-vous peut avoir été fixé pendant que l'écran était ailleurs : on relit
   // en arrivant, plutôt que d'afficher un état périmé.
@@ -104,5 +116,25 @@
         </li>
       {/each}
     </ul>
+  {/if}
+
+  <!--
+    Fermer son accès : en bas, après ses inscriptions, jamais à côté d'un bouton
+    d'inscription — un geste de sortie ne se met pas sur le chemin d'un geste courant.
+  -->
+  {#if store.signedIn}
+    <section class="mt-4 border-t-2 border-line pt-6">
+      <h2 class="mb-2 text-2xl font-bold">Quand vous avez fini</h2>
+      <p class="mb-3 text-lg text-ink-soft">
+        {#if store.firstName}
+          Vous êtes connecté sous le prénom {store.firstName}.
+        {/if}
+        Si vous utilisez une tablette partagée, fermez votre accès avant de la laisser :
+        la personne suivante devra entrer son propre code.
+      </p>
+      <button type="button" class="btn btn-secondary" disabled={fermeture} onclick={fermer}>
+        {fermeture ? 'Un instant…' : 'Fermer mon accès'}
+      </button>
+    </section>
   {/if}
 </div>
