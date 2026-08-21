@@ -86,6 +86,12 @@ export type Practitioner = {
    * elles répondent à « est-il là ? » au moment où l'on fixe un rendez-vous.
    */
   availability?: AvailabilityWindow[]
+  /**
+   * Les demandes de rendez-vous qui la concernent se placent toutes seules dans ses
+   * plages, sans attendre qu'on ouvre la file. C'est un choix personnel : sans plage
+   * déclarée, il ne peut rien donner, et il reste faux par défaut.
+   */
+  autoAccept?: boolean
   isActive: boolean
 }
 
@@ -224,6 +230,8 @@ export type Appointment = {
   locationId?: string
   /** Motif d'annulation, en français simple. */
   cancellationReason?: string
+  /** Fixé sans intervention humaine, dans les plages de l'intervenant. */
+  autoAccepted?: boolean
 }
 
 /** Le strict minimum. Le code d'accès n'est jamais stocké en clair (l'id du doc est son hash). */
