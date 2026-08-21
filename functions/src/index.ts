@@ -3,6 +3,7 @@ import { FieldValue, Timestamp } from 'firebase-admin/firestore'
 import { onDocumentWritten } from 'firebase-functions/v2/firestore'
 import { HttpsError, onCall, type CallableRequest } from 'firebase-functions/v2/https'
 import { onSchedule } from 'firebase-functions/v2/scheduler'
+import { defineSecret } from 'firebase-functions/params'
 import { setGlobalOptions } from 'firebase-functions/v2/options'
 import { logger } from 'firebase-functions'
 
@@ -24,6 +25,14 @@ import type { LocalDate } from './domain/types'
  * quelques dizaines d'appels par jour, jamais simultanés.
  */
 setGlobalOptions({ region: 'europe-west1', maxInstances: 3 })
+
+/**
+ * Le poivre qui dérive les empreintes des codes patients. Un secret n'est pas
+ * automatiquement lisible : il faut le déclarer sur chaque fonction qui en a besoin,
+ * sans quoi `process.env.CODE_PEPPER` reste vide et la dérivation échoue. On ne le
+ * monte que sur les trois fonctions qui touchent aux codes — nulle part ailleurs.
+ */
+const CODE_PEPPER = defineSecret('CODE_PEPPER')
 
 const DEFAULT_RETENTION_DAYS = 90
 const DEFAULT_CODE_VALIDITY_DAYS = 60
@@ -170,7 +179,7 @@ export const staffRoster = onCall(async (request: CallableRequest) => {
  * Le soignant crée un code pour un patient. Le code en clair n'est renvoyé qu'ici,
  * une seule fois, pour être imprimé ou recopié : il n'est stocké nulle part.
  */
-export const createPatientCode = onCall(async (request: CallableRequest) => {
+export const createPatientCode = onCall({ secrets: [CODE_PEPPER] }, async (request: CallableRequest) => {
   const staff = requireStaff(request)
   const firstName = requireString(request.data?.firstName, 'prénom', 60)
   const serviceId = requireString(request.data?.serviceId, 'service', 60)
@@ -205,7 +214,7 @@ export const createPatientCode = onCall(async (request: CallableRequest) => {
  * Nouveau code pour un patient existant : la feuille est perdue, l'identité ne change
  * pas. Les anciens codes cessent aussitôt de fonctionner.
  */
-export const regeneratePatientCode = onCall(async (request: CallableRequest) => {
+export const regeneratePatientCode = onCall({ secrets: [CODE_PEPPER] }, async (request: CallableRequest) => {
   const staff = requireStaff(request)
   const uid = requireString(request.data?.patientUid, 'patientUid')
 
@@ -273,7 +282,7 @@ export const revokePatientCode = onCall(async (request: CallableRequest) => {
  * Échange d'un code contre une session. Le code n'est jamais comparé en clair et
  * n'est jamais l'objet d'une requête : son empreinte *est* l'identifiant du document.
  */
-export const exchangeCode = onCall(async (request: CallableRequest) => {
+export const exchangeCode = onCall({ secrets: [CODE_PEPPER] }, async (request: CallableRequest) => {
   const raw = request.data?.code
   if (typeof raw !== 'string' || raw.length === 0 || raw.length > 32) {
     throw new HttpsError('invalid-argument', 'Saisissez le code inscrit sur votre feuille.')
