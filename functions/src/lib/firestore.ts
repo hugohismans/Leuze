@@ -57,6 +57,7 @@ export const COLLECTIONS = {
   categories: 'categories',
   practitioners: 'practitioners',
   appointments: 'appointments',
+  appointmentKinds: 'appointmentKinds',
   config: 'config',
 } as const
 

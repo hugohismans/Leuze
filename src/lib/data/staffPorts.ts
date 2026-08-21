@@ -209,6 +209,11 @@ export interface CatalogAdminService {
   saveService(service: { id: string; name: string; isActive: boolean }): Promise<void>
   saveCategory(category: { id: string; name: string; icon: string; colorToken: string; isActive?: boolean }): Promise<void>
   /**
+   * Un motif de rendez-vous : « Le psychiatre », « Autre ». C'est ce que le patient lit
+   * dans sa demande — une fonction, jamais une spécialité clinique, jamais une raison.
+   */
+  saveAppointmentKind(kind: { id: string; name: string; icon: string; isActive: boolean }): Promise<void>
+  /**
    * Donne un accès à un intervenant, ou relie un compte existant. Le mot de passe
    * provisoire n'est renvoyé qu'à la création, et une seule fois.
    */

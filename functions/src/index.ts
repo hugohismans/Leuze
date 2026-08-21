@@ -547,7 +547,8 @@ export const removeCatalogEntry = onCall(async (request: CallableRequest) => {
   requireAdmin(request)
   const kind = requireString(request.data?.kind, 'kind', 20) as CatalogKind
   const id = requireString(request.data?.id, 'id', 100)
-  if (kind !== 'location' && kind !== 'service' && kind !== 'category' && kind !== 'practitioner') {
+  const GENRES: CatalogKind[] = ['location', 'service', 'category', 'practitioner', 'appointmentKind']
+  if (!GENRES.includes(kind)) {
     throw new HttpsError('invalid-argument', 'Genre inconnu.')
   }
 
@@ -558,7 +559,9 @@ export const removeCatalogEntry = onCall(async (request: CallableRequest) => {
         ? COLLECTIONS.services
         : kind === 'category'
           ? COLLECTIONS.categories
-          : COLLECTIONS.practitioners
+          : kind === 'appointmentKind'
+            ? COLLECTIONS.appointmentKinds
+            : COLLECTIONS.practitioners
   const reference = db().collection(collection).doc(id)
   const snapshot = await reference.get()
   if (!snapshot.exists) throw new HttpsError('not-found', "Cette entrée n'existe plus.")
@@ -578,24 +581,32 @@ export const removeCatalogEntry = onCall(async (request: CallableRequest) => {
     return (await requete.limit(PLAFOND).get()).size
   }
 
+  // Un motif de rendez-vous ne se pose ni sur une activité ni sur une séance : il ne
+  // vit que sur les rendez-vous. On ne va donc pas les interroger pour rien.
   const requeteActivites =
-    champActivite === null
-      ? db().collection(COLLECTIONS.activities).where('serviceIds', 'array-contains', id)
-      : db().collection(COLLECTIONS.activities).where(champActivite, '==', id)
-  const activites = await requeteActivites.limit(PLAFOND).get()
+    kind === 'appointmentKind'
+      ? null
+      : champActivite === null
+        ? db().collection(COLLECTIONS.activities).where('serviceIds', 'array-contains', id)
+        : db().collection(COLLECTIONS.activities).where(champActivite, '==', id)
+  const activites = requeteActivites === null ? null : await requeteActivites.limit(PLAFOND).get()
 
   const usage = {
-    activities: activites.size,
+    activities: activites?.size ?? 0,
     occurrences:
-      champActivite === null
-        ? await combien(db().collection(COLLECTIONS.occurrences).where('audienceKeys', 'array-contains', id))
-        : await combien(db().collection(COLLECTIONS.occurrences).where(champActivite, '==', id)),
+      kind === 'appointmentKind'
+        ? 0
+        : champActivite === null
+          ? await combien(db().collection(COLLECTIONS.occurrences).where('audienceKeys', 'array-contains', id))
+          : await combien(db().collection(COLLECTIONS.occurrences).where(champActivite, '==', id)),
     patients:
       kind === 'service' ? await combien(db().collection(COLLECTIONS.patients).where('serviceId', '==', id)) : 0,
     appointments:
       kind === 'practitioner'
         ? await combien(db().collection(COLLECTIONS.appointments).where('practitionerId', '==', id))
-        : 0,
+        : kind === 'appointmentKind'
+          ? await combien(db().collection(COLLECTIONS.appointments).where('kindId', '==', id))
+          : 0,
   }
 
   const plan = planRemoval(kind, name, usage)
@@ -607,7 +618,9 @@ export const removeCatalogEntry = onCall(async (request: CallableRequest) => {
   // supprimer l'entrée pour de bon. Un décompte seul ne dit pas où aller.
   return {
     ...plan,
-    activityTitles: activites.docs.slice(0, 8).map((d) => (d.data()['title'] as string | undefined) ?? d.id),
+    activityTitles: (activites?.docs ?? [])
+      .slice(0, 8)
+      .map((d) => (d.data()['title'] as string | undefined) ?? d.id),
   }
 })
 

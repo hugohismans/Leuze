@@ -1,7 +1,8 @@
 <script lang="ts">
   import { staffStore } from '../../lib/staffState.svelte'
+  import { store } from '../../lib/appState.svelte'
   import type { CatalogKind } from '../../lib/domain/catalog'
-  import type { Category, Location, Service } from '../../lib/domain/types'
+  import type { AppointmentKind, Category, Location, Service } from '../../lib/domain/types'
   import { uniqueSlug } from '../../lib/domain/slug'
 
   /**
@@ -10,7 +11,7 @@
    * ajouter une salle, ouvrir un service, créer une famille d'activités.
    */
 
-  type Genre = 'lieu' | 'service' | 'categorie'
+  type Genre = 'lieu' | 'service' | 'categorie' | 'motif'
 
   // Couleurs disponibles : elles doivent exister dans tokens.css. La couleur ne porte
   // jamais seule l'information, elle est toujours doublée par l'icône.
@@ -54,13 +55,20 @@
         nom = service.name
         actif = service.isActive
       }
-    } else {
+    } else if (genre === 'categorie') {
       const categorie = staffStore.catalog.categories.find((c) => c.id === id)
       if (categorie) {
         nom = categorie.name
         icone = categorie.icon
         couleur = categorie.colorToken
         actif = categorie.isActive !== false
+      }
+    } else {
+      const motif = store.appointmentKinds.find((m) => m.id === id)
+      if (motif) {
+        nom = motif.name
+        icone = motif.icon
+        actif = motif.isActive
       }
     }
   }
@@ -86,13 +94,21 @@
     } else if (genre === 'service') {
       const identifiant = id ?? uniqueSlug(nom, staffStore.catalog.services.map((s) => s.id))
       await staffStore.saveService({ id: identifiant, name: nom.trim(), isActive: actif })
-    } else {
+    } else if (genre === 'categorie') {
       const identifiant = id ?? uniqueSlug(nom, staffStore.catalog.categories.map((c) => c.id))
       await staffStore.saveCategory({
         id: identifiant,
         name: nom.trim(),
         icon: icone.trim() || '•',
         colorToken: couleur,
+        isActive: actif,
+      })
+    } else {
+      const identifiant = id ?? uniqueSlug(nom, store.appointmentKinds.map((m) => m.id))
+      await staffStore.saveAppointmentKind({
+        id: identifiant,
+        name: nom.trim(),
+        icon: icone.trim() || '•',
         isActive: actif,
       })
     }
@@ -104,6 +120,7 @@
     lieu: 'location',
     service: 'service',
     categorie: 'category',
+    motif: 'appointmentKind',
   }
 
   /**
@@ -137,13 +154,21 @@
     await tenter(async () => {
       if (genre === 'lieu') await staffStore.saveLocation({ id, name: nom, isActive: true })
       else if (genre === 'service') await staffStore.saveService({ id, name: nom, isActive: true })
-      else {
+      else if (genre === 'categorie') {
         const categorie = staffStore.catalog.categories.find((c) => c.id === id)
         await staffStore.saveCategory({
           id,
           name: nom,
           icon: categorie?.icon ?? '•',
           colorToken: categorie?.colorToken ?? 'defaut',
+          isActive: true,
+        })
+      } else {
+        const motif = store.appointmentKinds.find((m) => m.id === id)
+        await staffStore.saveAppointmentKind({
+          id,
+          name: nom,
+          icon: motif?.icon ?? '•',
           isActive: true,
         })
       }
@@ -157,6 +182,9 @@
   const servicesRetires = $derived(staffStore.catalog.services.filter((s) => !propose(s)))
   const categoriesProposees = $derived(staffStore.catalog.categories.filter(propose))
   const categoriesRetirees = $derived(staffStore.catalog.categories.filter((c) => !propose(c)))
+  // Les motifs retirés ne reviennent pas de `listKinds`, qui ne rend que les actifs :
+  // la liste est donc toujours celle des motifs proposés.
+  const motifsProposes = $derived(store.appointmentKinds.filter(propose))
 
   const champ = 'w-full rounded-xl border-2 border-line bg-white p-3 text-lg text-ink'
   const resume =
@@ -168,7 +196,7 @@
 <section class="mx-auto max-w-4xl px-4 py-6">
   <h1 class="mb-2 text-3xl font-bold text-ink">Le catalogue</h1>
   <p class="mb-4 text-lg text-ink-soft">
-    Les lieux, les services et les catégories utilisés dans les activités. Ce qui est
+    Les lieux, les services, les motifs de rendez-vous et les catégories. Ce qui est
     enregistré ici est immédiatement proposé dans le formulaire de création.
   </p>
 
@@ -226,6 +254,13 @@
           Bâtiment ou étage — facultatif
         </label>
         <input id="batiment" bind:value={batiment} class={champ} style="min-height: 56px;" />
+      {/if}
+
+      {#if genre === 'motif'}
+        <label for="icone-motif" class="mt-4 mb-2 block text-lg font-semibold text-ink">
+          Icône — le patient la verra à côté du nom
+        </label>
+        <input id="icone-motif" bind:value={icone} maxlength="4" class={champ} style="min-height: 56px;" />
       {/if}
 
       {#if genre === 'categorie'}
@@ -333,6 +368,20 @@
     </li>
   {/snippet}
 
+  {#snippet carteMotif(motif: AppointmentKind)}
+    <li class="card p-4">
+      <div class="flex flex-wrap items-baseline justify-between gap-2">
+        <h3 class="text-xl font-bold text-ink">
+          <span aria-hidden="true">{motif.icon}</span>
+          {motif.name}
+        </h3>
+        {@render actions('motif', motif.id, motif.name, motif.isActive)}
+      </div>
+      {@render confirmation('motif', motif.id)}
+      {#if ouvertPour('motif', motif.id)}{@render formulaire('motif', motif.id)}{/if}
+    </li>
+  {/snippet}
+
   {#snippet carteCategorie(categorie: Category)}
     <li class="card p-4">
       <div class="flex flex-wrap items-baseline justify-between gap-2">
@@ -391,6 +440,25 @@
     {:else}
       <button type="button" class="btn btn-primary mt-3" onclick={() => ouvrir('service', null)}>
         <span aria-hidden="true">＋</span> Ajouter un service
+      </button>
+    {/if}
+  {/if}
+
+  <!-- Les motifs de rendez-vous -->
+  <h2 class="mt-8 mb-3 text-2xl font-bold text-ink">Les motifs de rendez-vous</h2>
+  <p class="mb-3 text-lg text-ink-soft">
+    Ce que le patient choisit quand il demande à voir quelqu'un. Ces intitulés disent une
+    fonction — « Le psychiatre », « Autre » — jamais une spécialité, et jamais une raison.
+  </p>
+  <ul class="grid gap-3">
+    {#each motifsProposes as motif (motif.id)}{@render carteMotif(motif)}{/each}
+  </ul>
+  {#if staffStore.isAdmin}
+    {#if ouvertPour('motif', null)}
+      <div class="card mt-3 p-4">{@render formulaire('motif', null)}</div>
+    {:else}
+      <button type="button" class="btn btn-primary mt-3" onclick={() => ouvrir('motif', null)}>
+        <span aria-hidden="true">＋</span> Ajouter un motif
       </button>
     {/if}
   {/if}

@@ -1,5 +1,5 @@
 /**
- * Retirer une entrée du catalogue — un lieu, un service, une catégorie.
+ * Retirer une entrée du catalogue — un lieu, un service, une catégorie, un motif.
  *
  * Supprimer pour de bon ce qui est encore utilisé casserait l'histoire : une séance
  * passée pointerait vers un lieu qui n'existe plus, une personne serait rattachée à un
@@ -12,14 +12,14 @@
  * les listes ». On le dit clairement plutôt que de le faire en silence.
  */
 
-export type CatalogKind = 'location' | 'service' | 'category' | 'practitioner'
+export type CatalogKind = 'location' | 'service' | 'category' | 'practitioner' | 'appointmentKind'
 
 /** Ce qui pointe encore vers l'entrée. `patients` ne concerne que les services. */
 export type CatalogUsage = {
   activities: number
   occurrences: number
   patients: number
-  /** Ne concerne que les intervenants : un rendez-vous fixé avec eux. */
+  /** Un rendez-vous fixé avec cet intervenant, ou demandé pour ce motif. */
   appointments: number
 }
 
@@ -35,6 +35,7 @@ const NOMS: Record<CatalogKind, { article: string; singulier: string }> = {
   service: { article: 'Le', singulier: 'service' },
   category: { article: 'La', singulier: 'catégorie' },
   practitioner: { article: "L'", singulier: 'intervenant' },
+  appointmentKind: { article: 'Le', singulier: 'motif de rendez-vous' },
 }
 
 export function totalUsage(usage: CatalogUsage): number {

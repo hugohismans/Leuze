@@ -207,8 +207,8 @@ class AppStore {
    * pour relier un intervenant à son motif — mais il n'a pas de demandes « à lui » :
    * `loadAppointments` lui rapporterait une liste vide et une requête pour rien.
    */
-  async loadAppointmentKinds(): Promise<void> {
-    if (this.appointmentKinds.length > 0) return
+  async loadAppointmentKinds(force = false): Promise<void> {
+    if (!force && this.appointmentKinds.length > 0) return
     this.appointmentKinds = await (await this.repo()).appointments.listKinds().catch(() => [])
   }
 

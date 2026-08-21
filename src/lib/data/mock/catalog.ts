@@ -11,7 +11,8 @@
  * C'est la raison d'être de `mock/index.ts`, qui les charge ensemble.
  */
 import type { CatalogKind } from '../../domain/catalog'
-import type { Category, Location, Practitioner, Service } from '../../domain/types'
+import type { AppointmentKind, Category, Location, Practitioner, Service } from '../../domain/types'
+import { appointmentKindsSeed } from '../seed/appointmentKinds.seed'
 import { categoriesSeed } from '../seed/categories.seed'
 import { locationsSeed } from '../seed/locations.seed'
 import { practitionersSeed } from '../seed/practitioners.seed'
@@ -21,13 +22,17 @@ const locations = new Map<string, Location>(locationsSeed.map((l) => [l.id, { ..
 const services = new Map<string, Service>(servicesSeed.map((s) => [s.id, { ...s }]))
 const categories = new Map<string, Category>(categoriesSeed.map((c) => [c.id, { ...c }]))
 const practitioners = new Map<string, Practitioner>(practitionersSeed.map((p) => [p.id, { ...p }]))
+const appointmentKinds = new Map<string, AppointmentKind>(
+  appointmentKindsSeed.map((k) => [k.id, { ...k }]),
+)
 
-type Entree = Location | Service | Category | Practitioner
+type Entree = Location | Service | Category | Practitioner | AppointmentKind
 
 function tableDe(kind: CatalogKind): Map<string, Entree> {
   if (kind === 'location') return locations as Map<string, Entree>
   if (kind === 'service') return services as Map<string, Entree>
   if (kind === 'category') return categories as Map<string, Entree>
+  if (kind === 'appointmentKind') return appointmentKinds as Map<string, Entree>
   return practitioners as Map<string, Entree>
 }
 
@@ -38,6 +43,7 @@ export const mockCatalog = {
   services: (): Service[] => [...services.values()],
   categories: (): Category[] => [...categories.values()],
   practitioners: (): Practitioner[] => [...practitioners.values()],
+  appointmentKinds: (): AppointmentKind[] => [...appointmentKinds.values()],
 
   remove(kind: CatalogKind, id: string): void {
     tableDe(kind).delete(id)
@@ -60,5 +66,8 @@ export const mockCatalog = {
   },
   savePractitioner(practitioner: Practitioner): void {
     practitioners.set(practitioner.id, { ...practitioners.get(practitioner.id), ...practitioner })
+  },
+  saveAppointmentKind(kind: AppointmentKind): void {
+    appointmentKinds.set(kind.id, { ...appointmentKinds.get(kind.id), ...kind })
   },
 }

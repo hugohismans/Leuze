@@ -27,7 +27,6 @@ import {
   registrationOf,
   waitlistPosition,
 } from '../../domain/waitlist'
-import { appointmentKindsSeed } from '../seed/appointmentKinds.seed'
 import type { AppRepository, MyRegistration, PatientSession, RegisterResult } from '../ports'
 import { mockCatalog } from './catalog'
 import {
@@ -155,7 +154,8 @@ export function createMockRepository(options: { now?: () => Date } = {}): MockRe
 
     appointments: {
       async listKinds(): Promise<AppointmentKind[]> {
-        return appointmentKindsSeed.filter((k) => k.isActive)
+        // Le catalogue vivant, et non le seed : un motif ajouté doit se voir aussitôt.
+        return mockCatalog.appointmentKinds().filter((k) => k.isActive)
       },
 
       async listMine(): Promise<Appointment[]> {

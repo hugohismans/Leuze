@@ -473,6 +473,10 @@ export function createMockStaffApp(): StaffApp {
       async saveCategory(category) {
         mockCatalog.saveCategory(category)
       },
+      async saveAppointmentKind(kind) {
+        exigeAdministrateur()
+        mockCatalog.saveAppointmentKind(kind)
+      },
       async createStaffAccount(_email, _practitionerId) {
         // En démonstration, aucun compte n'est réellement créé : on montre le geste.
         return {

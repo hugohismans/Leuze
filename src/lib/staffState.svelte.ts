@@ -390,6 +390,18 @@ class StaffStore {
     this.message = `Intervenant enregistré : ${practitioner.name}.`
   }
 
+  async saveAppointmentKind(kind: {
+    id: string
+    name: string
+    icon: string
+    isActive: boolean
+  }): Promise<void> {
+    await (await this.app$()).catalogAdmin.saveAppointmentKind(kind)
+    // Les motifs sont chargés une fois pour toutes : après un ajout, il faut les relire.
+    await store.loadAppointmentKinds(true)
+    this.message = `Motif de rendez-vous enregistré : ${kind.name}.`
+  }
+
   /** Les plages où quelqu'un reçoit. Chacun tient les siennes ; l'administrateur, toutes. */
   async saveAvailability(practitionerId: string, windows: AvailabilityWindow[]): Promise<void> {
     await (await this.app$()).catalogAdmin.saveAvailability(practitionerId, windows)

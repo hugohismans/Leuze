@@ -530,6 +530,10 @@ export function createFirestoreStaffApp(): StaffApp {
         const { id, ...reste } = category
         await setDoc(doc(db, 'categories', id), reste, { merge: true })
       },
+      async saveAppointmentKind(kind) {
+        const { id, ...reste } = kind
+        await setDoc(doc(db, 'appointmentKinds', id), reste, { merge: true })
+      },
       async createStaffAccount(email, practitionerId) {
         try {
           const call = httpsCallable<
