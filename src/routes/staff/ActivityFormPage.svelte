@@ -3,7 +3,9 @@
   import { proposed } from '../../lib/domain/catalog'
   import { store } from '../../lib/appState.svelte'
   import { audienceLabelForStaff, isPublished } from '../../lib/domain/audience'
-  import { formatLongDayLabel, todayLocalDate } from '../../lib/domain/time'
+  import { staffCapacityLabel } from '../../lib/domain/capacity'
+  import { formatLongDayLabel, formatTimeRange, todayLocalDate } from '../../lib/domain/time'
+  import CancelButton from './CancelButton.svelte'
   import type { Activity, IsoWeekday, LocalDate, LocalTime } from '../../lib/domain/types'
   import { navigate } from '../../lib/router.svelte'
 
@@ -173,6 +175,21 @@
   }
 
   const champ = 'w-full rounded-xl border-2 border-line bg-white p-3 text-lg text-ink'
+
+  /**
+   * La séance sur laquelle le soignant a cliqué dans la semaine.
+   *
+   * Elle vaut plus que l'activité elle-même dans le cas courant : l'animateur prévient
+   * le lundi qu'il sera absent jeudi. Jusqu'ici on ne pouvait annuler qu'une séance du
+   * jour même, depuis « Aujourd'hui » — pas une séance à venir.
+   *
+   * Annuler la séance ne touche pas à l'activité : les autres semaines restent.
+   */
+  const seance = $derived(
+    date === undefined || nouvelle
+      ? null
+      : (staffStore.occurrences.find((o) => o.activityId === activityId && o.localDate === date) ?? null),
+  )
 </script>
 
 <section class="mx-auto max-w-3xl px-4 py-6">
@@ -184,6 +201,25 @@
     <p role="alert" class="mb-4 rounded-xl bg-red-50 p-3 text-lg font-semibold text-red-900">
       <span aria-hidden="true">⚠️</span> {erreur}
     </p>
+  {/if}
+
+  <!--
+    Avant le formulaire : on vient de cliquer sur une séance précise, et neuf fois sur
+    dix c'est pour elle qu'on est là — pas pour modifier l'activité de toutes les semaines.
+  -->
+  {#if seance !== null}
+    <div class="card mb-5 p-4">
+      <h2 class="mb-1 text-2xl font-bold text-ink">Cette séance</h2>
+      <p class="mb-3 text-lg text-ink">
+        {formatLongDayLabel(seance.localDate)} · {formatTimeRange(seance.start, seance.end)}
+        — {staffCapacityLabel(seance)}
+      </p>
+      <CancelButton occurrence={seance} />
+      <p class="mt-3 text-base text-ink-soft">
+        Annuler cette séance ne change rien aux autres semaines. Les personnes inscrites
+        la voient barrée, avec le motif.
+      </p>
+    </div>
   {/if}
 
   <form onsubmit={enregistrer} class="grid gap-5">
