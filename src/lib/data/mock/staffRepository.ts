@@ -160,18 +160,19 @@ export function createMockStaffApp(): StaffApp {
         })
       },
 
-      async weekPlannings(from: LocalDate, to: LocalDate, serviceId: string) {
+      async weekPlannings(from: LocalDate, to: LocalDate, serviceId?: string) {
         const dansLaSemaine = new Set(
           [...world.occurrences.values()]
             .filter((o) => o.localDate >= from && o.localDate <= to)
             .map((o) => o.id),
         )
         return world.patients
-          .filter((patient) => patient.serviceId === serviceId)
+          .filter((patient) => serviceId === undefined || patient.serviceId === serviceId)
           .sort((a, b) => a.firstName.localeCompare(b.firstName, 'fr'))
           .map((patient) => ({
             patientUid: patient.uid,
             firstName: patient.firstName,
+            serviceId: patient.serviceId,
             lines: world.registrations
               .filter(
                 (r) =>

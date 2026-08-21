@@ -2,8 +2,10 @@
   import { staffStore } from '../../lib/staffState.svelte'
   import { proposed } from '../../lib/domain/catalog'
   import { store } from '../../lib/appState.svelte'
-  import { formatLongDayLabel, localDateOf } from '../../lib/domain/time'
-  import type { NewPatientCode } from '../../lib/data/staffPorts'
+  import { presenceOf, type Presence } from '../../lib/domain/presence'
+  import { formatLongDayLabel, formatTime, localDateOf } from '../../lib/domain/time'
+  import type { NewPatientCode, PatientPlanning } from '../../lib/data/staffPorts'
+  import { navigate } from '../../lib/router.svelte'
 
   /**
    * Les patients et leurs codes d'accès.
@@ -29,6 +31,42 @@
   $effect(() => {
     if (serviceId === '' && services.length > 0) serviceId = services[0]!.id
   })
+
+  /**
+   * Où en est chaque personne, maintenant : en activité, ou disponible. C'est la question
+   * que se pose un soignant qui cherche quelqu'un dans l'unité.
+   *
+   * Relu toutes les minutes : une séance qui se termine doit libérer la personne à
+   * l'écran sans qu'on recharge la page.
+   */
+  let plannings = $state<PatientPlanning[]>([])
+  let maintenant = $state(new Date())
+
+  $effect(() => {
+    const debut = staffStore.week[0]
+    if (debut === undefined) return
+    void staffStore
+      .weekPlannings()
+      .then((valeur) => (plannings = valeur))
+      .catch(() => (plannings = []))
+  })
+
+  $effect(() => {
+    const minuterie = setInterval(() => (maintenant = new Date()), 60_000)
+    return () => clearInterval(minuterie)
+  })
+
+  function presence(patientUid: string): Presence {
+    const planning = plannings.find((p) => p.patientUid === patientUid)
+    if (planning === undefined) return { kind: 'free', next: null }
+    const lignes = planning.lines
+      .map((ligne) => {
+        const occurrence = staffStore.occurrences.find((o) => o.id === ligne.occurrenceId)
+        return occurrence === undefined ? null : { occurrence, status: ligne.status }
+      })
+      .filter((v) => v !== null)
+    return presenceOf(lignes, maintenant)
+  }
 
   const parService = $derived(
     services
@@ -147,10 +185,30 @@
       <h2 class="mt-6 mb-3 text-2xl font-bold text-ink">{groupe.service.name}</h2>
       <ul class="grid gap-3">
         {#each groupe.patients as patient (patient.uid)}
+          {@const etat = presence(patient.uid)}
           <li class="card p-4">
             <div class="flex flex-wrap items-baseline justify-between gap-3">
               <div>
                 <h3 class="text-xl font-bold text-ink">{patient.firstName}</h3>
+                <!-- L'icône double la couleur : l'état ne se lit jamais à la teinte seule. -->
+                {#if etat.kind === 'busy'}
+                  <p class="text-lg font-semibold text-ink">
+                    <span aria-hidden="true">🔵</span>
+                    En activité : {etat.title}, jusqu'à {formatTime(etat.end)}
+                  </p>
+                  <p class="text-base text-ink-soft">
+                    {store.locationOf(etat.locationId)?.name ?? ''}
+                  </p>
+                {:else}
+                  <p class="text-lg font-semibold text-ink">
+                    <span aria-hidden="true">⚪</span> Libre
+                  </p>
+                  {#if etat.next !== null}
+                    <p class="text-base text-ink-soft">
+                      Ensuite : {etat.next.title} à {formatTime(etat.next.start)}
+                    </p>
+                  {/if}
+                {/if}
                 {#if patient.expiresAt}
                   <p class="text-base text-ink-soft">
                     Code valable jusqu'au {formatLongDayLabel(localDateOf(patient.expiresAt))}
@@ -158,6 +216,13 @@
                 {/if}
               </div>
               <div class="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  class="btn btn-secondary"
+                  onclick={() => navigate(`/soignant/planning/${patient.uid}`)}
+                >
+                  Voir son planning
+                </button>
                 <button type="button" class="btn btn-secondary" disabled={busy} onclick={() => nouveauCode(patient.uid)}>
                   Nouveau code
                 </button>

@@ -219,7 +219,7 @@ class StaffStore {
   }
 
   /** Les plannings de la semaine affichée, pour tout un service. */
-  async weekPlannings(serviceId: string): Promise<PatientPlanning[]> {
+  async weekPlannings(serviceId?: string): Promise<PatientPlanning[]> {
     const jours = this.week
     return (await this.app$()).repository.weekPlannings(jours[0]!, jours[6]!, serviceId)
   }

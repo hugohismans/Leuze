@@ -150,19 +150,23 @@ export const staffWeekPlannings = onCall(async (request: CallableRequest) => {
   requireStaff(request)
   const from = requireString(request.data?.from, 'from', 10)
   const to = requireString(request.data?.to, 'to', 10)
-  const serviceId = requireString(request.data?.serviceId, 'serviceId', 60)
+  // Sans service : tout le monde. L'écran des patients s'en sert pour dire, d'un coup
+  // d'œil, qui est en activité et qui est libre.
+  const brut = request.data?.serviceId
+  const serviceId = typeof brut === 'string' && brut.length > 0 ? brut : null
 
   const maintenant = Date.now()
-  const patientsSnapshot = await db()
-    .collection(COLLECTIONS.patients)
-    .where('serviceId', '==', serviceId)
-    .get()
+  const collection = db().collection(COLLECTIONS.patients)
+  const patientsSnapshot = await (serviceId === null
+    ? collection.get()
+    : collection.where('serviceId', '==', serviceId).get())
   const patients = patientsSnapshot.docs
     .map((document) => {
-      const data = document.data() as { firstName?: string; expiresAt?: Timestamp }
+      const data = document.data() as { firstName?: string; serviceId?: string; expiresAt?: Timestamp }
       return {
         patientUid: document.id,
         firstName: data.firstName ?? 'Prénom inconnu',
+        serviceId: data.serviceId ?? '',
         // Un séjour terminé ne reçoit plus de feuille.
         expiresAtMs: data.expiresAt?.toMillis() ?? Number.MAX_SAFE_INTEGER,
       }

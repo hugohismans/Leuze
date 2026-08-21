@@ -4,8 +4,7 @@
   import { myWeek, weekEntryCount } from '../../lib/domain/myWeek'
   import { addLocalDays, formatDayLabel, startOfIsoWeek, todayLocalDate } from '../../lib/domain/time'
   import type { PatientPlanning } from '../../lib/data/staffPorts'
-  import WeekGrid from '../../lib/ui/WeekGrid.svelte'
-  import logo from '../../lib/brand/acis-logo-bleu.svg'
+  import WeekSheet from '../../lib/ui/WeekSheet.svelte'
 
   /**
    * La pile de plannings d'un service, imprimée en une fois.
@@ -173,22 +172,11 @@
   <!-- Les feuilles : invisibles à l'écran, une page chacune à l'impression. -->
   <div class="pile">
     {#each plannings as planning (planning.patientUid)}
-      <article class="feuille feuille-semaine">
-        <header class="mb-4 flex flex-wrap items-end justify-between gap-3 border-b-2 border-line pb-3">
-          <div>
-            <h2 class="text-3xl font-bold text-ink">Ma semaine — {planning.firstName}</h2>
-            <p class="text-lg text-ink">
-              Du {formatDayLabel(staffStore.week[0]!)} au {formatDayLabel(staffStore.week[6]!)}
-              {#if nomDuService}· {nomDuService}{/if}
-            </p>
-          </div>
-          <img src={logo} alt="ACIS" class="h-10 w-auto" />
-        </header>
-
-        <div class="grille-papier">
-          <WeekGrid week={semaineDe(planning)} />
-        </div>
-      </article>
+      <WeekSheet
+        titre={`Ma semaine — ${planning.firstName}`}
+        sousTitre={`Du ${formatDayLabel(staffStore.week[0]!)} au ${formatDayLabel(staffStore.week[6]!)}${nomDuService ? ` · ${nomDuService}` : ''}`}
+        week={semaineDe(planning)}
+      />
     {/each}
   </div>
 </section>
@@ -201,12 +189,6 @@
   @media print {
     .pile {
       display: block;
-    }
-    .grille-papier {
-      display: flex;
-      flex-direction: column;
-      flex: 1;
-      min-height: 0;
     }
   }
 </style>

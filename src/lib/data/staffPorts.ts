@@ -16,6 +16,7 @@ import type {
 export type PatientPlanning = {
   patientUid: string
   firstName: string
+  serviceId: string
   lines: Array<{ occurrenceId: string; status: 'confirmed' | 'waitlist' }>
 }
 
@@ -111,7 +112,7 @@ export interface StaffRepository {
    * la pile à la fin de la réunion du lundi. Les inscriptions ne sont pas lisibles côté
    * client : c'est le serveur qui les rassemble.
    */
-  weekPlannings(from: LocalDate, to: LocalDate, serviceId: string): Promise<PatientPlanning[]>
+  weekPlannings(from: LocalDate, to: LocalDate, serviceId?: string): Promise<PatientPlanning[]>
 
   cancelOccurrence(occurrenceId: string, reason: string): Promise<void>
   restoreOccurrence(occurrenceId: string): Promise<void>

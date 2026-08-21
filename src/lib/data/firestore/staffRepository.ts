@@ -256,12 +256,12 @@ export function createFirestoreStaffApp(): StaffApp {
         })
       },
 
-      async weekPlannings(from: LocalDate, to: LocalDate, serviceId: string): Promise<PatientPlanning[]> {
+      async weekPlannings(from: LocalDate, to: LocalDate, serviceId?: string): Promise<PatientPlanning[]> {
         const call = httpsCallable<
-          { from: string; to: string; serviceId: string },
+          { from: string; to: string; serviceId?: string },
           { plannings: PatientPlanning[] }
         >(functions, 'staffWeekPlannings')
-        return (await call({ from, to, serviceId })).data.plannings
+        return (await call({ from, to, ...(serviceId === undefined ? {} : { serviceId }) })).data.plannings
       },
 
       async restoreOccurrence(occurrenceId: string): Promise<void> {
