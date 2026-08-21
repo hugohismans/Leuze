@@ -17,6 +17,7 @@ import type { PatientPlanning } from './data/staffPorts'
 import type { CatalogKind } from './domain/catalog'
 import { store } from './appState.svelte'
 import { todayLocalDate, weekDays } from './domain/time'
+import { enClair } from './erreurs'
 import type {
   Activity,
   Appointment,
@@ -163,9 +164,7 @@ class StaffStore {
     } catch (error) {
       // Un refus du serveur doit se lire à l'écran, pas finir dans la console.
       this.message =
-        error instanceof Error
-          ? error.message.replace(/^.*?:\s*/, '')
-          : "Le séjour n'a pas pu être clôturé."
+        enClair(error)
     }
     await this.loadPatients()
   }

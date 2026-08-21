@@ -5,6 +5,7 @@
   import { addLocalDays, formatDayLabel, startOfIsoWeek, todayLocalDate } from '../../lib/domain/time'
   import type { PatientPlanning } from '../../lib/data/staffPorts'
   import WeekSheet from '../../lib/ui/WeekSheet.svelte'
+  import { enClair } from '../../lib/erreurs'
 
   /**
    * La pile de plannings d'un service, imprimée en une fois.
@@ -44,7 +45,7 @@
       await staffStore.loadAppointments()
       plannings = await staffStore.weekPlannings(service)
     } catch (error) {
-      erreur = error instanceof Error ? error.message.replace(/^.*?:\s*/, '') : "La liste n'a pas pu être lue."
+      erreur = enClair(error)
       plannings = []
     } finally {
       chargement = false

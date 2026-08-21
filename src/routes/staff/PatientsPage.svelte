@@ -6,6 +6,7 @@
   import { formatLongDayLabel, formatTime, localDateOf } from '../../lib/domain/time'
   import type { NewPatientCode, PatientPlanning } from '../../lib/data/staffPorts'
   import { navigate } from '../../lib/router.svelte'
+  import { enClair } from '../../lib/erreurs'
 
   /**
    * Les patients et leurs codes d'accès.
@@ -86,7 +87,7 @@
       codeDelivre = await staffStore.createPatient(prenom.trim(), serviceId)
       prenom = ''
     } catch (error) {
-      erreur = error instanceof Error ? error.message.replace(/^.*?:\s*/, '') : "Le code n'a pas pu être créé."
+      erreur = enClair(error)
     }
     busy = false
   }
@@ -98,7 +99,7 @@
     try {
       codeDelivre = await staffStore.regenerateCode(patientUid)
     } catch (error) {
-      erreur = error instanceof Error ? error.message.replace(/^.*?:\s*/, '') : "Le code n'a pas pu être créé."
+      erreur = enClair(error)
     }
     busy = false
   }

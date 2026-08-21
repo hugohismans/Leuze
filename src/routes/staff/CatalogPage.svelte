@@ -4,6 +4,7 @@
   import type { CatalogKind } from '../../lib/domain/catalog'
   import type { AppointmentKind, Category, Location, Service } from '../../lib/domain/types'
   import { uniqueSlug } from '../../lib/domain/slug'
+  import { enClair } from '../../lib/erreurs'
 
   /**
    * Paramétrage du catalogue : lieux, services, catégories.
@@ -134,7 +135,7 @@
     try {
       await action()
     } catch (error) {
-      erreur = error instanceof Error ? error.message.replace(/^.*?:\s*/, '') : "L'action n'a pas abouti."
+      erreur = enClair(error)
     } finally {
       busy = false
     }

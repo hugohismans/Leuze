@@ -14,6 +14,7 @@
   import type { PatientPlanning } from '../../lib/data/staffPorts'
   import WeekSheet from '../../lib/ui/WeekSheet.svelte'
   import { navigate } from '../../lib/router.svelte'
+  import { enClair } from '../../lib/erreurs'
 
   /**
    * Le planning d'une seule personne, vu par un soignant.
@@ -41,7 +42,7 @@
       const tous = await staffStore.weekPlannings()
       planning = tous.find((p) => p.patientUid === patientUid) ?? null
     } catch (error) {
-      erreur = error instanceof Error ? error.message.replace(/^.*?:\s*/, '') : "Le planning n'a pas pu être lu."
+      erreur = enClair(error)
     } finally {
       chargement = false
     }

@@ -36,6 +36,7 @@ import {
 } from 'firebase/firestore'
 import { httpsCallable } from 'firebase/functions'
 import type { CatalogRemoval } from '../../domain/catalog'
+import { friendlyError } from '../../domain/errors'
 import type { Account } from '../../domain/impersonation'
 import { addMinutes, instantOf } from '../../domain/time'
 import type { Activity, Appointment, LocalDate, LocalTime, Occurrence } from '../../domain/types'
@@ -67,7 +68,9 @@ const SIGNED_OUT: StaffIdentity = {
 /** Les fonctions appelables renvoient leur message en français : on le laisse passer. */
 function messageDErreur(error: unknown): string {
   const brut = error instanceof Error ? error.message : ''
-  return brut.replace(/^.*?:\s*/, '') || "L'opération n'a pas abouti. Réessayez dans un instant."
+  // `navigator.onLine` ne prouve pas qu'Internet répond, mais quand il est faux la
+  // coupure est certaine — et c'est le cas qu'il faut nommer en premier.
+  return friendlyError(brut, typeof navigator === 'undefined' ? true : navigator.onLine)
 }
 
 function toOccurrence(snapshot: DocumentSnapshot | QueryDocumentSnapshot): Occurrence {

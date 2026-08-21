@@ -2,11 +2,20 @@
   import { staffStore } from '../../lib/staffState.svelte'
   import { store } from '../../lib/appState.svelte'
   import { audienceLabelForStaff, isPublished } from '../../lib/domain/audience'
-  import { formatDuration } from '../../lib/domain/time'
+  import { byChronology } from '../../lib/domain/activityOrder'
+  import { formatDuration, todayLocalDate } from '../../lib/domain/time'
   import type { Activity } from '../../lib/domain/types'
   import { navigate } from '../../lib/router.svelte'
+  import { enClair } from '../../lib/erreurs'
 
   const JOURS = ['', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche']
+
+  /**
+   * Dans l'ordre du temps, et non de l'alphabet : on cherche « ce qui vient » bien plus
+   * souvent que « ce qui commence par A ». Ce qui est passé suit, du plus récent au plus
+   * ancien. Voir `domain/activityOrder.ts`.
+   */
+  const activites = $derived(byChronology(staffStore.activities, todayLocalDate()))
 
   /** La suppression se confirme sur place, comme dans le catalogue. */
   let aSupprimer = $state<string | null>(null)
@@ -21,7 +30,7 @@
       await staffStore.removeActivity(activityId)
       aSupprimer = null
     } catch (error) {
-      erreur = error instanceof Error ? error.message.replace(/^.*?:\s*/, '') : "L'action n'a pas abouti."
+      erreur = enClair(error)
     } finally {
       busy = false
     }
@@ -61,7 +70,7 @@
     <p class="card p-5 text-lg text-ink-soft">Aucune activité pour le moment.</p>
   {:else}
     <ul class="grid gap-4">
-      {#each staffStore.activities as activity (activity.id)}
+      {#each activites as activity (activity.id)}
         <li class="card p-4" class:bg-surface-soft={!activity.isActive}>
           <div class="flex flex-wrap items-baseline justify-between gap-2">
             <h2 class="text-xl font-bold text-ink">{activity.title}</h2>

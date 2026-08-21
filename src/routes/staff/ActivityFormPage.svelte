@@ -7,6 +7,7 @@
   import { formatLongDayLabel, formatTimeRange, todayLocalDate } from '../../lib/domain/time'
   import CancelButton from './CancelButton.svelte'
   import type { Activity, IsoWeekday, LocalDate, LocalTime } from '../../lib/domain/types'
+  import type { RosterLine } from '../../lib/data/staffPorts'
   import {
     activityEditRefusal,
     canChooseFacilitator,
@@ -248,6 +249,45 @@
       ? null
       : (staffStore.occurrences.find((o) => o.activityId === activityId && o.localDate === date) ?? null),
   )
+
+  /**
+   * Les inscrits de cette séance, avec de quoi les désinscrire.
+   *
+   * On vient ici pour modifier une activité, et la première question qui se pose est
+   * « qui est concerné ? » — changer l'heure d'une séance où six personnes sont inscrites
+   * n'est pas le même geste que la déplacer quand elle est vide.
+   *
+   * La liste ne s'affiche que pour qui a le droit de toucher à l'activité : elle suit la
+   * même règle que le formulaire, et le serveur la revérifie.
+   */
+  let inscritsCharges = $state<string | null>(null)
+  let retirant = $state<string | null>(null)
+
+  $effect(() => {
+    const id = seance?.id
+    if (id === undefined || refusDeModifier !== null) return
+    if (inscritsCharges === id) return
+    inscritsCharges = id
+    void staffStore.openRoster(id)
+  })
+
+  const inscrits = $derived(
+    seance === null || inscritsCharges !== seance.id
+      ? []
+      : staffStore.roster.filter((ligne) => ligne.status === 'confirmed'),
+  )
+  const enAttente = $derived(
+    seance === null || inscritsCharges !== seance.id
+      ? []
+      : staffStore.roster.filter((ligne) => ligne.status === 'waitlist'),
+  )
+
+  async function desinscrire(patientUid: string): Promise<void> {
+    if (seance === null || retirant !== null) return
+    retirant = patientUid
+    await staffStore.togglePatient(seance.id, patientUid)
+    retirant = null
+  }
 </script>
 
 <section class="mx-auto max-w-3xl px-4 py-6">
@@ -277,6 +317,56 @@
         Annuler cette séance ne change rien aux autres semaines. Les personnes inscrites
         la voient barrée, avec le motif.
       </p>
+
+      {#if refusDeModifier === null}
+        {#snippet ligneInscrite(ligne: RosterLine, attente: boolean)}
+          <li class="flex flex-wrap items-center justify-between gap-2 border-t border-line py-2">
+            <span class="text-lg text-ink">
+              {ligne.firstName}
+              <span class="text-base text-ink-soft">
+                {store.serviceOf(ligne.serviceId)?.name ?? ''}
+                {#if attente && ligne.position !== null} · {ligne.position}ᵉ sur la liste d'attente{/if}
+              </span>
+            </span>
+            <button
+              type="button"
+              class="btn btn-secondary"
+              disabled={retirant !== null}
+              onclick={() => desinscrire(ligne.patientUid)}
+            >
+              {retirant === ligne.patientUid ? 'Un instant…' : 'Désinscrire'}
+            </button>
+          </li>
+        {/snippet}
+
+        <h3 class="mt-5 text-xl font-bold text-ink">
+          {inscrits.length === 0
+            ? 'Personne d’inscrit à cette séance'
+            : inscrits.length === 1
+              ? 'Une personne inscrite'
+              : `${inscrits.length} personnes inscrites`}
+        </h3>
+
+        {#if inscrits.length > 0}
+          <ul class="mt-1">
+            {#each inscrits as ligne (ligne.patientUid)}{@render ligneInscrite(ligne, false)}{/each}
+          </ul>
+        {/if}
+
+        {#if enAttente.length > 0}
+          <h3 class="mt-4 text-xl font-bold text-ink">
+            {enAttente.length === 1 ? 'Une personne en attente' : `${enAttente.length} personnes en attente`}
+          </h3>
+          <ul class="mt-1">
+            {#each enAttente as ligne (ligne.patientUid)}{@render ligneInscrite(ligne, true)}{/each}
+          </ul>
+        {/if}
+
+        <p class="mt-3 text-base text-ink-soft">
+          Désinscrire quelqu'un libère sa place : la première personne en attente y passe
+          aussitôt. Prévenez-la, elle ne le saura pas autrement.
+        </p>
+      {/if}
     </div>
   {/if}
 

@@ -9,6 +9,7 @@
   } from '../../lib/domain/availability'
   import type { AvailabilityWindow, IsoWeekday, Practitioner } from '../../lib/domain/types'
   import { navigate } from '../../lib/router.svelte'
+  import { enClair } from '../../lib/erreurs'
 
   /**
    * Le personnel : qui anime, qui reçoit.
@@ -78,7 +79,7 @@
     try {
       await action()
     } catch (error) {
-      erreur = error instanceof Error ? error.message.replace(/^.*?:\s*/, '') : "L'action n'a pas abouti."
+      erreur = enClair(error)
     } finally {
       busy = false
     }

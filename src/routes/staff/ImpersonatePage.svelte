@@ -9,6 +9,7 @@
     type Account,
   } from '../../lib/domain/impersonation'
   import { navigate } from '../../lib/router.svelte'
+  import { enClair } from '../../lib/erreurs'
 
   /**
    * « Voir à leur place » — un écran de mise au point, et rien d'autre.
@@ -35,7 +36,7 @@
       .listAccounts()
       .then((valeur) => (comptes = valeur))
       .catch((error: unknown) => {
-        erreur = error instanceof Error ? error.message.replace(/^.*?:\s*/, '') : 'La liste n’a pas pu être lue.'
+        erreur = enClair(error)
       })
       .finally(() => (chargement = false))
   })
