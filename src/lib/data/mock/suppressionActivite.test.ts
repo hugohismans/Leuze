@@ -5,14 +5,23 @@ import { resetWorld, world } from './state'
 /**
  * La règle de suppression d'une activité, jouée de bout en bout sur la démonstration :
  * ce qui n'a jamais réuni personne disparaît, le reste est seulement retiré du programme.
+ *
+ * La démonstration refuse ce que le serveur refuse : supprimer demande d'être connecté,
+ * et d'être administrateur ou d'animer l'activité. Chaque cas ouvre donc une session.
  */
+async function ouvrirUneSession(): Promise<ReturnType<typeof createMockStaffApp>> {
+  const app = createMockStaffApp()
+  await app.session.signIn('soignant@exemple.test')
+  return app
+}
+
 describe('suppression d’une activité', () => {
   beforeEach(() => {
     resetWorld()
   })
 
   it('supprime l’activité et ses séances quand personne n’est inscrit', async () => {
-    const app = createMockStaffApp()
+    const app = await ouvrirUneSession()
     const { activityId } = await app.repository.saveActivity({
       title: 'Activité de test',
       description: '',
@@ -37,7 +46,7 @@ describe('suppression d’une activité', () => {
   })
 
   it('retire du programme sans rien effacer dès qu’une inscription existe', async () => {
-    const app = createMockStaffApp()
+    const app = await ouvrirUneSession()
     const inscrite = world.registrations[0]
     expect(inscrite).toBeDefined()
     const occurrence = world.occurrences.get(inscrite!.occurrenceId)
