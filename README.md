@@ -128,8 +128,7 @@ rendez-vous mêlés, dans l'ordre de chaque journée. La page sert à trois usag
 même mise en page — la consulter, en faire une **capture d'écran** à garder dans son
 téléphone, ou l'**imprimer** (A4 portrait, une page).
 
-Elle indique toujours que les horaires peuvent changer : une feuille imprimée devient
-fausse dès qu'une activité est annulée, et l'écrire est la seule façon honnête de le dire.
+Une séance annulée y reste affichée, barrée avec son motif.
 
 ## Rendez-vous individuels
 

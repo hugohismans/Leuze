@@ -20,7 +20,11 @@
    * Elle est faite pour trois usages, et la même mise en page sert aux trois : la
    * consulter, en faire une capture d'écran à garder dans son téléphone, ou l'imprimer.
    * D'où le format vertical, compact, et l'absence de tout ce qui ne se lit pas sur une
-   * feuille — aucun bouton, aucune couleur porteuse de sens.
+   * feuille — aucun bouton, aucune couleur porteuse de sens, aucune mise en garde.
+   *
+   * Le programme est arrêté en début de semaine et ne bouge pas : la feuille n'a donc
+   * pas à prévenir d'un changement d'horaire. Une séance annulée reste affichée, barrée
+   * avec son motif, pour qui rouvre la page.
    */
   let debut = $state<string>(startOfIsoWeek(todayLocalDate()))
   const jours = $derived(weekDays(debut))
@@ -119,10 +123,6 @@
         {/each}
       </ul>
     {/if}
-
-    <footer class="mt-4 border-t-2 border-line pt-3 text-base text-ink">
-      Les horaires peuvent changer. En cas de doute, demandez à un soignant.
-    </footer>
   </article>
 
   <div class="no-print mt-5 grid gap-3">

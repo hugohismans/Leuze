@@ -179,13 +179,13 @@ compacte, ce qui est exactement ce qu'il faut pour l'imprimer et pour la lire su
 téléphone. Aucune image n'est générée : tous les téléphones savent faire une capture, et
 un fichier à télécharger puis à retrouver dans une galerie serait un obstacle de plus.
 
-Deux détails qui comptent plus qu'ils n'en ont l'air :
+Un détail qui compte plus qu'il n'en a l'air : **les activités annulées restent, barrées**
+avec leur motif. Les faire disparaître d'un programme peut-être déjà imprimé serait pire
+que de les montrer barrées.
 
-- **les activités annulées restent, barrées.** Les faire disparaître d'un programme
-  peut-être déjà imprimé serait pire que de les montrer barrées ;
-- la feuille dit **« Les horaires peuvent changer. En cas de doute, demandez à un
-  soignant. »** Une feuille imprimée devient fausse dès la première annulation ; c'est la
-  seule façon honnête de le reconnaître.
+La feuille ne porte **aucune mise en garde sur les horaires** : le programme est arrêté en
+début de semaine et ne bouge pas. Avertir d'un changement qui n'arrive pas installerait un
+doute inutile chez quelqu'un qui a déjà du mal à se repérer.
 
 ### 4.1 Récurrence — « série + occurrences matérialisées + exceptions portées par l'occurrence »
 
