@@ -2,6 +2,12 @@
   import { staffStore } from '../../lib/staffState.svelte'
   import { store } from '../../lib/appState.svelte'
   import { uniqueSlug } from '../../lib/domain/slug'
+  import {
+    availabilityLabel,
+    normalizeAvailability,
+    weekdayName,
+  } from '../../lib/domain/availability'
+  import type { AvailabilityWindow, IsoWeekday, Practitioner } from '../../lib/domain/types'
   import { navigate } from '../../lib/router.svelte'
 
   /**
@@ -29,6 +35,38 @@
   let accesPour = $state<string | null>(null)
   let adresse = $state('')
   let motDePasse = $state<{ email: string; valeur: string } | null>(null)
+
+  /**
+   * Les plages où quelqu'un reçoit : une semaine type, saisie par l'intéressé lui-même —
+   * il est le seul à savoir quand il est là — ou par l'administrateur. Les règles
+   * Firestore appliquent la même chose : chacun ne touche qu'à ses propres plages, et à
+   * rien d'autre de sa fiche.
+   */
+  let plagesOuvertes = $state<string | null>(null)
+  let brouillon = $state<AvailabilityWindow[]>([])
+  const JOURS: IsoWeekday[] = [1, 2, 3, 4, 5, 6, 7]
+
+  const peutModifierLesPlages = (practitionerId: string): boolean =>
+    staffStore.isAdmin || staffStore.identity.practitionerId === practitionerId
+
+  function ouvrirLesPlages(personne: Practitioner): void {
+    plagesOuvertes = personne.id
+    const existantes = personne.availability ?? []
+    // Une liste vide n'offrirait rien à remplir : on pose une première plage.
+    brouillon =
+      existantes.length > 0
+        ? existantes.map((f) => ({ ...f }))
+        : [{ weekday: 2, from: '09:00', to: '12:00' }]
+  }
+
+  async function enregistrerLesPlages(practitionerId: string): Promise<void> {
+    // Le domaine remet de l'ordre avant l'enregistrement : tri, fusion, rejet du vide.
+    const propres = normalizeAvailability(brouillon)
+    await tenter(async () => {
+      await staffStore.saveAvailability(practitionerId, propres)
+      plagesOuvertes = null
+    })
+  }
 
   const enPoste = $derived(store.practitioners.filter((p) => p.isActive))
   const retires = $derived(store.practitioners.filter((p) => !p.isActive))
@@ -199,6 +237,106 @@
     </form>
   {/if}
 
+  {#snippet plages(personne: Practitioner)}
+    {@const resume = availabilityLabel(personne.availability ?? [])}
+    <div class="mt-3 rounded-xl border-2 border-line p-4">
+      <h4 class="text-lg font-semibold text-ink">Quand cette personne reçoit</h4>
+      <p class="mt-1 text-base text-ink-soft">
+        {resume === ''
+          ? 'Rien n’est indiqué. Personne ne sait donc quand proposer un rendez-vous.'
+          : resume}
+      </p>
+
+      {#if peutModifierLesPlages(personne.id)}
+        {#if plagesOuvertes === personne.id}
+          <ul class="mt-3 grid gap-2">
+            {#each brouillon as plage, index (index)}
+              <li class="flex flex-wrap items-end gap-2">
+                <div>
+                  <label for={`jour-${index}`} class="mb-1 block text-base font-semibold text-ink">
+                    Le jour
+                  </label>
+                  <select
+                    id={`jour-${index}`}
+                    class={champ}
+                    style="min-height: 56px; width: auto;"
+                    value={String(plage.weekday)}
+                    onchange={(event) =>
+                      (brouillon[index]!.weekday = Number(event.currentTarget.value) as IsoWeekday)}
+                  >
+                    {#each JOURS as jour (jour)}
+                      <option value={String(jour)}>{weekdayName(jour)}</option>
+                    {/each}
+                  </select>
+                </div>
+                <div>
+                  <label for={`de-${index}`} class="mb-1 block text-base font-semibold text-ink">De</label>
+                  <input
+                    id={`de-${index}`}
+                    type="time"
+                    bind:value={brouillon[index]!.from}
+                    class={champ}
+                    style="min-height: 56px; width: auto;"
+                  />
+                </div>
+                <div>
+                  <label for={`a-${index}`} class="mb-1 block text-base font-semibold text-ink">À</label>
+                  <input
+                    id={`a-${index}`}
+                    type="time"
+                    bind:value={brouillon[index]!.to}
+                    class={champ}
+                    style="min-height: 56px; width: auto;"
+                  />
+                </div>
+                <button
+                  type="button"
+                  class="btn btn-secondary"
+                  onclick={() => (brouillon = brouillon.filter((_, i) => i !== index))}
+                >
+                  Retirer cette plage
+                </button>
+              </li>
+            {/each}
+          </ul>
+
+          <div class="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              class="btn btn-secondary"
+              onclick={() => (brouillon = [...brouillon, { weekday: 2, from: '09:00', to: '12:00' }])}
+            >
+              <span aria-hidden="true">＋</span> Ajouter une plage
+            </button>
+            <button
+              type="button"
+              class="btn btn-primary"
+              disabled={busy}
+              onclick={() => enregistrerLesPlages(personne.id)}
+            >
+              {busy ? 'Un instant…' : 'Enregistrer'}
+            </button>
+            <button type="button" class="btn btn-secondary" onclick={() => (plagesOuvertes = null)}>
+              Annuler
+            </button>
+          </div>
+          <p class="mt-2 text-base text-ink-soft">
+            Une semaine type. Cela n'interdit rien : un rendez-vous peut toujours être fixé
+            en dehors, l'application prévient simplement.
+          </p>
+        {:else}
+          <button
+            type="button"
+            class="btn btn-secondary mt-3"
+            onclick={() => ouvrirLesPlages(personne)}
+          >
+            {resume === '' ? 'Indiquer ses disponibilités' : 'Modifier ses disponibilités'}
+          </button>
+        {/if}
+      {/if}
+    </div>
+  {/snippet}
+
   {#snippet fiche(id: string)}
     {@const personne = store.practitionerOf(id)}
     {#if personne !== null}
@@ -209,6 +347,8 @@
             <p class="text-base text-ink-soft">{personne.role}</p>
           </div>
         </div>
+
+        {#if personne.isActive}{@render plages(personne)}{/if}
 
         <div class="mt-3 flex flex-wrap gap-2">
           <button

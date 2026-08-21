@@ -1,7 +1,15 @@
 import { assertFails, assertSucceeds, type RulesTestEnvironment } from '@firebase/rules-unit-testing'
 import { collection, deleteDoc, doc, getDoc, getDocs, setDoc, updateDoc } from 'firebase/firestore'
 import { afterAll, beforeAll, beforeEach, describe, it } from 'vitest'
-import { MAZUREL, activityDoc, asAdmin, asPatient, asStaff, createEnvironment } from './helpers'
+import {
+  MAZUREL,
+  activityDoc,
+  asAdmin,
+  asPatient,
+  asPractitioner,
+  asStaff,
+  createEnvironment,
+} from './helpers'
 
 /**
  * Le catalogue : lieux, catégories, services. Les soignants les paramètrent,
@@ -124,5 +132,61 @@ describe('réglages de l’application', () => {
     await assertSucceeds(getDoc(doc(asPatient(env, 'p_1', MAZUREL), 'config', 'app')))
     await assertFails(updateDoc(doc(asStaff(env), 'config', 'app'), { retentionDays: 3650 }))
     await assertSucceeds(updateDoc(doc(asAdmin(env), 'config', 'app'), { retentionDays: 30 }))
+  })
+})
+
+describe('disponibilités d’un intervenant', () => {
+  const plages = [{ weekday: 2, from: '09:00', to: '12:00' }]
+
+  beforeEach(async () => {
+    await env.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), 'practitioners', 'docteur-lemaire'), {
+        name: 'Docteur Lemaire',
+        role: 'Psychiatre',
+        isActive: true,
+      })
+    })
+  })
+
+  it('se tiennent à jour par la personne elle-même : elle seule sait quand elle est là', async () => {
+    const database = asPractitioner(env, 'docteur-lemaire')
+    await assertSucceeds(
+      updateDoc(doc(database, 'practitioners', 'docteur-lemaire'), { availability: plages }),
+    )
+  })
+
+  it('mais pas celles d’un collègue', async () => {
+    const database = asPractitioner(env, 'claire')
+    await assertFails(
+      updateDoc(doc(database, 'practitioners', 'docteur-lemaire'), { availability: plages }),
+    )
+  })
+
+  it('et rien d’autre de sa fiche au passage', async () => {
+    const database = asPractitioner(env, 'docteur-lemaire')
+    await assertFails(
+      updateDoc(doc(database, 'practitioners', 'docteur-lemaire'), {
+        availability: plages,
+        role: 'Directeur',
+      }),
+    )
+    await assertFails(
+      updateDoc(doc(database, 'practitioners', 'docteur-lemaire'), { isActive: false }),
+    )
+  })
+
+  it('un compte relié à personne n’en écrit aucune', async () => {
+    await assertFails(
+      updateDoc(doc(asStaff(env), 'practitioners', 'docteur-lemaire'), { availability: plages }),
+    )
+  })
+
+  it('l’administrateur, lui, tient la fiche entière', async () => {
+    await assertSucceeds(
+      updateDoc(doc(asAdmin(env), 'practitioners', 'docteur-lemaire'), {
+        availability: plages,
+        role: 'Psychiatre référent',
+      }),
+    )
   })
 })

@@ -7,6 +7,7 @@ import type { Account } from '../domain/impersonation'
 import type {
   Activity,
   Appointment,
+  AvailabilityWindow,
   LocalDate,
   LocalTime,
   Occurrence,
@@ -223,6 +224,16 @@ export interface CatalogAdminService {
     kindId?: string
     isActive: boolean
   }): Promise<void>
+
+  /**
+   * Les plages où quelqu'un reçoit, et elles seules.
+   *
+   * À part de `savePractitioner`, parce que le droit n'est pas le même : une personne du
+   * personnel tient ses propres disponibilités à jour — elle seule sait quand elle est
+   * là — sans pouvoir toucher au reste de sa fiche. Écrire la fiche entière serait refusé
+   * par les règles.
+   */
+  saveAvailability(practitionerId: string, windows: AvailabilityWindow[]): Promise<void>
 
   /**
    * Retire une entrée. Supprimée si rien ne l'utilise, simplement retirée des listes

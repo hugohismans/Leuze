@@ -17,7 +17,14 @@ import type { PatientPlanning } from './data/staffPorts'
 import type { CatalogKind } from './domain/catalog'
 import { store } from './appState.svelte'
 import { todayLocalDate, weekDays } from './domain/time'
-import type { Activity, Appointment, LocalDate, LocalTime, Occurrence } from './domain/types'
+import type {
+  Activity,
+  Appointment,
+  AvailabilityWindow,
+  LocalDate,
+  LocalTime,
+  Occurrence,
+} from './domain/types'
 
 const SIGNED_OUT: StaffIdentity = {
   uid: null,
@@ -381,6 +388,13 @@ class StaffStore {
     await (await this.app$()).catalogAdmin.savePractitioner(practitioner)
     await store.loadCatalog(true)
     this.message = `Intervenant enregistré : ${practitioner.name}.`
+  }
+
+  /** Les plages où quelqu'un reçoit. Chacun tient les siennes ; l'administrateur, toutes. */
+  async saveAvailability(practitionerId: string, windows: AvailabilityWindow[]): Promise<void> {
+    await (await this.app$()).catalogAdmin.saveAvailability(practitionerId, windows)
+    await store.loadCatalog(true)
+    this.message = 'Disponibilités enregistrées.'
   }
 
   /** Le catalogue est partagé avec l'écran patient : mêmes lieux, mêmes catégories. */

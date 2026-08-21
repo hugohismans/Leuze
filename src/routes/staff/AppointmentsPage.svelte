@@ -14,6 +14,8 @@
     appointmentAccessNotice,
     seesEveryAppointment,
   } from '../../lib/domain/appointmentAccess'
+  import { availabilityLabel, availabilityWarning } from '../../lib/domain/availability'
+  import { isoWeekdayOf } from '../../lib/domain/time'
   import { formatFullWhen, todayLocalDate } from '../../lib/domain/time'
   import type { LocalDate, LocalTime } from '../../lib/domain/types'
 
@@ -54,6 +56,14 @@
   let heure = $state<LocalTime>('10:00')
   let duree = $state(30)
   let avecQui = $state('')
+  /**
+   * L'intervenant à qui la demande est confiée.
+   *
+   * Il manquait : une demande fixée depuis la file n'était reliée à personne, et le
+   * rendez-vous n'apparaissait donc dans l'agenda d'aucun professionnel — pas même celui
+   * qui devait le tenir.
+   */
+  let intervenantFile = $state('')
   let lieu = $state('')
   let busy = $state(false)
 
@@ -121,6 +131,29 @@
     }
   })
 
+  /**
+   * « Est-il là ? » — la question qu'on se pose au moment de proposer une date, et à
+   * laquelle il fallait jusqu'ici répondre de mémoire. L'application n'interdit rien :
+   * une urgence se cale hors des plages. Elle prévient, on décide.
+   */
+  const intervenantChoisi = $derived(store.practitionerOf(intervenantDirect))
+  const plagesDe = $derived(intervenantChoisi?.availability ?? [])
+  const resumeDesPlages = $derived(availabilityLabel(plagesDe))
+  const alerteDirecte = $derived(
+    availabilityWarning(plagesDe, isoWeekdayOf(dateDirecte), heureDirecte, dureeDirecte),
+  )
+
+  /** Même question, pour une demande de la file qu'on est en train de fixer. */
+  const intervenantDeLaFile = $derived(store.practitionerOf(intervenantFile))
+  const alerteFile = $derived(
+    availabilityWarning(
+      intervenantDeLaFile?.availability ?? [],
+      isoWeekdayOf(date),
+      heure,
+      duree,
+    ),
+  )
+
   async function fixerDirectement(): Promise<void> {
     if (busy || quiUid === '' || quelKind === '' || avecQuiDirecte.trim().length === 0) return
     busy = true
@@ -147,8 +180,11 @@
     date = todayLocalDate()
     heure = '10:00'
     duree = 30
-    // Pré-rempli avec le rôle : le soignant remplace par un prénom s'il le souhaite.
-    avecQui = kindName(kinds, kindId)
+    // La personne attitrée au motif est proposée d'office : demander « le psychiatre »
+    // désigne le psychiatre, sans qu'on ait à le rechercher.
+    const attitre = store.practitioners.find((i) => i.kindId === kindId && i.isActive)
+    intervenantFile = attitre?.id ?? ''
+    avecQui = attitre?.name ?? kindName(kinds, kindId)
     lieu = ''
   }
 
@@ -160,6 +196,7 @@
       time: heure,
       durationMin: duree,
       withWhom: avecQui.trim(),
+      ...(intervenantFile ? { practitionerId: intervenantFile } : {}),
       ...(lieu ? { locationId: lieu } : {}),
     })
     ouvert = null
@@ -284,6 +321,18 @@
         </p>
       {/if}
 
+      {#if resumeDesPlages !== ''}
+        <p class="mt-3 rounded-xl bg-surface-soft p-3 text-lg text-ink">
+          <span aria-hidden="true">🗓️</span>
+          {intervenantChoisi?.name ?? 'Cette personne'} reçoit : {resumeDesPlages}.
+        </p>
+      {/if}
+      {#if alerteDirecte !== null}
+        <p role="status" class="mt-3 rounded-xl bg-amber-50 p-3 text-lg font-semibold text-ink">
+          <span aria-hidden="true">⚠️</span> {alerteDirecte}
+        </p>
+      {/if}
+
       <label for="ou" class="mt-4 mb-2 block text-lg font-semibold text-ink">Où — facultatif</label>
       <select id="ou" bind:value={lieuDirecte} class={champ} style="min-height: 56px;">
         <option value="">Non précisé</option>
@@ -357,10 +406,44 @@
                   </select>
                 </div>
                 <div>
-                  <label for="avecqui" class="mb-2 block text-lg font-semibold text-ink">Avec qui</label>
+                  <label for="avecqui" class="mb-2 block text-lg font-semibold text-ink">
+                    Avec qui — le patient lira ce nom
+                  </label>
                   <input id="avecqui" bind:value={avecQui} class={champ} style="min-height: 56px;" />
                 </div>
               </div>
+
+              <label for="quel-intervenant" class="mt-4 mb-2 block text-lg font-semibold text-ink">
+                Quel intervenant — c'est ce qui met le rendez-vous dans son agenda
+              </label>
+              <select
+                id="quel-intervenant"
+                class={champ}
+                style="min-height: 56px;"
+                value={intervenantFile}
+                onchange={(event) => {
+                  intervenantFile = event.currentTarget.value
+                  avecQui = store.practitionerOf(intervenantFile)?.name ?? avecQui
+                }}
+              >
+                <option value="">Personne en particulier</option>
+                {#each proposed(store.practitioners) as intervenant (intervenant.id)}
+                  <option value={intervenant.id}>{intervenant.name} — {intervenant.role}</option>
+                {/each}
+              </select>
+
+              {#if availabilityLabel(intervenantDeLaFile?.availability ?? []) !== ''}
+                <p class="mt-3 rounded-xl bg-surface-soft p-3 text-lg text-ink">
+                  <span aria-hidden="true">🗓️</span>
+                  {intervenantDeLaFile?.name} reçoit :
+                  {availabilityLabel(intervenantDeLaFile?.availability ?? [])}.
+                </p>
+              {/if}
+              {#if alerteFile !== null}
+                <p role="status" class="mt-3 rounded-xl bg-amber-50 p-3 text-lg font-semibold text-ink">
+                  <span aria-hidden="true">⚠️</span> {alerteFile}
+                </p>
+              {/if}
 
               <label for="lieu" class="mt-4 mb-2 block text-lg font-semibold text-ink">Où — facultatif</label>
               <select id="lieu" bind:value={lieu} class={champ} style="min-height: 56px;">

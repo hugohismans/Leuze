@@ -554,6 +554,11 @@ export function createFirestoreStaffApp(): StaffApp {
         const { id, ...reste } = practitioner
         await setDoc(doc(db, 'practitioners', id), reste, { merge: true })
       },
+      async saveAvailability(practitionerId, windows) {
+        // Un seul champ modifié : c'est exactement ce que les règles autorisent à
+        // l'intéressé. Une écriture plus large serait refusée, et à juste titre.
+        await updateDoc(doc(db, 'practitioners', practitionerId), { availability: windows })
+      },
       async removeEntry(kind, id) {
         // Le comptage des usages n'est pas faisable ici : les personnes ne sont pas
         // lisibles côté client. C'est le serveur qui décide entre supprimer et retirer.

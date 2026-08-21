@@ -92,9 +92,27 @@ service cloud.firestore {
      * pas un compte — personne ne se connecte avec ceci, et rien de ce qui est écrit là
      * ne donne le moindre droit.
      */
+    // Les plages où quelqu'un reçoit : un jour, deux heures. Rien d'autre ne s'y écrit.
+    function validAvailability(windows) {
+      return windows is list && windows.size() <= 20;
+    }
+
+    // Une personne du personnel tient ses propres disponibilités à jour — elle seule sait
+    // quand elle est là. Elle ne touche à rien d'autre de sa fiche : ni son nom, ni sa
+    // fonction, ni le fait qu'elle soit encore en poste.
+    // L'identifiant vient du chemin : une fonction ne voit pas le joker du bloc `match`,
+    // il lui est donc passé.
+    function myOwnAvailability(id) {
+      return id == myPractitioner()
+        && myPractitioner() != ''
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['availability'])
+        && validAvailability(request.resource.data.availability);
+    }
+
     match /practitioners/{practitionerId} {
       allow read: if signedIn();
-      allow write: if isAdmin();
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin() || (isStaff() && myOwnAvailability(practitionerId));
     }
 
     match /config/{document} {

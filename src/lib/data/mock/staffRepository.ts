@@ -483,7 +483,17 @@ export function createMockStaffApp(): StaffApp {
       },
 
       async savePractitioner(practitioner) {
+        exigeAdministrateur()
         mockCatalog.savePractitioner(practitioner)
+      },
+      async saveAvailability(practitionerId, windows) {
+        // Chacun tient les siennes ; l'administrateur, celles de tout le monde.
+        if (identity.role !== 'admin' && identity.practitionerId !== practitionerId) {
+          throw new Error('Vous ne pouvez modifier que vos propres disponibilités.')
+        }
+        const personne = mockCatalog.practitioners().find((i) => i.id === practitionerId)
+        if (personne === undefined) throw new Error("Cette personne n'existe pas.")
+        mockCatalog.savePractitioner({ ...personne, availability: windows })
       },
       async removeEntry(kind, id) {
         // Même décision que côté serveur, sur le petit monde de la démonstration :

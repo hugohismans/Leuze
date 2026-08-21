@@ -10,6 +10,13 @@ export type LocalTime = string
 /** Jour de la semaine ISO : 1 = lundi … 7 = dimanche. */
 export type IsoWeekday = 1 | 2 | 3 | 4 | 5 | 6 | 7
 
+/** Une plage de disponibilité, en semaine type. Voir `domain/availability.ts`. */
+export type AvailabilityWindow = {
+  weekday: IsoWeekday
+  from: LocalTime
+  to: LocalTime
+}
+
 /**
  * Un « service » au sens de l'hôpital : unité de soins (Le Mazurel, La Joncquerelle…)
  * ou service transversal (service culturel…). C'est le vocabulaire des soignants,
@@ -74,6 +81,11 @@ export type Practitioner = {
   role: string
   /** Motif de rendez-vous correspondant, quand il y en a un. */
   kindId?: string
+  /**
+   * Les plages où cette personne reçoit, en semaine type. Elles n'interdisent rien :
+   * elles répondent à « est-il là ? » au moment où l'on fixe un rendez-vous.
+   */
+  availability?: AvailabilityWindow[]
   isActive: boolean
 }
 
