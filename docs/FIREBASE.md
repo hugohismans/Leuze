@@ -260,17 +260,28 @@ en fournit un dans le navigateur, déjà connecté au compte Google, y compris s
 téléphone.
 
 1. Ouvrir **shell.cloud.google.com** et se connecter avec le compte propriétaire du projet.
-2. Autoriser le Firebase CLI, une seule fois :
+2. Récupérer le dépôt et installer les dépendances :
+
+   ```
+   git clone https://github.com/hugohismans/Leuze && cd Leuze && npm ci
+   ```
+
+3. Autoriser le Firebase CLI, une seule fois. La commande affiche une adresse à ouvrir et
+   un code à recopier :
 
    ```
    npx firebase login --no-localhost
    ```
 
-   La commande affiche une adresse à ouvrir et un code à recopier.
-3. Récupérer le dépôt et tout déployer :
+   ⚠️ **Depuis le dossier du dépôt.** Ailleurs, `npx firebase` installe le paquet
+   `firebase`, qui est le SDK client et n'a pas d'exécutable — d'où l'erreur
+   « could not determine executable to run ». Le CLI s'appelle `firebase-tools` ;
+   le dépôt le fournit sous le nom `firebase`.
+
+4. Tout déployer :
 
    ```
-   git clone https://github.com/hugohismans/Leuze && cd Leuze && bash scripts/deploy.sh
+   bash scripts/deploy.sh
    ```
 
 Le script enchaîne les six étapes de la section suivante, s'arrête à la première erreur, et

@@ -15,18 +15,21 @@ rouge() { printf '\033[0;31m%s\033[0m\n' "$*"; }
 
 PROJET="${GCLOUD_PROJECT:-leuze-d23b5}"
 
-bleu "1/6  Vérification de l'accès à Firebase"
-if ! npx --yes firebase projects:list >/dev/null 2>&1; then
+# Les dépendances d'abord : c'est elles qui apportent le CLI Firebase.
+# Attention, le paquet « firebase » est le SDK client, sans exécutable ; le CLI
+# s'appelle « firebase-tools ». Lancé depuis le dépôt, « npx firebase » prend le bon.
+bleu "1/6  Installation des dépendances"
+npm ci
+npm --prefix functions ci
+
+bleu "2/6  Vérification de l'accès à Firebase"
+if ! npx firebase projects:list >/dev/null 2>&1; then
   rouge "Vous n'êtes pas connecté à Firebase."
-  echo "Lancez d'abord :  npx firebase login --no-localhost"
+  echo "Depuis ce dossier, lancez :  npx firebase login --no-localhost"
   echo "puis relancez ce script."
   exit 1
 fi
 vert "Connecté. Projet visé : $PROJET"
-
-bleu "2/6  Installation des dépendances"
-npm ci
-npm --prefix functions ci
 
 bleu "3/6  Règles de sécurité et index"
 # Remplace immédiatement le « mode test », qui laisse la base ouverte à tous.
