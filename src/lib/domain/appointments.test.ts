@@ -3,6 +3,7 @@ import {
   PREFERENCE_LABELS,
   kindName,
   nextScheduled,
+  upcomingScheduled,
   patientStatusLabel,
   pendingFirst,
   waitingDays,
@@ -115,5 +116,34 @@ describe('le prochain rendez-vous', () => {
       nextScheduled([demande({ status: 'cancelled', start: new Date('2026-08-25T09:00:00Z') })], maintenant),
     ).toBeNull()
     expect(nextScheduled([], maintenant)).toBeNull()
+  })
+})
+
+describe('les rendez-vous qui restent à venir', () => {
+  const maintenant = new Date('2026-08-21T10:00:00Z')
+  const fixe = (id: string, debut: string, fin: string): Appointment =>
+    demande({ id, status: 'scheduled', start: new Date(debut), end: new Date(fin) })
+
+  it('laissent de côté ceux qui ont déjà eu lieu', () => {
+    const liste = [
+      fixe('avant-hier', '2026-08-19T07:30:00Z', '2026-08-19T08:00:00Z'),
+      fixe('demain', '2026-08-22T08:00:00Z', '2026-08-22T08:30:00Z'),
+    ]
+    expect(upcomingScheduled(liste, maintenant).map((a) => a.id)).toEqual(['demain'])
+  })
+
+  it('gardent celui qui est en train de se dérouler', () => {
+    const encours = fixe('maintenant', '2026-08-21T09:45:00Z', '2026-08-21T10:15:00Z')
+    expect(upcomingScheduled([encours], maintenant).map((a) => a.id)).toEqual(['maintenant'])
+  })
+
+  it('sont rangés du plus proche au plus lointain, sans les demandes ni les annulations', () => {
+    const liste = [
+      fixe('dans-dix-jours', '2026-08-31T08:00:00Z', '2026-08-31T08:30:00Z'),
+      fixe('demain', '2026-08-22T08:00:00Z', '2026-08-22T08:30:00Z'),
+      demande({ id: 'en-attente', status: 'requested' }),
+      demande({ id: 'annule', status: 'cancelled', start: new Date('2026-08-25T08:00:00Z') }),
+    ]
+    expect(upcomingScheduled(liste, maintenant).map((a) => a.id)).toEqual(['demain', 'dans-dix-jours'])
   })
 })

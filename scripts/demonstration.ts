@@ -447,7 +447,6 @@ async function ecrireInscriptions(occurrences: Occurrence[], patients: PatientCr
 
 /** Quelques rendez-vous : des demandes en attente, et d'autres déjà fixés. */
 async function ecrireRendezVous(patients: PatientCree[]): Promise<void> {
-  const lundi = startOfIsoWeek(todayLocalDate())
   const rendezVous: Record<string, unknown>[] = []
   const enAttente = [
     { patient: 0, kindId: 'psychiatre', preference: 'matin' },
@@ -467,17 +466,23 @@ async function ecrireRendezVous(patients: PatientCree[]): Promise<void> {
     })
   }
 
+  /*
+    Comptés à partir d'aujourd'hui, pas du lundi : la démonstration doit se tenir
+    n'importe quel jour de la semaine, et un agenda qui ne contient que du passé ne
+    montre rien. Un seul rendez-vous derrière soi, pour l'exemple.
+  */
   const fixes = [
     { patient: 1, kindId: 'psychiatre', qui: 'Docteur Lemaire', id: 'dr-lemaire', jour: 1, heure: '09:30' },
     { patient: 2, kindId: 'psychologue', qui: 'Claire Dubois', id: 'claire-dubois', jour: 2, heure: '14:00' },
-    { patient: 5, kindId: 'kinesitherapeute', qui: 'Julien Marchal', id: 'julien-marchal', jour: 0, heure: '09:00' },
+    { patient: 5, kindId: 'kinesitherapeute', qui: 'Julien Marchal', id: 'julien-marchal', jour: 4, heure: '09:00' },
     { patient: 9, kindId: 'psychiatre', qui: 'Docteur Nkosi', id: 'dr-nkosi', jour: 7, heure: '10:00' },
-    { patient: 13, kindId: 'infirmier-referent', qui: 'Pierre Colin', id: 'pierre-colin', jour: 8, heure: '10:30' },
+    { patient: 13, kindId: 'infirmier-referent', qui: 'Pierre Colin', id: 'pierre-colin', jour: 9, heure: '10:30' },
+    { patient: 3, kindId: 'psychologue', qui: 'Antoine Rey', id: 'antoine-rey', jour: -3, heure: '10:00' },
   ]
   for (const rendez of fixes) {
     const personne = patients[rendez.patient]
     if (personne === undefined) continue
-    const jour = addLocalDays(lundi, rendez.jour + 1)
+    const jour = addLocalDays(todayLocalDate(), rendez.jour)
     const debut = instantOf(jour, rendez.heure)
     rendezVous.push({
       patientUid: personne.uid,
