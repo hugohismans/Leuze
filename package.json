@@ -27,7 +27,8 @@
     "journal": "firebase functions:log --project leuze-d23b5 -n 40",
     "ouvrir:fonctions": "bash scripts/ouvrir-fonctions.sh",
     "autoriser:jetons": "bash scripts/autoriser-jetons.sh",
-    "connexion": "python3 scripts/connexion-firebase.py"
+    "connexion": "python3 scripts/connexion-firebase.py",
+    "connecter:github": "bash scripts/connecter-github.sh"
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^5.0.2",

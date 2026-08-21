@@ -36,8 +36,12 @@ ouvre() {
   # Une fonction reprise après un échec perd son droit d'être appelée depuis le
   # navigateur. On le repose systématiquement : c'est sans effet quand il est déjà là.
   GCLOUD_PROJECT="$PROJET" bash "$(dirname "$0")/ouvrir-fonctions.sh" || true
-  # Et le droit de signer les sessions des patients, jamais posé par défaut.
-  GCLOUD_PROJECT="$PROJET" bash "$(dirname "$0")/autoriser-jetons.sh" || true
+  # Et le droit de signer les sessions des patients, jamais posé par défaut. Il est
+  # accordé une fois pour toutes par « connecter-github.sh » : la publication
+  # automatique n'a donc pas besoin des droits que cela demanderait.
+  if [ "${LEUZE_SANS_JETONS:-}" != "1" ]; then
+    GCLOUD_PROJECT="$PROJET" bash "$(dirname "$0")/autoriser-jetons.sh" || true
+  fi
 }
 
 if npx firebase deploy --only functions --project "$PROJET"; then

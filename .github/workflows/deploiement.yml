@@ -1,0 +1,106 @@
+# Publication automatique.
+#
+# Toute modification poussée sur « main » part en ligne — mais seulement si les tests
+# passent : la vérification est un préalable, pas un rapport publié après coup.
+#
+# L'authentification ne repose sur aucune clé. GitHub prouve son identité à Google par
+# un jeton signé, et Google n'accepte que les jetons venant de ce dépôt-ci. Voir
+# `scripts/connecter-github.sh`, à lancer une seule fois.
+name: Publication
+
+on:
+  push:
+    branches: [main]
+  # Un bouton « Run workflow » reste disponible, pour republier sans rien modifier.
+  workflow_dispatch:
+
+# Deux publications ne se marchent pas dessus ; on ne coupe pas celle qui est en cours,
+# car une publication interrompue laisse les fonctions à moitié déployées.
+concurrency:
+  group: publication
+  cancel-in-progress: false
+
+env:
+  PROJET: leuze-d23b5
+
+jobs:
+  verifier:
+    name: Vérifications
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm --prefix functions ci
+      - name: Tests du domaine et des composants
+        run: npm test
+      - name: Typage de l'application
+        run: npm run check
+      - name: Typage et secrets des fonctions
+        run: npm run check:functions
+
+  publier:
+    name: Mise en ligne
+    needs: verifier
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Indispensable : c'est ce qui permet à GitHub de signer le jeton présenté à Google.
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Authentification auprès de Google
+        uses: google-github-actions/auth@v2
+        with:
+          project_id: leuze-d23b5
+          workload_identity_provider: projects/629808465446/locations/global/workloadIdentityPools/github/providers/leuze
+          service_account: deploiement-github@leuze-d23b5.iam.gserviceaccount.com
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - run: npm ci
+      - run: npm --prefix functions ci
+
+      - name: Règles de sécurité et index
+        run: npx firebase deploy --only firestore:rules,firestore:indexes --project "$PROJET"
+
+      - name: Cloud Functions
+        env:
+          GCLOUD_PROJECT: leuze-d23b5
+          # Le droit de signer les sessions patients est accordé une fois pour toutes
+          # à l'installation : inutile de le redemander à chaque publication.
+          LEUZE_SANS_JETONS: '1'
+        run: npm run deploy:fonctions
+
+      - name: Construction de l'application
+        run: npm run build:app
+
+      - name: Vérification de ce qui va être publié
+        # La version de démonstration a déjà été publiée une fois sur le vrai projet.
+        # On regarde ce qu'on s'apprête à mettre en ligne plutôt que de faire confiance
+        # au drapeau de construction.
+        run: |
+          if ! grep -rlq "firebaseapp.com" dist/assets/*.js; then
+            echo "La version construite n'est pas branchée sur Firestore — publication annulée."
+            exit 1
+          fi
+          echo "Version vérifiée : branchée sur Firestore."
+
+      - name: Hébergement
+        run: npx firebase deploy --only hosting --project "$PROJET"
+
+      - name: Récapitulatif
+        run: |
+          {
+            echo "### En ligne"
+            echo ""
+            echo "https://leuze-d23b5.web.app"
+          } >> "$GITHUB_STEP_SUMMARY"

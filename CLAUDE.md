@@ -106,6 +106,7 @@ L'UI n'importe **jamais** `firebase/*` directement : elle consomme les interface
 | `npm run ouvrir:fonctions` | redonne aux fonctions appelables le droit d'être appelées |
 | `npm run autoriser:jetons` | autorise les fonctions à ouvrir une session pour un patient |
 | `npm run connexion` | reconnecte le CLI Firebase sans rien coller dans le terminal |
+| `npm run connecter:github` | autorise GitHub à publier — une seule fois, sans clé |
 | `npm run build` | build de production |
 
 ---

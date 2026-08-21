@@ -360,6 +360,27 @@ que de la laisser disparaître silencieusement.
 services : elle ne lui apprend rien et révèle l'organisation interne. Le soignant, lui, voit la
 liste exacte.
 
+### 4.7 bis Publication automatique depuis GitHub
+
+Le déploiement se faisait à la main depuis Cloud Shell, sur un téléphone. Trois écueils
+s'y sont succédé : la session du CLI qui expire au bout de quelques heures, le code
+d'autorisation impossible à coller dans une console mobile, et les droits d'appel des
+fonctions à reposer après chaque échec partiel. Chacun a coûté une soirée.
+
+Désormais, toute modification poussée sur `main` est publiée par GitHub, **si et
+seulement si** les tests passent — la vérification précède la mise en ligne, elle ne la
+commente pas après coup.
+
+L'authentification ne repose sur **aucune clé**. GitHub signe un jeton attestant du dépôt
+d'origine, et Google n'accepte que les jetons portant `hugohismans/Leuze`. Il n'y a donc
+rien à voler dans le dépôt, rien qui expire, rien à renouveler. C'est le seul point où je
+me suis écarté du « tout doit être faisable depuis un téléphone » : l'installation demande
+une commande dans Cloud Shell, une fois — `npm run connecter:github` — précisément pour
+qu'il n'y en ait plus jamais ensuite.
+
+Le compte de déploiement ne reçoit que ce qu'il faut pour publier. Il ne peut ni lire les
+données des patients, ni créer d'autres comptes de service.
+
 ### 4.8 bis Retirer une entrée du catalogue
 
 Le catalogue est vivant : une salle ferme, un service change de nom, une catégorie créée
