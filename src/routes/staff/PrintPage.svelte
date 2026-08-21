@@ -12,7 +12,8 @@
    * au service choisi. Elle ne contient **aucun nom de patient** : c'est un programme,
    * pas une liste d'inscrits, et elle est destinée à un mur.
    */
-  let serviceId = $state<string | null>(null)
+  // Le choix fait sur l'écran de la semaine arrive jusqu'ici : on ne le redemande pas.
+  const serviceId = $derived(staffStore.programmeServiceId)
 
   const programme = $derived(weekProgramme(staffStore.week, staffStore.occurrences, serviceId))
   const total = $derived(programmeCount(programme))
@@ -37,7 +38,9 @@
           class="w-full rounded-xl border-2 border-line bg-white p-3 text-lg text-ink"
           style="min-height: 56px;"
           value={serviceId ?? ''}
-          onchange={(event) => (serviceId = event.currentTarget.value === '' ? null : event.currentTarget.value)}
+          onchange={(event) =>
+            (staffStore.programmeServiceId =
+              event.currentTarget.value === '' ? null : event.currentTarget.value)}
         >
           <option value="">Tous les services — le programme complet</option>
           {#each staffStore.catalog.services as s (s.id)}

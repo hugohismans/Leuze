@@ -7,6 +7,11 @@
   import { formatLongDayLabel, formatTimeRange, todayLocalDate } from '../../lib/domain/time'
   import CancelButton from './CancelButton.svelte'
   import type { Activity, IsoWeekday, LocalDate, LocalTime } from '../../lib/domain/types'
+  import {
+    activityEditRefusal,
+    canChooseFacilitator,
+    facilitatorFor,
+  } from '../../lib/domain/activityAccess'
   import { navigate } from '../../lib/router.svelte'
 
   let { activityId, date }: { activityId: string; date?: string } = $props()
@@ -122,6 +127,30 @@
   const publiee = $derived(isPublished({ audience: pourTous ? 'all' : 'services', serviceIds }))
 
   /**
+   * Un soignant crée des activités, mais ce sont les siennes : il les anime. Choisir
+   * quelqu'un d'autre relève de l'organisation du service, donc de l'administrateur —
+   * qui seul peut aussi reprendre une activité déjà animée par un collègue.
+   */
+  const moi = $derived({
+    role: staffStore.identity.role,
+    practitionerId: staffStore.identity.practitionerId,
+  })
+  const choisitLAnimateur = $derived(canChooseFacilitator(moi))
+  const monIntervenant = $derived(store.practitionerOf(staffStore.identity.practitionerId ?? ''))
+  /**
+   * L'activité relue est éclatée en champs : on la recompose pour la règle. Tant qu'elle
+   * n'est pas chargée, on ne refuse rien — sans quoi l'écran accuserait avant de savoir.
+   */
+  const refusDeModifier = $derived(
+    nouvelle || !chargee
+      ? activityEditRefusal(moi, null)
+      : activityEditRefusal(moi, {
+          ...(facilitatorId === '' ? {} : { facilitatorId }),
+          ...(facilitator === '' ? {} : { facilitator }),
+        }),
+  )
+
+  /**
    * Sans animateur désigné, il n'y a pas d'appel : personne n'est responsable de ce qui
    * serait coché. On ne l'interdit pas — une activité peut très bien se passer de feuille
    * de présence — mais on le dit avant d'enregistrer, une fois, et on laisse le choix.
@@ -134,6 +163,10 @@
   async function enregistrer(event: SubmitEvent): Promise<void> {
     event.preventDefault()
     erreur = null
+    if (refusDeModifier !== null) {
+      erreur = refusDeModifier
+      return
+    }
     if (titre.trim().length === 0) {
       erreur = 'Donnez un titre à l’activité.'
       return
@@ -145,6 +178,12 @@
     if (repetition === 'une-fois' && !dateUnique) {
       erreur = 'Choisissez la date de l’activité.'
       return
+    }
+    // Le domaine tranche : pour qui ne choisit pas, l'activité est la sienne.
+    const anime = facilitatorFor(moi, facilitatorId === '' ? null : facilitatorId)
+    if (anime !== facilitatorId) {
+      facilitatorId = anime ?? ''
+      facilitator = store.practitionerOf(facilitatorId)?.name ?? ''
     }
     if (facilitatorId === '' && !avertissementAnimateur) {
       avertissementAnimateur = true
@@ -241,6 +280,12 @@
     </div>
   {/if}
 
+  {#if refusDeModifier !== null}
+    <p role="status" class="mb-5 rounded-xl bg-surface-soft p-4 text-lg text-ink">
+      <span aria-hidden="true">🔒</span> {refusDeModifier}
+    </p>
+  {/if}
+
   <form onsubmit={enregistrer} class="grid gap-5">
     <div class="card p-4">
       <label for="titre" class="mb-2 block text-lg font-semibold text-ink">Titre</label>
@@ -270,6 +315,14 @@
         </div>
       </div>
 
+      {#if !choisitLAnimateur}
+        <!-- Pas de menu : l'activité est la vôtre. On le dit, on ne le fait pas deviner. -->
+        <p class="mt-4 rounded-xl bg-surface-soft p-3 text-lg text-ink">
+          <span aria-hidden="true">👤</span>
+          Vous animerez cette activité : <strong>{monIntervenant?.name ?? 'vous'}</strong>.
+          Seul un administrateur peut en confier une à quelqu'un d'autre.
+        </p>
+      {:else}
       <label for="animateur" class="mt-4 mb-2 block text-lg font-semibold text-ink">
         Qui anime
       </label>
@@ -296,6 +349,7 @@
         <p class="mt-2 text-base text-ink-soft">
           Actuellement : {facilitator}. Choisissez un intervenant pour le relier à son planning.
         </p>
+      {/if}
       {/if}
     </div>
 
@@ -472,7 +526,7 @@
     {/if}
 
     <div class="flex flex-wrap gap-3">
-      <button type="submit" class="btn btn-primary" disabled={busy}>
+      <button type="submit" class="btn btn-primary" disabled={busy || refusDeModifier !== null}>
         {busy
           ? 'Enregistrement…'
           : avertissementAnimateur && facilitatorId === ''

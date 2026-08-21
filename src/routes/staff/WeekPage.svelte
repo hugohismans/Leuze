@@ -9,6 +9,7 @@
     startOfIsoWeek,
     todayLocalDate,
   } from '../../lib/domain/time'
+  import { proposed } from '../../lib/domain/catalog'
   import { navigate } from '../../lib/router.svelte'
   import WeekProgramme from '../../lib/ui/WeekProgramme.svelte'
 
@@ -19,7 +20,16 @@
    * donc posées à une date, une par une, depuis cette vue. La récurrence reste possible
    * pour les quelques rendez-vous fixes, mais ce n'est pas le geste courant.
    */
-  const programme = $derived(weekProgramme(staffStore.week, staffStore.occurrences))
+  /**
+   * Le programme d'un service : les activités qui lui sont réservées, plus celles
+   * ouvertes à tous. Sans service choisi, tout le programme.
+   *
+   * C'est un confort de lecture, pas une cloison : le personnel a le droit de voir le
+   * programme entier — il est affiché au mur. Le filtre suit jusqu'à l'impression.
+   */
+  const programme = $derived(
+    weekProgramme(staffStore.week, staffStore.occurrences, staffStore.programmeServiceId),
+  )
   const total = $derived(programmeCount(programme))
 
   /**
@@ -71,6 +81,32 @@
         <span aria-hidden="true">🖨️</span> Imprimer le programme
       </button>
     </div>
+  </div>
+
+  <div class="mb-4 card p-4 sm:max-w-md">
+    <label for="service-programme" class="mb-2 block text-lg font-semibold text-ink">
+      Quel service ?
+    </label>
+    <select
+      id="service-programme"
+      class="w-full rounded-xl border-2 border-line bg-white p-3 text-lg text-ink"
+      style="min-height: 56px;"
+      value={staffStore.programmeServiceId ?? ''}
+      onchange={(event) =>
+        (staffStore.programmeServiceId =
+          event.currentTarget.value === '' ? null : event.currentTarget.value)}
+    >
+      <option value="">Tous les services — le programme complet</option>
+      {#each proposed(staffStore.catalog.services) as service (service.id)}
+        <option value={service.id}>{service.name}</option>
+      {/each}
+    </select>
+    {#if staffStore.programmeServiceId !== null}
+      <p class="mt-2 text-base text-ink-soft">
+        Les activités réservées à ce service, plus celles ouvertes à tous. L'impression
+        suivra le même choix.
+      </p>
+    {/if}
   </div>
 
   {#if staffStore.message !== null}

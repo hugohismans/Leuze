@@ -19,7 +19,9 @@
     { chemin: '/soignant', libelle: 'La semaine' },
     { chemin: '/soignant/reunion', libelle: 'Réunion du lundi' },
     { chemin: '/soignant/aujourdhui', libelle: "Aujourd'hui" },
-    { chemin: '/soignant/plannings', libelle: 'Les plannings' },
+    // Les plannings des patients ne regardent que l'administrateur : l'entrée n'apparaît
+    // pas ailleurs, et l'écran refuse de lui-même si l'on y arrive par l'adresse.
+    ...(staffStore.isAdmin ? [{ chemin: '/soignant/plannings', libelle: 'Les plannings' }] : []),
     ...(monPlanning === null ? [] : [{ chemin: `/soignant/intervenant/${monPlanning}`, libelle: 'Mon planning' }]),
     { chemin: '/soignant/rendez-vous', libelle: 'Rendez-vous' },
   ])

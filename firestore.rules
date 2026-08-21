@@ -50,6 +50,13 @@ service cloud.firestore {
       return 'practitionerId' in request.auth.token ? request.auth.token.practitionerId : '';
     }
 
+    // L'activité est la mienne : c'est moi qui l'anime.
+    function mineAsFacilitator(data) {
+      return myPractitioner() != ''
+        && 'facilitatorId' in data
+        && data.facilitatorId == myPractitioner();
+    }
+
     // Le rendez-vous me concerne : c'est moi qu'on vient voir.
     function mineAsPractitioner(data) {
       return myPractitioner() != ''
@@ -117,9 +124,25 @@ service cloud.firestore {
         && validAudience(data);
     }
 
+    // Le programme est un calendrier partagé, affiché au mur de l'unité : tout le
+    // personnel le lit. Le modifier est autre chose — un soignant crée des activités,
+    // mais ce sont les siennes : il les anime. Désigner quelqu'un d'autre relève de
+    // l'organisation du service, donc de l'administrateur.
+    //
+    // Reprendre l'activité d'un collègue reviendrait à la lui retirer ; et une activité
+    // que personne n'anime n'appartient à personne en particulier. Les deux sont donc
+    // laissées à l'administrateur.
     match /activities/{activityId} {
       allow read: if isStaff();
-      allow create, update: if isStaff() && validActivity(request.resource.data);
+      allow create: if (isAdmin() && validActivity(request.resource.data))
+        || (isStaff()
+            && validActivity(request.resource.data)
+            && mineAsFacilitator(request.resource.data));
+      allow update: if (isAdmin() && validActivity(request.resource.data))
+        || (isStaff()
+            && validActivity(request.resource.data)
+            && mineAsFacilitator(resource.data)
+            && mineAsFacilitator(request.resource.data));
       // Jamais de suppression physique : une activité se désactive (`isActive: false`).
       allow delete: if false;
     }

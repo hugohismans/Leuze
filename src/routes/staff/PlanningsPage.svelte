@@ -85,6 +85,16 @@
   const nomDuService = $derived(services.find((s) => s.id === serviceId)?.name ?? '')
 </script>
 
+{#if !staffStore.isAdmin}
+  <section class="mx-auto max-w-3xl px-4 py-6">
+    <h1 class="mb-2 text-3xl font-bold text-ink">Les plannings de la semaine</h1>
+    <p class="card p-5 text-lg text-ink">
+      <span aria-hidden="true">🔒</span>
+      Les plannings des patients ne sont consultables que par un administrateur. Vous
+      retrouvez vos propres activités dans « Mon planning ».
+    </p>
+  </section>
+{:else}
 <section class="mx-auto max-w-4xl px-4 py-6">
   <div class="no-print">
     <h1 class="mb-2 text-3xl font-bold text-ink">Les plannings de la semaine</h1>
@@ -192,6 +202,7 @@
     {/each}
   </div>
 </section>
+{/if}
 
 <style>
   /* La pile n'a de sens que sur le papier : à l'écran, elle ferait défiler pour rien. */

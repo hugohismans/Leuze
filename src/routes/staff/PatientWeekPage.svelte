@@ -78,6 +78,18 @@
   }
 </script>
 
+{#if !staffStore.isAdmin}
+  <section class="mx-auto max-w-3xl px-4 py-6">
+    <button type="button" class="btn btn-secondary mb-4" onclick={() => navigate('/soignant/patients')}>
+      <span aria-hidden="true">←</span> Retour aux patients
+    </button>
+    <p class="card p-5 text-lg text-ink">
+      <span aria-hidden="true">🔒</span>
+      Le planning d'un patient n'est consultable que par un administrateur. Vous retrouvez
+      vos propres activités dans « Mon planning ».
+    </p>
+  </section>
+{:else}
 <section class="mx-auto max-w-3xl px-4 py-6">
   <div class="no-print">
     <button type="button" class="btn btn-secondary mb-4" onclick={() => navigate('/soignant/patients')}>
@@ -170,6 +182,7 @@
     />
   {/if}
 </section>
+{/if}
 
 <style>
   .aujourdhui {

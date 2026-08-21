@@ -116,8 +116,8 @@
   {#if !staffStore.isAdmin}
     <p role="status" class="mb-5 rounded-xl bg-surface-soft p-3 text-lg text-ink">
       <span aria-hidden="true">🔒</span>
-      Seul un administrateur ajoute une personne, délivre un code ou clôture un séjour.
-      Vous pouvez consulter la liste et ouvrir un planning.
+      Seul un administrateur ajoute une personne, délivre un code, clôture un séjour ou
+      consulte un planning. Vous voyez ici qui est en activité et qui est libre.
     </p>
   {/if}
 
@@ -227,13 +227,15 @@
                 {/if}
               </div>
               <div class="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  class="btn btn-secondary"
-                  onclick={() => navigate(`/soignant/planning/${patient.uid}`)}
-                >
-                  Voir son planning
-                </button>
+                {#if staffStore.isAdmin}
+                  <button
+                    type="button"
+                    class="btn btn-secondary"
+                    onclick={() => navigate(`/soignant/planning/${patient.uid}`)}
+                  >
+                    Voir son planning
+                  </button>
+                {/if}
                 {#if staffStore.isAdmin}
                   <button type="button" class="btn btn-secondary" disabled={busy} onclick={() => nouveauCode(patient.uid)}>
                     Nouveau code

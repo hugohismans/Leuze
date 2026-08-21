@@ -62,8 +62,10 @@ describe('activités', () => {
     await assertFails(getDocs(collection(database, 'activities')))
   })
 
-  it('sont créées et modifiées par le personnel', async () => {
-    const database = asStaff(env)
+  // Qui a le droit d'en créer et d'en modifier — et au nom de qui — est vérifié dans
+  // `activites.test.ts`. Ici, on ne regarde que la forme du document.
+  it('sont créées et modifiées par l’administrateur', async () => {
+    const database = asAdmin(env)
     await assertSucceeds(setDoc(doc(database, 'activities', 'activite-2'), activityDoc({ title: 'Marche' })))
     await assertSucceeds(updateDoc(doc(database, 'activities', 'activite-1'), { title: 'Atelier peinture' }))
   })
@@ -76,7 +78,7 @@ describe('activités', () => {
   })
 
   it('acceptent une réservation à plusieurs services', async () => {
-    const database = asStaff(env)
+    const database = asAdmin(env)
     await assertSucceeds(
       setDoc(
         doc(database, 'activities', 'activite-4'),
@@ -92,7 +94,7 @@ describe('activités', () => {
   })
 
   it('ne se suppriment jamais : une activité se désactive', async () => {
-    const database = asStaff(env)
+    const database = asAdmin(env)
     await assertFails(deleteDoc(doc(database, 'activities', 'activite-1')))
     await assertSucceeds(updateDoc(doc(database, 'activities', 'activite-1'), { isActive: false }))
   })

@@ -47,6 +47,13 @@ class StaffStore {
   appointments = $state<Appointment[]>([])
   /** Inscrits de l'activité ouverte pendant la réunion. */
   roster = $state<RosterLine[]>([])
+  /**
+   * Le service sur lequel le programme est filtré, ou `null` pour tout voir.
+   *
+   * Il vit ici et non dans un écran : filtrer sur « La Couturelle » puis passer à
+   * l'impression doit donner la feuille de La Couturelle, sans avoir à le redire.
+   */
+  programmeServiceId = $state<string | null>(null)
   /** Message de compte rendu affiché après une action, en français simple. */
   message = $state<string | null>(null)
   /**
