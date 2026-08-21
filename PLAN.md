@@ -395,6 +395,28 @@ qu'il n'y en ait plus jamais ensuite.
 Le compte de déploiement ne reçoit que ce qu'il faut pour publier. Il ne peut ni lire les
 données des patients, ni créer d'autres comptes de service.
 
+### 4.8 quater L'appel
+
+Fait sur papier jusqu'ici. Deux gestes : cocher présent ou absent pour les inscrits, et
+accepter quelqu'un qui s'est présenté sans l'être — ce dernier cas est fréquent, il ne
+devait pas être plus difficile que le premier.
+
+**Qui coche.** La personne qui anime l'activité, et elle seule ; un administrateur aussi,
+sans quoi une absence bloquerait la feuille. Lorsqu'aucun intervenant n'est nommé, personne
+n'en est responsable en particulier : l'équipe du service s'en charge, faute de quoi
+l'appel de ces activités-là ne pourrait jamais être fait.
+
+**Qui voit.** Les mêmes. Les autres voient la liste des inscrits, sans les présences. Ce
+cloisonnement a demandé de fermer une porte restée ouverte : `registrations` était lisible
+par tout le personnel depuis un navigateur. Elle ne l'est plus — un patient lit les
+siennes, et personne d'autre ne lit rien. Le personnel obtient ses listes par des fonctions
+appelables, qui savent à qui elles parlent.
+
+**Une inscription faite à l'appel n'est pas une réservation, c'est un fait.** Deux refus
+qui n'ont de sens qu'avant l'activité sont donc levés : « déjà commencée », puisque l'appel
+se fait pendant, et « complète », parce que le nombre de places ne change pas qui se tient
+dans la salle. Une séance annulée, elle, reste annulée.
+
 ### 4.8 ter Les intervenants
 
 Le nom de la personne qui anime une activité, et celui du professionnel qu'on voit en

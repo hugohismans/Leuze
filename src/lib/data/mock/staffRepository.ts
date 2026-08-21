@@ -7,6 +7,7 @@ import { instantOf, addMinutes } from '../../domain/time'
 import type { Activity, Appointment, LocalDate, LocalTime, Occurrence } from '../../domain/types'
 import { generationWindow, planGeneration } from '../generation'
 import { activitiesSeed } from '../seed/activities.seed'
+import { attendanceRefusal, canMarkAttendance } from '../../domain/attendance'
 import { planActivityRemoval, planRemoval } from '../../domain/catalog'
 import { mockCatalog } from './catalog'
 import { applyBoard, boardOf, world } from './state'
@@ -33,9 +34,18 @@ const DEMO_STAFF: StaffIdentity = {
   email: 'soignant@exemple.test',
   firstName: 'Marc',
   role: 'admin',
+  // Relié à l'intervenant « Marc » : la démonstration montre alors l'appel de ses
+  // activités, et « Mon planning ».
+  practitionerId: 'marc',
 }
 
-const SIGNED_OUT: StaffIdentity = { uid: null, email: null, firstName: null, role: null }
+const SIGNED_OUT: StaffIdentity = {
+  uid: null,
+  email: null,
+  firstName: null,
+  role: null,
+  practitionerId: null,
+}
 
 /** Alphabet sans ambiguïté : ni I, ni L, ni O, ni U. Identique à celui des vraies fonctions. */
 const ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'
@@ -191,22 +201,59 @@ export function createMockStaffApp(): StaffApp {
         world.occurrences.set(occurrenceId, { ...reste, status: 'scheduled', overridden: true })
       },
 
-      async roster(occurrenceId: string): Promise<RosterLine[]> {
+      async roster(occurrenceId: string) {
         const board = boardOf(occurrenceId)
-        if (board === null) return []
+        if (board === null) return { lines: [], canMarkAttendance: false }
+        const peut = canMarkAttendance(identity, board.occurrence)
         const { confirmed, waitlist } = rosterOf(board)
         const prenom = (uid: string) => world.patients.find((p) => p.uid === uid)
+        const presence = (uid: string) => world.attendance.get(`${occurrenceId}|${uid}`)
         const ligne = (uid: string, status: 'confirmed' | 'waitlist', position: number | null): RosterLine => ({
           patientUid: uid,
           firstName: prenom(uid)?.firstName ?? 'Prénom inconnu',
           serviceId: prenom(uid)?.serviceId ?? null,
           status,
           position,
+          // Comme côté serveur : l'appel n'est renvoyé qu'à qui a le droit de le faire.
+          ...(peut && presence(uid) !== undefined ? { attendance: presence(uid) } : {}),
         })
-        return [
-          ...confirmed.map((r) => ligne(r.patientUid, 'confirmed', null)),
-          ...waitlist.map((r) => ligne(r.patientUid, 'waitlist', waitlistPosition(board, r.patientUid))),
-        ]
+        return {
+          lines: [
+            ...confirmed.map((r) => ligne(r.patientUid, 'confirmed', null)),
+            ...waitlist.map((r) => ligne(r.patientUid, 'waitlist', waitlistPosition(board, r.patientUid))),
+          ],
+          canMarkAttendance: peut,
+        }
+      },
+
+      async markAttendance(occurrenceId, patientUid, attendance) {
+        const board = boardOf(occurrenceId)
+        if (board === null) return { ok: false, message: "Cette activité n'a pas été trouvée." }
+        if (!canMarkAttendance(identity, board.occurrence)) {
+          return { ok: false, message: attendanceRefusal(board.occurrence) }
+        }
+        const inscrit = board.registrations.some((r) => r.patientUid === patientUid && r.status !== 'cancelled')
+        if (!inscrit) {
+          // Venue spontanée : on inscrit, puis on note.
+          const outcome = domainRegister(board, patientUid, {
+            now: new Date(),
+            registrationId: `insc-${occurrenceId}-${patientUid}`,
+            by: 'staff',
+            walkIn: true,
+          })
+          if (!outcome.ok) {
+            return { ok: false, message: registrationBlockMessage(outcome.reason as never) }
+          }
+          applyBoard(outcome.board)
+        }
+        const cle = `${occurrenceId}|${patientUid}`
+        if (attendance === null) world.attendance.delete(cle)
+        else world.attendance.set(cle, attendance)
+        return {
+          ok: true,
+          message:
+            attendance === 'present' ? 'Noté présent.' : attendance === 'absent' ? 'Noté absent.' : 'Réponse effacée.',
+        }
       },
 
       async listPatients(): Promise<StaffPatient[]> {
@@ -364,6 +411,15 @@ export function createMockStaffApp(): StaffApp {
       async saveCategory(category) {
         mockCatalog.saveCategory(category)
       },
+      async createStaffAccount(_email, _practitionerId) {
+        // En démonstration, aucun compte n'est réellement créé : on montre le geste.
+        return {
+          ok: true,
+          message: 'Accès créé. Notez le mot de passe : il ne sera plus affiché.',
+          password: 'DEMO-ACCE',
+        }
+      },
+
       async savePractitioner(practitioner) {
         mockCatalog.savePractitioner(practitioner)
       },

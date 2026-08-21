@@ -195,3 +195,26 @@ describe('une inscription ne vaut que pour une séance', () => {
     expect(resultat.board.registrations.some((r) => r.occurrenceId === mardiDeux.id)).toBe(false)
   })
 })
+
+describe('quelqu’un se présente et l’animateur l’accepte', () => {
+  it('l’inscrit même si la séance a commencé — l’appel se fait pendant', () => {
+    const board = emptyBoard(8)
+    const pendant = new Date(board.occurrence.start.getTime() + 10 * 60_000)
+    expect(register(board, 'a', { now: pendant, registrationId: 'r', by: 'staff' }).ok).toBe(false)
+    expect(register(board, 'a', { now: pendant, registrationId: 'r', by: 'staff', walkIn: true }).ok).toBe(true)
+  })
+
+  it('le confirme même au-delà du nombre de places', () => {
+    // Le nombre de places ne change pas qui se tient dans la salle.
+    let board = emptyBoard(1, { waitlistEnabled: false })
+    board = inscrire(board, 'a', now)
+    const outcome = register(board, 'b', { now, registrationId: 'r', by: 'staff', walkIn: true })
+    expect(outcome.ok).toBe(true)
+    if (outcome.ok) expect(outcome.status).toBe('confirmed')
+  })
+
+  it('mais jamais sur une séance annulée', () => {
+    const board = emptyBoard(8, { status: 'cancelled' })
+    expect(register(board, 'a', { now, registrationId: 'r', by: 'staff', walkIn: true }).ok).toBe(false)
+  })
+})

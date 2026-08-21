@@ -59,6 +59,14 @@
           <p class="mt-1 text-base text-ink">{staffCapacityLabel(occurrence)}</p>
 
           <div class="mt-3 flex flex-wrap gap-2">
+            <!-- L'appel d'abord : c'est le geste du jour, les autres sont occasionnels. -->
+            <button
+              type="button"
+              class="btn btn-primary"
+              onclick={() => navigate(`/soignant/appel/${occurrence.id}`)}
+            >
+              <span aria-hidden="true">📋</span> Faire l'appel
+            </button>
             <button
               type="button"
               class="btn btn-secondary"

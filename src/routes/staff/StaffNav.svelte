@@ -11,13 +11,18 @@
    * JavaScript, et non par une astuce CSS : un `<details>` fermé n'expose pas son
    * contenu, quoi qu'on écrive dessus.
    */
-  const quotidiens = [
+  // « Mon planning » n'apparaît que pour un compte relié à un intervenant : ailleurs,
+  // l'entrée ne mènerait nulle part.
+  const monPlanning = $derived(staffStore.identity.practitionerId)
+
+  const quotidiens = $derived([
     { chemin: '/soignant', libelle: 'La semaine' },
     { chemin: '/soignant/reunion', libelle: 'Réunion du lundi' },
     { chemin: '/soignant/aujourdhui', libelle: "Aujourd'hui" },
     { chemin: '/soignant/plannings', libelle: 'Les plannings' },
+    ...(monPlanning === null ? [] : [{ chemin: `/soignant/intervenant/${monPlanning}`, libelle: 'Mon planning' }]),
     { chemin: '/soignant/rendez-vous', libelle: 'Rendez-vous' },
-  ]
+  ])
 
   const occasionnels = [
     { chemin: '/soignant/patients', libelle: 'Les patients' },

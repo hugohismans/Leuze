@@ -52,7 +52,13 @@ import type {
 } from '../staffPorts'
 import { firebase } from './app'
 
-const SIGNED_OUT: StaffIdentity = { uid: null, email: null, firstName: null, role: null }
+const SIGNED_OUT: StaffIdentity = {
+  uid: null,
+  email: null,
+  firstName: null,
+  role: null,
+  practitionerId: null,
+}
 
 /** Les fonctions appelables renvoient leur message en français : on le laisse passer. */
 function messageDErreur(error: unknown): string {
@@ -116,7 +122,14 @@ export function createFirestoreStaffApp(): StaffApp {
       } catch {
         firstName = null
       }
-      identity = { uid: user.uid, email: user.email, firstName, role }
+      const lien = token.claims['practitionerId']
+      identity = {
+        uid: user.uid,
+        email: user.email,
+        firstName,
+        role,
+        practitionerId: typeof lien === 'string' && lien !== '' ? lien : null,
+      }
     }
   }
 
@@ -285,14 +298,29 @@ export function createFirestoreStaffApp(): StaffApp {
         })
       },
 
-      async roster(occurrenceId: string): Promise<RosterLine[]> {
+      async roster(occurrenceId: string) {
         try {
-          const call = httpsCallable<{ occurrenceId: string }, { lines: RosterLine[] }>(functions, 'staffRoster')
-          return (await call({ occurrenceId })).data.lines
+          const call = httpsCallable<
+            { occurrenceId: string },
+            { lines: RosterLine[]; canMarkAttendance: boolean }
+          >(functions, 'staffRoster')
+          return (await call({ occurrenceId })).data
         } catch {
           // Sans Cloud Functions (plan gratuit), les prénoms ne sont pas servis :
           // il n'y a de toute façon pas encore d'inscriptions.
-          return []
+          return { lines: [], canMarkAttendance: false }
+        }
+      },
+
+      async markAttendance(occurrenceId, patientUid, attendance) {
+        try {
+          const call = httpsCallable<
+            { occurrenceId: string; patientUid: string; attendance: 'present' | 'absent' | null },
+            { ok: boolean; message: string }
+          >(functions, 'markAttendance')
+          return (await call({ occurrenceId, patientUid, attendance })).data
+        } catch (error) {
+          return { ok: false, message: messageDErreur(error) }
         }
       },
 
@@ -487,6 +515,26 @@ export function createFirestoreStaffApp(): StaffApp {
         const { id, ...reste } = category
         await setDoc(doc(db, 'categories', id), reste, { merge: true })
       },
+      async createStaffAccount(email, practitionerId) {
+        try {
+          const call = httpsCallable<
+            { email: string; practitionerId: string },
+            { password: string | null }
+          >(functions, 'createStaffAccount')
+          const { password } = (await call({ email, practitionerId })).data
+          return {
+            ok: true,
+            message:
+              password === null
+                ? 'Compte existant relié. La personne doit se reconnecter.'
+                : 'Accès créé. Notez le mot de passe : il ne sera plus affiché.',
+            ...(password === null ? {} : { password }),
+          }
+        } catch (error) {
+          return { ok: false, message: messageDErreur(error) }
+        }
+      },
+
       async savePractitioner(practitioner) {
         const { id, ...reste } = practitioner
         await setDoc(doc(db, 'practitioners', id), reste, { merge: true })

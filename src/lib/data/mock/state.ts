@@ -33,6 +33,8 @@ function stableHash(value: string): number {
 
 export type MockWorld = {
   occurrences: Map<string, Occurrence>
+  /** L'appel, par « occurrence|patient ». Côté Firestore, c'est un champ de l'inscription. */
+  attendance: Map<string, 'present' | 'absent'>
   registrations: Registration[]
   appointments: Appointment[]
   patients: (SeedPatient & { expiresAt?: Date })[]
@@ -113,6 +115,7 @@ function build(now: Date): MockWorld {
 
   const monde: MockWorld = {
     occurrences,
+    attendance: new Map(),
     registrations,
     appointments,
     patients: patientsSeed.map((p) => ({ ...p })),

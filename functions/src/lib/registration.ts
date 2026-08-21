@@ -63,6 +63,8 @@ export async function registerTx(
     by: 'patient' | 'staff'
     /** Service du patient : vérifié ici aussi, car l'admin SDK ignore les règles. */
     serviceId?: string | null
+    /** L'animateur accepte quelqu'un qui s'est présenté : voir `register` dans le domaine. */
+    walkIn?: boolean
     now?: Date
   },
 ): Promise<RegisterOutput> {
@@ -78,7 +80,12 @@ export async function registerTx(
     }
 
     const registrationId = database.collection(COLLECTIONS.registrations).doc().id
-    const outcome = domainRegister(board, options.patientUid, { now, registrationId, by: options.by })
+    const outcome = domainRegister(board, options.patientUid, {
+      now,
+      registrationId,
+      by: options.by,
+      ...(options.walkIn === true ? { walkIn: true } : {}),
+    })
     if (!outcome.ok) {
       return {
         ok: false,
@@ -200,13 +207,19 @@ export type RosterLine = {
   serviceId: string | null
   status: 'confirmed' | 'waitlist'
   position: number | null
+  /** Renseignée seulement pour qui a le droit de faire l'appel. */
+  attendance?: 'present' | 'absent'
 }
 
 /**
  * Liste des inscrits, réservée au personnel. Elle joint les prénoms, qui vivent dans
  * `patients` — collection qu'aucun client ne peut lire directement.
  */
-export async function rosterFor(database: Firestore, occurrenceId: string): Promise<RosterLine[]> {
+export async function rosterFor(
+  database: Firestore,
+  occurrenceId: string,
+  withAttendance = false,
+): Promise<RosterLine[]> {
   const occurrenceSnapshot = await database.collection(COLLECTIONS.occurrences).doc(occurrenceId).get()
   if (!occurrenceSnapshot.exists) return []
   const registrationsSnapshot = await database
@@ -229,12 +242,23 @@ export async function rosterFor(database: Firestore, occurrenceId: string): Prom
     }),
   )
 
+  const presences = new Map<string, 'present' | 'absent'>()
+  if (withAttendance) {
+    for (const document of registrationsSnapshot.docs) {
+      const valeur = document.data()['attendance']
+      const uid = document.data()['patientUid']
+      if ((valeur === 'present' || valeur === 'absent') && typeof uid === 'string') presences.set(uid, valeur)
+    }
+  }
+
   const line = (r: Registration, status: 'confirmed' | 'waitlist', position: number | null): RosterLine => ({
     patientUid: r.patientUid,
     firstName: patients.get(r.patientUid)?.firstName ?? 'Prénom inconnu',
     serviceId: patients.get(r.patientUid)?.serviceId ?? null,
     status,
     position,
+    // Absente pour qui n'anime pas l'activité : l'appel ne regarde que lui.
+    ...(presences.has(r.patientUid) ? { attendance: presences.get(r.patientUid) } : {}),
   })
 
   return [

@@ -12,6 +12,7 @@ import { auth, COLLECTIONS, db } from './lib/firestore'
 import { generationWindow, regenerateActivity, regenerateAll } from './lib/occurrences'
 import { assertNotRateLimited, clearFailures, recordFailure } from './lib/rateLimit'
 import { myRegistrationsFor, promoteTx, registerTx, rosterFor, unregisterTx } from './lib/registration'
+import { attendanceRefusal, canMarkAttendance } from './domain/attendance'
 import { planActivityRemoval, planRemoval, type CatalogKind } from './domain/catalog'
 import type { LocalDate } from './domain/types'
 
@@ -240,9 +241,74 @@ export const staffPatients = onCall(async (request: CallableRequest) => {
 
 /** Liste des inscrits : jamais lisible par un patient, jamais servie sans être soignant. */
 export const staffRoster = onCall(async (request: CallableRequest) => {
-  requireStaff(request)
+  const staff = requireStaff(request)
   const occurrenceId = requireString(request.data?.occurrenceId, 'occurrenceId')
-  return { lines: await rosterFor(db(), occurrenceId) }
+  const snapshot = await db().collection(COLLECTIONS.occurrences).doc(occurrenceId).get()
+  const occurrence = snapshot.data() as { facilitatorId?: string } | undefined
+  // L'appel n'est renvoyé qu'à qui a le droit de le faire : voir `canMarkAttendance`.
+  const peutFaireAppel = occurrence !== undefined && canMarkAttendance(staff, occurrence)
+  return { lines: await rosterFor(db(), occurrenceId, peutFaireAppel), canMarkAttendance: peutFaireAppel }
+})
+
+/**
+ * L'appel : noter qu'une personne était là, ou qu'elle n'y était pas.
+ *
+ * Se fait sur papier jusqu'ici. La personne qui anime l'activité coche, et elle seule —
+ * un administrateur aussi, sans quoi une absence bloquerait la feuille.
+ *
+ * Quelqu'un qui se présente sans s'être inscrit est accepté d'un même geste : on
+ * l'inscrit puis on le note présent. C'est le cas courant, pas l'exception.
+ */
+export const markAttendance = onCall(async (request: CallableRequest) => {
+  const staff = requireStaff(request)
+  const occurrenceId = requireString(request.data?.occurrenceId, 'occurrenceId')
+  const patientUid = requireString(request.data?.patientUid, 'patientUid')
+  const valeur = request.data?.attendance
+  if (valeur !== 'present' && valeur !== 'absent' && valeur !== null) {
+    throw new HttpsError('invalid-argument', 'La présence doit être « present », « absent » ou vide.')
+  }
+
+  const occurrenceSnapshot = await db().collection(COLLECTIONS.occurrences).doc(occurrenceId).get()
+  const occurrence = occurrenceSnapshot.data() as
+    | { facilitatorId?: string; facilitator?: string }
+    | undefined
+  if (occurrence === undefined) throw new HttpsError('not-found', "Cette activité n'a pas été trouvée.")
+  if (!canMarkAttendance(staff, occurrence)) {
+    throw new HttpsError('permission-denied', attendanceRefusal(occurrence))
+  }
+
+  const existantes = await db()
+    .collection(COLLECTIONS.registrations)
+    .where('occurrenceId', '==', occurrenceId)
+    .where('patientUid', '==', patientUid)
+    .get()
+  const active = existantes.docs.find((d) => d.data()['status'] !== 'cancelled')
+
+  if (active === undefined) {
+    // Personne venue spontanément : on l'inscrit, puis on la note. L'inscription passe
+    // par la transaction habituelle — la capacité et la liste d'attente s'appliquent.
+    const resultat = await registerTx(db(), { occurrenceId, patientUid, by: 'staff', walkIn: true })
+    if (!resultat.ok) return resultat
+  }
+
+  const aNoter = await db()
+    .collection(COLLECTIONS.registrations)
+    .where('occurrenceId', '==', occurrenceId)
+    .where('patientUid', '==', patientUid)
+    .get()
+  const cible = aNoter.docs.find((d) => d.data()['status'] !== 'cancelled')
+  if (cible === undefined) throw new HttpsError('failed-precondition', "L'inscription n'a pas été trouvée.")
+
+  await cible.ref.set(
+    {
+      attendance: valeur,
+      attendanceBy: valeur === null ? null : staff.uid,
+      attendanceAt: valeur === null ? null : FieldValue.serverTimestamp(),
+    },
+    { merge: true },
+  )
+
+  return { ok: true, message: valeur === 'present' ? 'Noté présent.' : valeur === 'absent' ? 'Noté absent.' : 'Réponse effacée.' }
 })
 
 // ---------------------------------------------------------------------------
@@ -542,6 +608,57 @@ export const removeCatalogEntry = onCall(async (request: CallableRequest) => {
 // Comptes du personnel
 // ---------------------------------------------------------------------------
 
+/**
+ * Donne un accès à un membre du personnel, et le relie à son intervenant.
+ *
+ * Tout le monde ne passe pas par la console Firebase : c'est ici que se crée un compte,
+ * avec un mot de passe provisoire affiché **une seule fois**, comme un code patient. Si
+ * le compte existe déjà, il est simplement relié — sans toucher au mot de passe.
+ *
+ * Le lien vit dans le jeton, pas dans un document : c'est lui qui ouvrira l'appel des
+ * activités de cette personne.
+ */
+export const createStaffAccount = onCall(async (request: CallableRequest) => {
+  requireAdmin(request)
+  const email = requireString(request.data?.email, 'adresse électronique', 200).toLowerCase()
+  const practitionerId = requireString(request.data?.practitionerId, 'intervenant', 100)
+
+  const fiche = await db().collection(COLLECTIONS.practitioners).doc(practitionerId).get()
+  if (!fiche.exists) throw new HttpsError('not-found', "Cet intervenant n'existe pas.")
+  const nom = (fiche.data()?.['name'] as string | undefined) ?? ''
+
+  const existant = await auth()
+    .getUserByEmail(email)
+    .catch(() => null)
+
+  let motDePasse: string | null = null
+  let uid: string
+  if (existant === null) {
+    // Lisible à voix haute et à recopier : même alphabet que les codes patients.
+    motDePasse = `${generateCode(4)}-${generateCode(4)}`
+    const cree = await auth().createUser({ email, password: motDePasse, displayName: nom })
+    uid = cree.uid
+  } else {
+    uid = existant.uid
+  }
+
+  const claims = (existant?.customClaims ?? {}) as { role?: string }
+  const role = claims.role === 'admin' ? 'admin' : 'staff'
+  await auth().setCustomUserClaims(uid, { role, practitionerId })
+  await db()
+    .collection(COLLECTIONS.staff)
+    .doc(uid)
+    .set(
+      { role, firstName: nom, practitionerId, isActive: true, updatedAt: FieldValue.serverTimestamp() },
+      { merge: true },
+    )
+  // Le jeton en cours ne porte pas encore le lien : il faut se reconnecter.
+  await auth().revokeRefreshTokens(uid)
+
+  logger.info('Accès du personnel créé ou relié', { uid, practitionerId, cree: existant === null })
+  return { uid, email, practitionerId, password: motDePasse }
+})
+
 export const setStaffRole = onCall(async (request: CallableRequest) => {
   requireAdmin(request)
   const uid = requireString(request.data?.uid, 'uid')
@@ -550,14 +667,24 @@ export const setStaffRole = onCall(async (request: CallableRequest) => {
     throw new HttpsError('invalid-argument', 'Le rôle doit être « staff », « admin » ou vide.')
   }
   const firstName = typeof request.data?.firstName === 'string' ? request.data.firstName : undefined
+  const lien = request.data?.practitionerId
+  const practitionerId = typeof lien === 'string' && lien !== '' ? lien : null
 
-  await auth().setCustomUserClaims(uid, role === null ? {} : { role })
+  // Le lien vers l'intervenant vit dans le jeton, comme le rôle : c'est lui qui décide
+  // de l'appel, jamais un document Firestore.
+  await auth().setCustomUserClaims(
+    uid,
+    role === null ? {} : { role, ...(practitionerId === null ? {} : { practitionerId }) },
+  )
   await db()
     .collection(COLLECTIONS.staff)
     .doc(uid)
-    .set({ role, firstName, isActive: role !== null, updatedAt: FieldValue.serverTimestamp() }, { merge: true })
+    .set(
+      { role, firstName, practitionerId, isActive: role !== null, updatedAt: FieldValue.serverTimestamp() },
+      { merge: true },
+    )
   await auth().revokeRefreshTokens(uid)
-  return { uid, role }
+  return { uid, role, practitionerId }
 })
 
 // ---------------------------------------------------------------------------

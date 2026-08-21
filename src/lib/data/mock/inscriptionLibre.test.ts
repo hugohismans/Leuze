@@ -37,6 +37,6 @@ describe('activité sans inscription obligatoire', () => {
     await app.repository.registerPatient(libre.id, 'demo-patient')
 
     const liste = await app.repository.roster(libre.id)
-    expect(liste.map((l) => l.patientUid)).toContain('demo-patient')
+    expect(liste.lines.map((l) => l.patientUid)).toContain('demo-patient')
   })
 })

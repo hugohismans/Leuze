@@ -27,6 +27,8 @@ export type StaffIdentity = {
   email: string | null
   firstName: string | null
   role: StaffRole | null
+  /** L'intervenant auquel ce compte est relié : c'est ce qui ouvre l'appel et « Mon planning ». */
+  practitionerId: string | null
 }
 
 export interface StaffSessionService {
@@ -78,6 +80,8 @@ export type RosterLine = {
   serviceId: string | null
   status: Exclude<RegistrationStatus, 'cancelled'>
   position: number | null
+  /** Renseignée seulement pour qui a le droit de faire l'appel. */
+  attendance?: 'present' | 'absent'
 }
 
 export interface StaffRepository {
@@ -106,7 +110,6 @@ export interface StaffRepository {
   /** Le calendrier du personnel : tout le programme, sans filtre de service. */
   listOccurrences(from: LocalDate, to: LocalDate): Promise<Occurrence[]>
 
-  /** Annulation en deux clics, avec motif. Jamais une suppression. */
   /**
    * Les plannings de la semaine pour tout un service, un par personne — de quoi imprimer
    * la pile à la fin de la réunion du lundi. Les inscriptions ne sont pas lisibles côté
@@ -114,11 +117,22 @@ export interface StaffRepository {
    */
   weekPlannings(from: LocalDate, to: LocalDate, serviceId?: string): Promise<PatientPlanning[]>
 
+  /** Annulation en deux clics, avec motif. Jamais une suppression. */
   cancelOccurrence(occurrenceId: string, reason: string): Promise<void>
   restoreOccurrence(occurrenceId: string): Promise<void>
 
-  /** Liste des inscrits. Vide tant que les inscriptions ne sont pas en service. */
-  roster(occurrenceId: string): Promise<RosterLine[]>
+  /** La liste des inscrits, et le droit d'y faire l'appel. */
+  roster(occurrenceId: string): Promise<{ lines: RosterLine[]; canMarkAttendance: boolean }>
+
+  /**
+   * L'appel. Inscrit d'office la personne qui se présente sans l'être : c'est le cas
+   * courant, pas l'exception.
+   */
+  markAttendance(
+    occurrenceId: string,
+    patientUid: string,
+    attendance: 'present' | 'absent' | null,
+  ): Promise<{ ok: boolean; message: string }>
 
   /**
    * Les patients, pour la réunion du lundi. Prénom et service uniquement.
@@ -192,6 +206,15 @@ export interface CatalogAdminService {
   saveLocation(location: { id: string; name: string; accessNotes?: string; building?: string; isActive: boolean }): Promise<void>
   saveService(service: { id: string; name: string; isActive: boolean }): Promise<void>
   saveCategory(category: { id: string; name: string; icon: string; colorToken: string; isActive?: boolean }): Promise<void>
+  /**
+   * Donne un accès à un intervenant, ou relie un compte existant. Le mot de passe
+   * provisoire n'est renvoyé qu'à la création, et une seule fois.
+   */
+  createStaffAccount(
+    email: string,
+    practitionerId: string,
+  ): Promise<{ ok: boolean; message: string; password?: string }>
+
   savePractitioner(practitioner: {
     id: string
     name: string

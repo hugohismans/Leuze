@@ -170,8 +170,16 @@ service cloud.firestore {
     // la même dernière place.
 
     match /registrations/{registrationId} {
-      allow get, list: if isStaff()
-        || (isPatient() && resource.data.patientUid == request.auth.uid);
+      /**
+       * Un patient lit les siennes, et personne d'autre ne lit rien ici.
+       *
+       * Le personnel passait par cette porte jusqu'à ce que l'appel existe. Depuis, une
+       * inscription porte aussi la présence — qui est venu, qui ne l'est pas — et cela
+       * n'appartient qu'à la personne qui anime l'activité. Le personnel obtient donc
+       * ses listes par des fonctions appelables, qui savent à qui elles parlent : voir
+       * `staffRoster`. Aucun écran client n'a besoin de cette collection.
+       */
+      allow get, list: if isPatient() && resource.data.patientUid == request.auth.uid;
       allow write: if false;
     }
 

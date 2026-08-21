@@ -91,12 +91,15 @@ describe('lecture des inscriptions', () => {
     )
   })
 
-  it('laisse le personnel lire la liste des inscrits', async () => {
+  it('refuse au personnel de lire les inscriptions directement', async () => {
+    // Une inscription porte aussi la présence, qui n'appartient qu'à la personne qui
+    // anime l'activité. Le personnel obtient ses listes par `staffRoster`, une fonction
+    // appelable qui sait à qui elle parle.
     const database = asStaff(env)
-    const snapshot = await assertSucceeds(
+    await assertFails(
       getDocs(query(collection(database, 'registrations'), where('occurrenceId', '==', 'occ-1'))),
     )
-    expect(snapshot.size).toBe(2)
+    await assertFails(getDoc(doc(database, 'registrations', 'insc-camille')))
   })
 
   it('refuse tout à une personne non connectée', async () => {

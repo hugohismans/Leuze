@@ -5,7 +5,15 @@ import { HttpsError, type CallableRequest } from 'firebase-functions/v2/https'
  * remonter jusqu'à l'écran d'un patient.
  */
 
-export type StaffIdentity = { uid: string; role: 'staff' | 'admin' }
+export type StaffIdentity = {
+  uid: string
+  role: 'staff' | 'admin'
+  /**
+   * L'intervenant auquel ce compte est relié, s'il l'est. Posé dans le jeton par
+   * `setStaffRole` : c'est lui qui décide de l'appel, jamais un document Firestore.
+   */
+  practitionerId: string | null
+}
 export type PatientIdentity = { uid: string; serviceId: string }
 
 export function requireStaff(request: CallableRequest): StaffIdentity {
@@ -14,7 +22,8 @@ export function requireStaff(request: CallableRequest): StaffIdentity {
   if (!auth || (role !== 'staff' && role !== 'admin')) {
     throw new HttpsError('permission-denied', 'Cette action est réservée au personnel soignant.')
   }
-  return { uid: auth.uid, role }
+  const lien = auth.token['practitionerId']
+  return { uid: auth.uid, role, practitionerId: typeof lien === 'string' && lien !== '' ? lien : null }
 }
 
 export function requireAdmin(request: CallableRequest): StaffIdentity {

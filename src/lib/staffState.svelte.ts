@@ -18,7 +18,13 @@ import { store } from './appState.svelte'
 import { todayLocalDate, weekDays } from './domain/time'
 import type { Activity, Appointment, LocalDate, LocalTime, Occurrence } from './domain/types'
 
-const SIGNED_OUT: StaffIdentity = { uid: null, email: null, firstName: null, role: null }
+const SIGNED_OUT: StaffIdentity = {
+  uid: null,
+  email: null,
+  firstName: null,
+  role: null,
+  practitionerId: null,
+}
 
 class StaffStore {
   /** Chargé à la demande, comme l'adapter patient : voir `data/index.ts`. */
@@ -168,8 +174,27 @@ class StaffStore {
     this.patients = await (await this.app$()).repository.listPatients().catch(() => [])
   }
 
+  /** Vrai quand la personne connectée a le droit de faire l'appel de l'activité ouverte. */
+  canMarkAttendance = $state<boolean>(false)
+
   async openRoster(occurrenceId: string): Promise<void> {
-    this.roster = await (await this.app$()).repository.roster(occurrenceId).catch(() => [])
+    const resultat = await (await this.app$()).repository
+      .roster(occurrenceId)
+      .catch(() => ({ lines: [], canMarkAttendance: false }))
+    this.roster = resultat.lines
+    this.canMarkAttendance = resultat.canMarkAttendance
+  }
+
+  /** L'appel. Inscrit d'office la personne qui se présente sans l'être. */
+  async markAttendance(
+    occurrenceId: string,
+    patientUid: string,
+    attendance: 'present' | 'absent' | null,
+  ): Promise<string> {
+    const resultat = await (await this.app$()).repository.markAttendance(occurrenceId, patientUid, attendance)
+    await this.openRoster(occurrenceId)
+    await this.refresh()
+    return resultat.message
   }
 
   isRegistered(patientUid: string): boolean {
@@ -301,6 +326,12 @@ class StaffStore {
     await (await this.app$()).catalogAdmin.saveCategory(category)
     await store.loadCatalog(true)
     this.message = `Catégorie enregistrée : ${category.name}.`
+  }
+
+  async createStaffAccount(email: string, practitionerId: string): Promise<string | null> {
+    const resultat = await (await this.app$()).catalogAdmin.createStaffAccount(email, practitionerId)
+    this.message = resultat.message
+    return resultat.password ?? null
   }
 
   async savePractitioner(practitioner: {

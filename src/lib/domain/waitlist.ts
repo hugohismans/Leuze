@@ -39,18 +39,35 @@ export type RegisterOutcome =
 export function register(
   board: Board,
   patientUid: string,
-  options: { now: Date; registrationId: string; by: 'patient' | 'staff' },
+  options: {
+    now: Date
+    registrationId: string
+    by: 'patient' | 'staff'
+    /**
+     * Quelqu'un s'est présenté et l'animateur l'accepte. Ce n'est plus une réservation
+     * mais un fait : la personne est là. On passe donc outre deux refus qui n'ont de
+     * sens qu'avant l'activité — « déjà commencée », puisque l'appel se fait pendant, et
+     * « complète », parce que le nombre de places ne change pas qui se tient dans la
+     * salle. Une séance annulée, elle, reste annulée.
+     */
+    walkIn?: boolean
+  },
 ): RegisterOutcome {
   if (registrationOf(board, patientUid) !== null) return { ok: false, reason: 'already-registered' }
 
   // « Sans inscription » n'empêche plus de s'inscrire : ne restent que les refus réels —
   // séance annulée, déjà commencée, ou complète sans liste d'attente.
   const block = registrationBlock(board.occurrence, options.now)
-  if (block !== null) return { ok: false, reason: block }
+  if (block !== null) {
+    const contournable = block === 'past' || block === 'full-no-waitlist'
+    if (!(options.walkIn === true && contournable)) return { ok: false, reason: block }
+  }
 
   const capacity = board.occurrence.capacity
   const confirmed = board.registrations.filter((r) => r.status === 'confirmed').length
-  const goesToWaitlist = capacity !== null && confirmed >= capacity
+  // Une personne présente est confirmée, même au-delà du nombre de places : la feuille
+  // doit dire qui était là, pas ce qui était prévu.
+  const goesToWaitlist = options.walkIn !== true && capacity !== null && confirmed >= capacity
 
   const status = goesToWaitlist ? ('waitlist' as const) : ('confirmed' as const)
   const registration: Registration = {

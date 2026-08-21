@@ -34,6 +34,22 @@
   /** Les activités qui empêchent une suppression définitive, nommées après un retrait. */
   let bloquantes = $state<string[]>([])
 
+  /** Donner un accès à un intervenant : l'adresse, puis le mot de passe affiché une fois. */
+  let accesPour = $state<string | null>(null)
+  let adresse = $state('')
+  let motDePasse = $state<{ email: string; valeur: string } | null>(null)
+
+  async function donnerAcces(practitionerId: string): Promise<void> {
+    if (adresse.trim().length === 0) return
+    const email = adresse.trim()
+    await tenter(async () => {
+      const valeur = await staffStore.createStaffAccount(email, practitionerId)
+      accesPour = null
+      adresse = ''
+      motDePasse = valeur === null ? null : { email, valeur }
+    })
+  }
+
   function ouvrir(genre: Genre, id: string | null): void {
     edition = { genre, id }
     nom = ''
@@ -220,6 +236,25 @@
     </p>
   {/if}
 
+  {#if motDePasse !== null}
+    <!-- Affiché une seule fois, comme un code patient : rien ne le retrouve ensuite. -->
+    <div class="card mb-4 border-4 border-brand-700 p-5">
+      <h2 class="text-2xl font-bold text-ink">Mot de passe provisoire</h2>
+      <p class="my-3 text-center text-4xl font-bold tracking-widest text-brand-900">
+        {motDePasse.valeur}
+      </p>
+      <p class="text-lg text-ink">À remettre avec l'adresse {motDePasse.email}.</p>
+      <p class="mt-2 text-base text-ink-soft">
+        Il ne sera plus affiché. S'il est perdu, refaites « Lui donner un accès » —
+        le compte existant sera relié sans changer son mot de passe, et la personne
+        pourra le réinitialiser depuis l'écran de connexion.
+      </p>
+      <button type="button" class="btn btn-primary mt-3" onclick={() => (motDePasse = null)}>
+        J'ai noté le mot de passe
+      </button>
+    </div>
+  {/if}
+
   {#if staffStore.message !== null}
     <div role="status" class="mb-4 rounded-xl bg-brand-100 p-3 text-lg text-brand-900">
       <p class="font-semibold">{staffStore.message}</p>
@@ -395,14 +430,55 @@
         {@render actions('intervenant', intervenant.id, intervenant.name, intervenant.isActive)}
       </div>
       <p class="text-base text-ink-soft">{intervenant.role}</p>
-      {#if staffStore.isAdmin}
+      <div class="mt-2 flex flex-wrap gap-2">
         <button
           type="button"
-          class="btn btn-secondary mt-2"
+          class="btn btn-secondary"
           onclick={() => navigate(`/soignant/intervenant/${intervenant.id}`)}
         >
           Voir son planning
         </button>
+        {#if staffStore.isAdmin}
+          <button
+            type="button"
+            class="btn btn-secondary"
+            onclick={() => { accesPour = intervenant.id; adresse = ''; motDePasse = null }}
+          >
+            Lui donner un accès
+          </button>
+        {/if}
+      </div>
+
+      {#if accesPour === intervenant.id}
+        <form
+          class="mt-3 rounded-xl border-2 border-line p-4"
+          onsubmit={(event) => {
+            event.preventDefault()
+            void donnerAcces(intervenant.id)
+          }}
+        >
+          <label for={`acces-${intervenant.id}`} class="mb-2 block text-lg font-semibold text-ink">
+            Son adresse électronique
+          </label>
+          <input
+            id={`acces-${intervenant.id}`}
+            type="email"
+            autocomplete="off"
+            bind:value={adresse}
+            class={champ}
+            style="min-height: 56px;"
+          />
+          <p class="mt-2 text-base text-ink-soft">
+            Si un compte existe déjà avec cette adresse, il est simplement relié à
+            {intervenant.name} — son mot de passe ne change pas.
+          </p>
+          <div class="mt-3 flex flex-wrap gap-2">
+            <button type="submit" class="btn btn-primary" disabled={busy || adresse.trim().length === 0}>
+              {busy ? 'Un instant…' : "Créer l'accès"}
+            </button>
+            <button type="button" class="btn btn-secondary" onclick={() => (accesPour = null)}>Annuler</button>
+          </div>
+        </form>
       {/if}
       {@render confirmation('intervenant', intervenant.id)}
       {#if ouvertPour('intervenant', intervenant.id)}{@render formulaire('intervenant', intervenant.id)}{/if}

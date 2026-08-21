@@ -2,6 +2,7 @@
   import { staffStore } from '../../lib/staffState.svelte'
   import { router } from '../../lib/router.svelte'
   import ActivitiesPage from './ActivitiesPage.svelte'
+  import AttendancePage from './AttendancePage.svelte'
   import WeekPage from './WeekPage.svelte'
   import PrintPage from './PrintPage.svelte'
   import MeetingPage from './MeetingPage.svelte'
@@ -52,6 +53,8 @@
     <StaffAppointmentsPage />
   {:else if router.path === '/soignant/plannings'}
     <PlanningsPage />
+  {:else if router.path.startsWith('/soignant/appel/')}
+    <AttendancePage occurrenceId={router.path.slice('/soignant/appel/'.length)} />
   {:else if router.path.startsWith('/soignant/intervenant/')}
     <PractitionerWeekPage practitionerId={router.path.slice('/soignant/intervenant/'.length)} />
   {:else if router.path.startsWith('/soignant/planning/')}
