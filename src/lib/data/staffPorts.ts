@@ -212,6 +212,9 @@ export interface StaffRepository {
    */
   warmRegistration(): Promise<void>
 
+  /** Même chose pour l'appel : l'écran de la feuille de présence le demande en s'ouvrant. */
+  warmAttendance(): Promise<void>
+
   /**
    * Crée un patient et son code d'accès. Le strict minimum est enregistré :
    * un prénom et un service.

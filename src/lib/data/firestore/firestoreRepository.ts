@@ -343,6 +343,15 @@ export function createFirestoreRepository(): AppRepository {
         return session
       },
 
+      async warmSignIn() {
+        try {
+          const call = httpsCallable<{ warm: boolean }, unknown>(functions, 'exchangeCode')
+          await call({ warm: true })
+        } catch {
+          // Un réveil raté n'est pas un problème : il n'y avait rien à faire.
+        }
+      },
+
       async signInWithCode(code: string) {
         try {
           const call = httpsCallable<{ code: string }, { token: string; firstName: string; serviceId: string }>(

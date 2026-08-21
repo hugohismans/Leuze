@@ -355,6 +355,9 @@ export const staffRoster = onCall(async (request: CallableRequest) => {
  */
 export const markAttendance = onCall(async (request: CallableRequest) => {
   const staff = requireStaff(request)
+  // Réveil : voir `staffRegister`. L'écran de l'appel le demande en s'ouvrant, pendant
+  // qu'on lit la liste des inscrits — la première case cochée ne paie plus le démarrage.
+  if (request.data?.warm === true) return { ok: true, warmed: true }
   const occurrenceId = requireString(request.data?.occurrenceId, 'occurrenceId')
   const patientUid = requireString(request.data?.patientUid, 'patientUid')
   const valeur = request.data?.attendance
@@ -805,6 +808,19 @@ async function premierePlaceLibre(
  * n'est jamais l'objet d'une requête : son empreinte *est* l'identifiant du document.
  */
 export const exchangeCode = onCall({ secrets: [CODE_PEPPER] }, async (request: CallableRequest) => {
+  /*
+    Réveil, avant toute chose.
+
+    C'est ici que le démarrage à froid coûtait le plus cher : quelqu'un tape son code,
+    appuie, et attend une dizaine de secondes sans savoir si l'application l'a entendu.
+    L'écran du code demande donc ce réveil en s'affichant — il faut plusieurs secondes
+    pour saisir six caractères, largement de quoi rallumer la fonction.
+
+    L'appel ne lit rien, ne touche à aucun secret, et ne compte pas dans la limite de
+    tentatives : il n'y a pas de code à essayer.
+  */
+  if (request.data?.warm === true) return { warmed: true }
+
   const raw = request.data?.code
   if (typeof raw !== 'string' || raw.length === 0 || raw.length > 32) {
     throw new HttpsError('invalid-argument', 'Saisissez le code inscrit sur votre feuille.')

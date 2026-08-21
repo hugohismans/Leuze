@@ -603,6 +603,10 @@ export function createMockStaffApp(): StaffApp {
         // Rien à réveiller : la démonstration n'appelle aucun serveur.
       },
 
+      async warmAttendance() {
+        // Rien à réveiller : la démonstration n'appelle aucun serveur.
+      },
+
       async unregisterPatient(occurrenceId: string, patientUid: string) {
         const board = boardOf(occurrenceId)
         if (board === null) return { ok: false, message: "Cette activité n'a pas été trouvée." }

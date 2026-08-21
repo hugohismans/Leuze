@@ -1,6 +1,18 @@
 <script lang="ts">
   import { store } from '../lib/appState.svelte'
 
+  /*
+    Réveiller la fonction pendant qu'on saisit le code.
+
+    C'est là que l'attente coûtait le plus cher : une fonction endormie met plusieurs
+    secondes à repartir, et ce retard tombait entre l'appui sur « Entrer » et l'arrivée
+    du calendrier. Saisir six caractères prend plus de temps que ce réveil, qui ne lit
+    rien et n'essaie aucun code.
+  */
+  $effect(() => {
+    void store.warmSignIn()
+  })
+
   let code = $state('')
   let message = $state<string | null>(null)
   let busy = $state(false)
