@@ -1,5 +1,6 @@
 <script lang="ts">
   import { staffStore } from '../../lib/staffState.svelte'
+  import { proposed } from '../../lib/domain/catalog'
   import { store } from '../../lib/appState.svelte'
   import { audienceLabelForStaff, isPublished } from '../../lib/domain/audience'
   import { formatLongDayLabel, todayLocalDate } from '../../lib/domain/time'
@@ -199,7 +200,7 @@
         <div>
           <label for="categorie" class="mb-2 block text-lg font-semibold text-ink">Catégorie</label>
           <select id="categorie" bind:value={categoryId} class={champ} style="min-height: 56px;">
-            {#each staffStore.catalog.categories as categorie (categorie.id)}
+            {#each proposed(staffStore.catalog.categories) as categorie (categorie.id)}
               <option value={categorie.id}>{categorie.icon} {categorie.name}</option>
             {/each}
           </select>
@@ -207,7 +208,7 @@
         <div>
           <label for="lieu" class="mb-2 block text-lg font-semibold text-ink">Lieu</label>
           <select id="lieu" bind:value={locationId} class={champ} style="min-height: 56px;">
-            {#each staffStore.catalog.locations as lieu (lieu.id)}
+            {#each proposed(staffStore.catalog.locations) as lieu (lieu.id)}
               <option value={lieu.id}>{lieu.name}</option>
             {/each}
           </select>
@@ -299,7 +300,7 @@
 
       {#if !pourTous}
         <div class="mt-2 flex flex-wrap gap-2">
-          {#each staffStore.catalog.services as service (service.id)}
+          {#each proposed(staffStore.catalog.services) as service (service.id)}
             <button
               type="button"
               class="btn"

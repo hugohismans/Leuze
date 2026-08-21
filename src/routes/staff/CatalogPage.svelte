@@ -1,5 +1,6 @@
 <script lang="ts">
   import { staffStore } from '../../lib/staffState.svelte'
+  import type { CatalogKind } from '../../lib/domain/catalog'
   import { uniqueSlug } from '../../lib/domain/slug'
 
   /**
@@ -22,6 +23,8 @@
   let couleur = $state('defaut')
   let actif = $state(true)
   let busy = $state(false)
+  /** Un retrait se confirme sur place : pas de fenêtre système, pas de clic malheureux. */
+  let aRetirer = $state<{ genre: Genre; id: string; nom: string } | null>(null)
 
   function ouvrir(genre: Genre, id: string | null): void {
     edition = { genre, id }
@@ -53,6 +56,7 @@
         nom = categorie.name
         icone = categorie.icon
         couleur = categorie.colorToken
+        actif = categorie.isActive !== false
       }
     }
   }
@@ -82,10 +86,40 @@
         name: nom.trim(),
         icon: icone.trim() || '•',
         colorToken: couleur,
+        isActive: actif,
       })
     }
 
     edition = null
+    busy = false
+  }
+
+  const GENRES: Record<Genre, CatalogKind> = { lieu: 'location', service: 'service', categorie: 'category' }
+
+  async function retirer(): Promise<void> {
+    if (aRetirer === null || busy) return
+    busy = true
+    const { genre, id } = aRetirer
+    await staffStore.removeCatalogEntry(GENRES[genre], id)
+    aRetirer = null
+    busy = false
+  }
+
+  async function remettre(genre: Genre, id: string, nom: string): Promise<void> {
+    if (busy) return
+    busy = true
+    if (genre === 'lieu') await staffStore.saveLocation({ id, name: nom, isActive: true })
+    else if (genre === 'service') await staffStore.saveService({ id, name: nom, isActive: true })
+    else {
+      const categorie = staffStore.catalog.categories.find((c) => c.id === id)
+      await staffStore.saveCategory({
+        id,
+        name: nom,
+        icon: categorie?.icon ?? '•',
+        colorToken: categorie?.colorToken ?? 'defaut',
+        isActive: true,
+      })
+    }
     busy = false
   }
 
@@ -156,12 +190,10 @@
         </div>
       {/if}
 
-      {#if genre !== 'categorie'}
-        <label class="mt-4 flex items-center gap-3 text-lg text-ink" style="min-height: 56px;">
-          <input type="checkbox" bind:checked={actif} class="size-6" />
-          Proposé dans les activités
-        </label>
-      {/if}
+      <label class="mt-4 flex items-center gap-3 text-lg text-ink" style="min-height: 56px;">
+        <input type="checkbox" bind:checked={actif} class="size-6" />
+        Proposé quand on crée une activité
+      </label>
 
       <div class="mt-3 flex flex-wrap gap-2">
         <button type="submit" class="btn btn-primary" disabled={busy || nom.trim().length === 0}>
@@ -175,6 +207,52 @@
     </form>
   {/snippet}
 
+  <!-- Retirer, remettre, et la confirmation : mêmes gestes pour les trois genres. -->
+  {#snippet actions(genre: Genre, id: string, libelle: string, propose: boolean)}
+    {#if staffStore.isAdmin}
+      <div class="flex flex-wrap gap-2">
+        <button type="button" class="btn btn-secondary" onclick={() => ouvrir(genre, id)}>Modifier</button>
+        {#if propose}
+          <button
+            type="button"
+            class="btn btn-secondary"
+            onclick={() => (aRetirer = { genre, id, nom: libelle })}
+          >
+            Retirer
+          </button>
+        {:else}
+          <button type="button" class="btn btn-secondary" onclick={() => remettre(genre, id, libelle)}>
+            Remettre
+          </button>
+        {/if}
+      </div>
+    {/if}
+  {/snippet}
+
+  {#snippet retire()}
+    <p class="mt-1 text-base font-semibold text-ink-soft">
+      <span aria-hidden="true">🚫</span>
+      Retiré : ne sera plus proposé quand on crée une activité.
+    </p>
+  {/snippet}
+
+  {#snippet confirmation(genre: Genre, id: string)}
+    {#if aRetirer !== null && aRetirer.genre === genre && aRetirer.id === id}
+      <div class="mt-3 rounded-xl border-2 border-line p-4">
+        <p class="text-lg text-ink">
+          Retirer « {aRetirer.nom} » ? S'il est déjà utilisé quelque part, il sera seulement
+          retiré des listes : les activités et les séances existantes le gardent.
+        </p>
+        <div class="mt-3 flex flex-wrap gap-2">
+          <button type="button" class="btn btn-primary" onclick={retirer} disabled={busy}>
+            {busy ? 'Un instant…' : 'Oui, retirer'}
+          </button>
+          <button type="button" class="btn btn-secondary" onclick={() => (aRetirer = null)}>Annuler</button>
+        </div>
+      </div>
+    {/if}
+  {/snippet}
+
   <!-- Les lieux -->
   <h2 class="mt-6 mb-3 text-2xl font-bold text-ink">Les lieux</h2>
   <ul class="grid gap-3">
@@ -182,13 +260,11 @@
       <li class="card p-4">
         <div class="flex flex-wrap items-baseline justify-between gap-2">
           <h3 class="text-xl font-bold text-ink">{lieu.name}</h3>
-          {#if staffStore.isAdmin}
-            <button type="button" class="btn btn-secondary" onclick={() => ouvrir('lieu', lieu.id)}>
-              Modifier
-            </button>
-          {/if}
+          {@render actions('lieu', lieu.id, lieu.name, lieu.isActive)}
         </div>
         {#if lieu.accessNotes}<p class="text-base text-ink-soft">{lieu.accessNotes}</p>{/if}
+        {#if !lieu.isActive}{@render retire()}{/if}
+        {@render confirmation('lieu', lieu.id)}
         {#if ouvertPour('lieu', lieu.id)}{@render formulaire('lieu', lieu.id)}{/if}
       </li>
     {/each}
@@ -210,12 +286,10 @@
       <li class="card p-4">
         <div class="flex flex-wrap items-baseline justify-between gap-2">
           <h3 class="text-xl font-bold text-ink">{service.name}</h3>
-          {#if staffStore.isAdmin}
-            <button type="button" class="btn btn-secondary" onclick={() => ouvrir('service', service.id)}>
-              Modifier
-            </button>
-          {/if}
+          {@render actions('service', service.id, service.name, service.isActive)}
         </div>
+        {#if !service.isActive}{@render retire()}{/if}
+        {@render confirmation('service', service.id)}
         {#if ouvertPour('service', service.id)}{@render formulaire('service', service.id)}{/if}
       </li>
     {/each}
@@ -240,12 +314,10 @@
             <span aria-hidden="true">{categorie.icon}</span>
             {categorie.name}
           </h3>
-          {#if staffStore.isAdmin}
-            <button type="button" class="btn btn-secondary" onclick={() => ouvrir('categorie', categorie.id)}>
-              Modifier
-            </button>
-          {/if}
+          {@render actions('categorie', categorie.id, categorie.name, categorie.isActive !== false)}
         </div>
+        {#if categorie.isActive === false}{@render retire()}{/if}
+        {@render confirmation('categorie', categorie.id)}
         {#if ouvertPour('categorie', categorie.id)}{@render formulaire('categorie', categorie.id)}{/if}
       </li>
     {/each}

@@ -339,6 +339,31 @@ que de la laisser disparaître silencieusement.
 services : elle ne lui apprend rien et révèle l'organisation interne. Le soignant, lui, voit la
 liste exacte.
 
+### 4.8 bis Retirer une entrée du catalogue
+
+Le catalogue est vivant : une salle ferme, un service change de nom, une catégorie créée
+un jour ne sert jamais. Il faut donc pouvoir retirer, sans casser ce qui existe.
+
+Supprimer purement et simplement est dangereux : une séance déjà programmée pointerait
+vers un lieu disparu, une personne serait rattachée à un service qui n'existe plus. Un
+soignant qui clique « Retirer » ne veut pas dire cela — il veut *ne plus le voir proposé*.
+
+Deux comportements, décidés par ce qui existe réellement, jamais par l'interface :
+
+| Ce qui pointe encore vers l'entrée | Ce qui se passe |
+|---|---|
+| rien | l'entrée est supprimée |
+| une activité, une séance, une personne | `isActive: false` — rien n'est effacé |
+
+Le comptage se fait dans la fonction `removeCatalogEntry`, jamais dans le navigateur : les
+personnes ne sont pas lisibles côté client, et une décision prise sur une vue partielle
+supprimerait ce qu'elle croit inutilisé. La phrase renvoyée par le serveur est affichée
+telle quelle : « Il est encore utilisé par 3 activités et 12 séances : rien n'a été effacé. »
+
+Conséquence sur les listes : une entrée retirée reste **lisible partout** — sinon une
+séance perdrait le nom de son lieu — mais n'est plus **proposée** au moment de créer
+(`proposed()` dans `domain/catalog.ts`). Un administrateur peut la remettre.
+
 ### 4.9 Le plan du site (lot 5, préparé dès maintenant)
 
 Composant `<SitePlan zoneId?>` isolé, alimenté par `config/app.planZones` (mapping

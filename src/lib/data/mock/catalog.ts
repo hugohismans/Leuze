@@ -20,9 +20,29 @@ const services = new Map<string, Service>(servicesSeed.map((s) => [s.id, { ...s 
 const categories = new Map<string, Category>(categoriesSeed.map((c) => [c.id, { ...c }]))
 
 export const mockCatalog = {
-  locations: (): Location[] => [...locations.values()].filter((l) => l.isActive),
-  services: (): Service[] => [...services.values()].filter((s) => s.isActive),
+  // Tout est renvoyé, y compris ce qui a été retiré : sinon une séance déjà programmée
+  // perdrait le nom de son lieu. Le tri se fait au moment de proposer un choix.
+  locations: (): Location[] => [...locations.values()],
+  services: (): Service[] => [...services.values()],
   categories: (): Category[] => [...categories.values()],
+
+  remove(kind: 'location' | 'service' | 'category', id: string): void {
+    const table = kind === 'location' ? locations : kind === 'service' ? services : categories
+    table.delete(id)
+  },
+
+  deactivate(kind: 'location' | 'service' | 'category', id: string): void {
+    if (kind === 'location') {
+      const lieu = locations.get(id)
+      if (lieu) locations.set(id, { ...lieu, isActive: false })
+    } else if (kind === 'service') {
+      const service = services.get(id)
+      if (service) services.set(id, { ...service, isActive: false })
+    } else {
+      const categorie = categories.get(id)
+      if (categorie) categories.set(id, { ...categorie, isActive: false })
+    }
+  },
 
   saveLocation(location: Location): void {
     locations.set(location.id, { ...locations.get(location.id), ...location })

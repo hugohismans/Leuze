@@ -13,6 +13,7 @@ import { COLLECTIONS, db } from './lib/firestore'
 import { generationWindow, regenerateActivity, regenerateAll } from './lib/occurrences'
 import { assertNotRateLimited, clearFailures, recordFailure } from './lib/rateLimit'
 import { myRegistrationsFor, promoteTx, registerTx, rosterFor, unregisterTx } from './lib/registration'
+import { planRemoval, type CatalogKind } from './domain/catalog'
 import type { LocalDate } from './domain/types'
 
 /**
@@ -317,6 +318,61 @@ export const exchangeCode = onCall({ secrets: [CODE_PEPPER] }, async (request: C
     serviceId: patient.serviceId,
   })
   return { token, firstName: patient.firstName, serviceId: patient.serviceId }
+})
+
+// ---------------------------------------------------------------------------
+// Catalogue
+// ---------------------------------------------------------------------------
+
+/**
+ * Retire une entrée du catalogue. Le comptage se fait ici, pas dans le navigateur :
+ * les personnes ne sont pas lisibles côté client, et une suppression décidée sur une
+ * vue partielle laisserait des activités pointant vers un lieu disparu.
+ *
+ * `limit(…)` plutôt qu'un comptage exact : au-delà, le nombre affiché serait de toute
+ * façon un ordre de grandeur, et la décision — supprimer ou retirer — ne change plus.
+ */
+export const removeCatalogEntry = onCall(async (request: CallableRequest) => {
+  requireAdmin(request)
+  const kind = requireString(request.data?.kind, 'kind', 20) as CatalogKind
+  const id = requireString(request.data?.id, 'id', 100)
+  if (kind !== 'location' && kind !== 'service' && kind !== 'category') {
+    throw new HttpsError('invalid-argument', 'Genre inconnu.')
+  }
+
+  const collection =
+    kind === 'location' ? COLLECTIONS.locations : kind === 'service' ? COLLECTIONS.services : COLLECTIONS.categories
+  const reference = db().collection(collection).doc(id)
+  const snapshot = await reference.get()
+  if (!snapshot.exists) throw new HttpsError('not-found', "Cette entrée n'existe plus.")
+  const name = (snapshot.data()?.['name'] as string | undefined) ?? id
+
+  const champActivite = kind === 'location' ? 'locationId' : kind === 'category' ? 'categoryId' : null
+  const PLAFOND = 50
+
+  async function combien(requete: FirebaseFirestore.Query): Promise<number> {
+    return (await requete.limit(PLAFOND).get()).size
+  }
+
+  const usage = {
+    activities:
+      champActivite === null
+        ? await combien(db().collection(COLLECTIONS.activities).where('serviceIds', 'array-contains', id))
+        : await combien(db().collection(COLLECTIONS.activities).where(champActivite, '==', id)),
+    occurrences:
+      champActivite === null
+        ? await combien(db().collection(COLLECTIONS.occurrences).where('audienceKeys', 'array-contains', id))
+        : await combien(db().collection(COLLECTIONS.occurrences).where(champActivite, '==', id)),
+    patients:
+      kind === 'service' ? await combien(db().collection(COLLECTIONS.patients).where('serviceId', '==', id)) : 0,
+  }
+
+  const plan = planRemoval(kind, name, usage)
+  if (plan.action === 'deleted') await reference.delete()
+  else await reference.set({ isActive: false }, { merge: true })
+
+  logger.info('Entrée de catalogue retirée', { kind, id, action: plan.action, ...usage })
+  return plan
 })
 
 // ---------------------------------------------------------------------------

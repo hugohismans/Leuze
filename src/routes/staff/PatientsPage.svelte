@@ -1,5 +1,6 @@
 <script lang="ts">
   import { staffStore } from '../../lib/staffState.svelte'
+  import { proposed } from '../../lib/domain/catalog'
   import { store } from '../../lib/appState.svelte'
   import { formatLongDayLabel, localDateOf } from '../../lib/domain/time'
   import type { NewPatientCode } from '../../lib/data/staffPorts'
@@ -21,7 +22,9 @@
   /** Le code fraîchement délivré, à recopier ou imprimer avant de fermer. */
   let codeDelivre = $state<NewPatientCode | null>(null)
 
-  const services = $derived(staffStore.catalog.services)
+  // Un service retiré n'est plus proposé pour une nouvelle personne ; celles qui y sont
+  // déjà rattachées continuent d'apparaître normalement.
+  const services = $derived(proposed(staffStore.catalog.services))
 
   $effect(() => {
     if (serviceId === '' && services.length > 0) serviceId = services[0]!.id

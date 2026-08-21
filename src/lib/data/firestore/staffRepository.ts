@@ -33,6 +33,7 @@ import {
   type QueryDocumentSnapshot,
 } from 'firebase/firestore'
 import { httpsCallable } from 'firebase/functions'
+import type { CatalogRemoval } from '../../domain/catalog'
 import { addMinutes, instantOf } from '../../domain/time'
 import type { Activity, Appointment, LocalDate, LocalTime, Occurrence } from '../../domain/types'
 import { generationWindow, planGeneration } from '../generation'
@@ -415,6 +416,12 @@ export function createFirestoreStaffApp(): StaffApp {
       async saveCategory(category) {
         const { id, ...reste } = category
         await setDoc(doc(db, 'categories', id), reste, { merge: true })
+      },
+      async removeEntry(kind, id) {
+        // Le comptage des usages n'est pas faisable ici : les personnes ne sont pas
+        // lisibles côté client. C'est le serveur qui décide entre supprimer et retirer.
+        const call = httpsCallable<{ kind: string; id: string }, CatalogRemoval>(functions, 'removeCatalogEntry')
+        return (await call({ kind, id })).data
       },
     },
   }

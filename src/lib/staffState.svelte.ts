@@ -12,6 +12,7 @@ import type {
   StaffPatient,
 } from './data/staffPorts'
 import { describeGeneration } from './data/generation'
+import type { CatalogKind } from './domain/catalog'
 import { store } from './appState.svelte'
 import { todayLocalDate, weekDays } from './domain/time'
 import type { Activity, Appointment, LocalDate, LocalTime, Occurrence } from './domain/types'
@@ -240,11 +241,23 @@ class StaffStore {
     this.message = `Service enregistré : ${service.name}.`
   }
 
+  /**
+   * Retirer une entrée du catalogue. Le serveur décide entre supprimer et retirer des
+   * listes selon ce qui l'utilise ; on répète sa phrase telle quelle, elle explique ce
+   * qui vient de se passer.
+   */
+  async removeCatalogEntry(kind: CatalogKind, id: string): Promise<void> {
+    const plan = await (await this.app$()).catalogAdmin.removeEntry(kind, id)
+    await store.loadCatalog(true)
+    this.message = plan.message
+  }
+
   async saveCategory(category: {
     id: string
     name: string
     icon: string
     colorToken: string
+    isActive?: boolean
   }): Promise<void> {
     await (await this.app$()).catalogAdmin.saveCategory(category)
     await store.loadCatalog(true)

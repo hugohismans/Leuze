@@ -7,6 +7,7 @@ import { instantOf, addMinutes } from '../../domain/time'
 import type { Activity, Appointment, LocalDate, LocalTime, Occurrence } from '../../domain/types'
 import { generationWindow, planGeneration } from '../generation'
 import { activitiesSeed } from '../seed/activities.seed'
+import { planRemoval } from '../../domain/catalog'
 import { mockCatalog } from './catalog'
 import { applyBoard, boardOf, world } from './state'
 import { registrationBlockMessage } from '../../domain/capacity'
@@ -279,6 +280,38 @@ export function createMockStaffApp(): StaffApp {
       },
       async saveCategory(category) {
         mockCatalog.saveCategory(category)
+      },
+      async removeEntry(kind, id) {
+        // Même décision que côté serveur, sur le petit monde de la démonstration :
+        // supprimé si rien ne l'utilise, retiré des listes sinon.
+        const parActivite = (activity: Activity): boolean =>
+          kind === 'location'
+            ? activity.locationId === id
+            : kind === 'category'
+              ? activity.categoryId === id
+              : activity.serviceIds.includes(id)
+        const parOccurrence = (occurrence: Occurrence): boolean =>
+          kind === 'location'
+            ? occurrence.locationId === id
+            : kind === 'category'
+              ? occurrence.categoryId === id
+              : occurrence.audienceKeys.includes(id)
+
+        const nom =
+          (kind === 'location'
+            ? mockCatalog.locations().find((l) => l.id === id)?.name
+            : kind === 'service'
+              ? mockCatalog.services().find((s) => s.id === id)?.name
+              : mockCatalog.categories().find((c) => c.id === id)?.name) ?? id
+
+        const plan = planRemoval(kind, nom, {
+          activities: [...activities.values()].filter(parActivite).length,
+          occurrences: [...world.occurrences.values()].filter(parOccurrence).length,
+          patients: kind === 'service' ? world.patients.filter((p) => p.serviceId === id).length : 0,
+        })
+        if (plan.action === 'deleted') mockCatalog.remove(kind, id)
+        else mockCatalog.deactivate(kind, id)
+        return plan
       },
     },
   }

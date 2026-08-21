@@ -50,6 +50,8 @@ export type Category = {
   icon: string
   /** Clé de token de couleur, pas une valeur hexadécimale (voir tokens.css). */
   colorToken: string
+  /** Absent vaut « oui » : les catégories créées avant ce drapeau restent proposées. */
+  isActive?: boolean
 }
 
 export type RecurrenceRule = {

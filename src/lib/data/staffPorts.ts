@@ -2,6 +2,7 @@
  * Ports de l'espace soignant. Comme pour le patient, l'interface ne connaît que ceci —
  * jamais Firebase. Deux adapters les implémentent : `firestore/` et `mock/`.
  */
+import type { CatalogKind, CatalogRemoval } from '../domain/catalog'
 import type {
   Activity,
   Appointment,
@@ -147,7 +148,13 @@ export interface StaffRepository {
 export interface CatalogAdminService {
   saveLocation(location: { id: string; name: string; accessNotes?: string; building?: string; isActive: boolean }): Promise<void>
   saveService(service: { id: string; name: string; isActive: boolean }): Promise<void>
-  saveCategory(category: { id: string; name: string; icon: string; colorToken: string }): Promise<void>
+  saveCategory(category: { id: string; name: string; icon: string; colorToken: string; isActive?: boolean }): Promise<void>
+
+  /**
+   * Retire une entrée. Supprimée si rien ne l'utilise, simplement retirée des listes
+   * sinon — la décision revient au serveur, seul à voir toutes les données.
+   */
+  removeEntry(kind: CatalogKind, id: string): Promise<CatalogRemoval>
 }
 
 export type StaffApp = {

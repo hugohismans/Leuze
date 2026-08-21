@@ -1,6 +1,7 @@
 <script lang="ts">
   import { staffStore } from '../../lib/staffState.svelte'
   import { store } from '../../lib/appState.svelte'
+  import { proposed } from '../../lib/domain/catalog'
   import {
     PREFERENCE_LABELS,
     kindIcon,
@@ -136,7 +137,7 @@
               <label for="lieu" class="mt-4 mb-2 block text-lg font-semibold text-ink">Où — facultatif</label>
               <select id="lieu" bind:value={lieu} class={champ} style="min-height: 56px;">
                 <option value="">Non précisé</option>
-                {#each store.locations as l (l.id)}
+                {#each proposed(store.locations) as l (l.id)}
                   <option value={l.id}>{l.name}</option>
                 {/each}
               </select>
