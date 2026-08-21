@@ -277,7 +277,14 @@ export function createMockStaffApp(): StaffApp {
 
       async scheduleAppointment(
         appointmentId: string,
-        rendezVous: { date: LocalDate; time: LocalTime; durationMin: number; withWhom: string; locationId?: string },
+        rendezVous: {
+          date: LocalDate
+          time: LocalTime
+          durationMin: number
+          withWhom: string
+          practitionerId?: string
+          locationId?: string
+        },
       ) {
         const demande = world.appointments.find((a) => a.id === appointmentId)
         if (!demande) return { ok: false, message: "Cette demande n'existe plus." }
@@ -291,6 +298,7 @@ export function createMockStaffApp(): StaffApp {
                 start,
                 end: addMinutes(start, rendezVous.durationMin),
                 withWhom: rendezVous.withWhom,
+                ...(rendezVous.practitionerId ? { practitionerId: rendezVous.practitionerId } : {}),
                 ...(rendezVous.locationId ? { locationId: rendezVous.locationId } : {}),
               }
             : a,
@@ -305,6 +313,7 @@ export function createMockStaffApp(): StaffApp {
         time: LocalTime
         durationMin: number
         withWhom: string
+        practitionerId?: string
         locationId?: string
       }) {
         const start = instantOf(rendezVous.date, rendezVous.time)
@@ -321,6 +330,7 @@ export function createMockStaffApp(): StaffApp {
             start,
             end: addMinutes(start, rendezVous.durationMin),
             withWhom: rendezVous.withWhom,
+            ...(rendezVous.practitionerId ? { practitionerId: rendezVous.practitionerId } : {}),
             ...(rendezVous.locationId ? { locationId: rendezVous.locationId } : {}),
           },
         ]
@@ -354,6 +364,9 @@ export function createMockStaffApp(): StaffApp {
       async saveCategory(category) {
         mockCatalog.saveCategory(category)
       },
+      async savePractitioner(practitioner) {
+        mockCatalog.savePractitioner(practitioner)
+      },
       async removeEntry(kind, id) {
         // Même décision que côté serveur, sur le petit monde de la démonstration :
         // supprimé si rien ne l'utilise, retiré des listes sinon.
@@ -362,26 +375,36 @@ export function createMockStaffApp(): StaffApp {
             ? activity.locationId === id
             : kind === 'category'
               ? activity.categoryId === id
-              : activity.serviceIds.includes(id)
+              : kind === 'practitioner'
+                ? activity.facilitatorId === id
+                : activity.serviceIds.includes(id)
         const parOccurrence = (occurrence: Occurrence): boolean =>
           kind === 'location'
             ? occurrence.locationId === id
             : kind === 'category'
               ? occurrence.categoryId === id
-              : occurrence.audienceKeys.includes(id)
+              : kind === 'practitioner'
+                ? occurrence.facilitatorId === id
+                : occurrence.audienceKeys.includes(id)
 
         const nom =
           (kind === 'location'
             ? mockCatalog.locations().find((l) => l.id === id)?.name
             : kind === 'service'
               ? mockCatalog.services().find((s) => s.id === id)?.name
-              : mockCatalog.categories().find((c) => c.id === id)?.name) ?? id
+              : kind === 'practitioner'
+                ? mockCatalog.practitioners().find((i) => i.id === id)?.name
+                : mockCatalog.categories().find((c) => c.id === id)?.name) ?? id
 
         const concernees = [...activities.values()].filter(parActivite)
         const plan = planRemoval(kind, nom, {
           activities: concernees.length,
           occurrences: [...world.occurrences.values()].filter(parOccurrence).length,
           patients: kind === 'service' ? world.patients.filter((p) => p.serviceId === id).length : 0,
+          appointments:
+            kind === 'practitioner'
+              ? world.appointments.filter((r) => r.practitionerId === id).length
+              : 0,
         })
         if (plan.action === 'deleted') mockCatalog.remove(kind, id)
         else mockCatalog.deactivate(kind, id)

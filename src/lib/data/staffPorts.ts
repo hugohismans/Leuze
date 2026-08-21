@@ -159,7 +159,14 @@ export interface StaffRepository {
   /** Le soignant consulte l'agenda, puis fixe. C'est lui, jamais le patient. */
   scheduleAppointment(
     appointmentId: string,
-    rendezVous: { date: LocalDate; time: LocalTime; durationMin: number; withWhom: string; locationId?: string },
+    rendezVous: {
+      date: LocalDate
+      time: LocalTime
+      durationMin: number
+      withWhom: string
+      practitionerId?: string
+      locationId?: string
+    },
   ): Promise<{ ok: boolean; message: string }>
 
   /**
@@ -173,6 +180,7 @@ export interface StaffRepository {
     time: LocalTime
     durationMin: number
     withWhom: string
+    practitionerId?: string
     locationId?: string
   }): Promise<{ ok: boolean; message: string }>
 
@@ -184,6 +192,13 @@ export interface CatalogAdminService {
   saveLocation(location: { id: string; name: string; accessNotes?: string; building?: string; isActive: boolean }): Promise<void>
   saveService(service: { id: string; name: string; isActive: boolean }): Promise<void>
   saveCategory(category: { id: string; name: string; icon: string; colorToken: string; isActive?: boolean }): Promise<void>
+  savePractitioner(practitioner: {
+    id: string
+    name: string
+    role: string
+    kindId?: string
+    isActive: boolean
+  }): Promise<void>
 
   /**
    * Retire une entrée. Supprimée si rien ne l'utilise, simplement retirée des listes

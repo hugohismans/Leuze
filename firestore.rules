@@ -62,6 +62,19 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    /**
+     * Les intervenants : psychiatre, kinésithérapeute, animateur.
+     *
+     * Lisibles par tous ceux qui sont connectés, patients compris : leur nom figure déjà
+     * sur les activités et les rendez-vous, il n'y a rien de plus à cacher ici. Ce n'est
+     * pas un compte — personne ne se connecte avec ceci, et rien de ce qui est écrit là
+     * ne donne le moindre droit.
+     */
+    match /practitioners/{practitionerId} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+
     match /config/{document} {
       allow read: if signedIn();
       allow write: if isAdmin();
@@ -194,7 +207,7 @@ service cloud.firestore {
     function validStaffAppointment(data) {
       return data.keys().hasOnly([
           'patientUid', 'kindId', 'preference', 'status',
-          'createdAt', 'start', 'end', 'localDate', 'withWhom', 'locationId'
+          'createdAt', 'start', 'end', 'localDate', 'withWhom', 'locationId', 'practitionerId'
         ])
         && data.patientUid is string && data.patientUid.size() > 0
         && data.kindId is string && data.kindId.size() > 0

@@ -28,6 +28,9 @@ function draftFrom(activity: Activity, localDate: LocalDate, startTime: LocalTim
     categoryId: activity.categoryId,
     locationId: activity.locationId,
     ...(activity.facilitator === undefined ? {} : { facilitator: activity.facilitator }),
+    // Dénormalisé comme le reste : c'est ce qui permet de retrouver les séances d'un
+    // intervenant sans lire toutes les activités.
+    ...(activity.facilitatorId === undefined ? {} : { facilitatorId: activity.facilitatorId }),
     audienceKeys: audienceKeysOf(activity),
     capacity: activity.capacity,
     registrationRequired: activity.registrationRequired,
@@ -155,6 +158,7 @@ export type SeriesEdit = Partial<
     | 'categoryId'
     | 'locationId'
     | 'facilitator'
+    | 'facilitatorId'
     | 'capacity'
     | 'registrationRequired'
     | 'waitlistEnabled'

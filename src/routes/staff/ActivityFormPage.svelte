@@ -30,6 +30,7 @@
   let categoryId = $state('')
   let locationId = $state('')
   let facilitator = $state('')
+  let facilitatorId = $state('')
   /**
    * La grande majorité des activités sont **ponctuelles** : le programme se refait
    * chaque semaine selon les disponibilités. La récurrence existe pour les quelques
@@ -85,6 +86,7 @@
       categoryId = activity.categoryId
       locationId = activity.locationId
       facilitator = activity.facilitator ?? ''
+      facilitatorId = activity.facilitatorId ?? ''
       repetition = activity.recurrence === null ? 'une-fois' : 'chaque-semaine'
       dateUnique = activity.singleStart?.date ?? date ?? todayLocalDate()
       void 0
@@ -143,7 +145,10 @@
         description: description.trim(),
         categoryId,
         locationId,
+        // Le nom est dénormalisé pour l'affichage, l'identifiant pour retrouver le
+        // planning de la personne. Les deux voyagent ensemble.
         ...(facilitator.trim().length > 0 ? { facilitator: facilitator.trim() } : {}),
+        ...(facilitatorId ? { facilitatorId } : {}),
         audience: pourTous ? 'all' : 'services',
         serviceIds: pourTous ? [] : serviceIds,
         capacity: placesLimitees ? capacite : null,
@@ -252,9 +257,32 @@
       </div>
 
       <label for="animateur" class="mt-4 mb-2 block text-lg font-semibold text-ink">
-        Animateur — prénom seulement
+        Qui anime
       </label>
-      <input id="animateur" bind:value={facilitator} class={champ} style="min-height: 56px;" placeholder="Claire" />
+      <select
+        id="animateur"
+        class={champ}
+        style="min-height: 56px;"
+        value={facilitatorId}
+        onchange={(event) => {
+          facilitatorId = event.currentTarget.value
+          // Le nom suit l'identifiant : c'est lui que le patient lira, et il reste juste
+          // même si la personne est retirée du catalogue plus tard.
+          facilitator = store.practitionerOf(facilitatorId)?.name ?? ''
+        }}
+      >
+        <option value="">Personne en particulier</option>
+        {#each proposed(store.practitioners) as intervenant (intervenant.id)}
+          <option value={intervenant.id}>{intervenant.name} — {intervenant.role}</option>
+        {/each}
+      </select>
+      {#if facilitatorId === '' && facilitator !== ''}
+        <!-- Une activité créée avant le catalogue des intervenants garde son nom écrit
+             à la main : on l'affiche plutôt que de le perdre en silence. -->
+        <p class="mt-2 text-base text-ink-soft">
+          Actuellement : {facilitator}. Choisissez un intervenant pour le relier à son planning.
+        </p>
+      {/if}
     </div>
 
     <fieldset class="card p-4">

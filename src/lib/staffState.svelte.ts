@@ -126,7 +126,14 @@ class StaffStore {
 
   async scheduleAppointment(
     appointmentId: string,
-    rendezVous: { date: LocalDate; time: LocalTime; durationMin: number; withWhom: string; locationId?: string },
+    rendezVous: {
+      date: LocalDate
+      time: LocalTime
+      durationMin: number
+      withWhom: string
+      practitionerId?: string
+      locationId?: string
+    },
   ): Promise<string> {
     const resultat = await (await this.app$()).repository.scheduleAppointment(appointmentId, rendezVous)
     await this.loadAppointments()
@@ -142,6 +149,7 @@ class StaffStore {
     time: LocalTime
     durationMin: number
     withWhom: string
+    practitionerId?: string
     locationId?: string
   }): Promise<boolean> {
     const resultat = await (await this.app$()).repository.createAppointment(rendezVous)
@@ -295,9 +303,26 @@ class StaffStore {
     this.message = `Catégorie enregistrée : ${category.name}.`
   }
 
+  async savePractitioner(practitioner: {
+    id: string
+    name: string
+    role: string
+    kindId?: string
+    isActive: boolean
+  }): Promise<void> {
+    await (await this.app$()).catalogAdmin.savePractitioner(practitioner)
+    await store.loadCatalog(true)
+    this.message = `Intervenant enregistré : ${practitioner.name}.`
+  }
+
   /** Le catalogue est partagé avec l'écran patient : mêmes lieux, mêmes catégories. */
   get catalog() {
-    return { categories: store.categories, locations: store.locations, services: store.services }
+    return {
+      categories: store.categories,
+      locations: store.locations,
+      services: store.services,
+      practitioners: store.practitioners,
+    }
   }
 }
 

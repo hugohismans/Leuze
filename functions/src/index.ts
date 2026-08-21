@@ -474,18 +474,31 @@ export const removeCatalogEntry = onCall(async (request: CallableRequest) => {
   requireAdmin(request)
   const kind = requireString(request.data?.kind, 'kind', 20) as CatalogKind
   const id = requireString(request.data?.id, 'id', 100)
-  if (kind !== 'location' && kind !== 'service' && kind !== 'category') {
+  if (kind !== 'location' && kind !== 'service' && kind !== 'category' && kind !== 'practitioner') {
     throw new HttpsError('invalid-argument', 'Genre inconnu.')
   }
 
   const collection =
-    kind === 'location' ? COLLECTIONS.locations : kind === 'service' ? COLLECTIONS.services : COLLECTIONS.categories
+    kind === 'location'
+      ? COLLECTIONS.locations
+      : kind === 'service'
+        ? COLLECTIONS.services
+        : kind === 'category'
+          ? COLLECTIONS.categories
+          : COLLECTIONS.practitioners
   const reference = db().collection(collection).doc(id)
   const snapshot = await reference.get()
   if (!snapshot.exists) throw new HttpsError('not-found', "Cette entrée n'existe plus.")
   const name = (snapshot.data()?.['name'] as string | undefined) ?? id
 
-  const champActivite = kind === 'location' ? 'locationId' : kind === 'category' ? 'categoryId' : null
+  const champActivite =
+    kind === 'location'
+      ? 'locationId'
+      : kind === 'category'
+        ? 'categoryId'
+        : kind === 'practitioner'
+          ? 'facilitatorId'
+          : null
   const PLAFOND = 50
 
   async function combien(requete: FirebaseFirestore.Query): Promise<number> {
@@ -506,6 +519,10 @@ export const removeCatalogEntry = onCall(async (request: CallableRequest) => {
         : await combien(db().collection(COLLECTIONS.occurrences).where(champActivite, '==', id)),
     patients:
       kind === 'service' ? await combien(db().collection(COLLECTIONS.patients).where('serviceId', '==', id)) : 0,
+    appointments:
+      kind === 'practitioner'
+        ? await combien(db().collection(COLLECTIONS.appointments).where('practitionerId', '==', id))
+        : 0,
   }
 
   const plan = planRemoval(kind, name, usage)

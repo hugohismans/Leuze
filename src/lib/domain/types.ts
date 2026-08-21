@@ -54,6 +54,29 @@ export type Category = {
   isActive?: boolean
 }
 
+/**
+ * Une personne qui anime ou reçoit : psychiatre, kinésithérapeute, ergothérapeute,
+ * animateur. Elle existe en tant que telle pour deux raisons.
+ *
+ * D'abord, « avec Marc » tapé à la main dans deux écrans différents ne se relie à rien :
+ * impossible de dire de qui il s'agit, ni de rassembler ce qu'il fait dans la semaine.
+ * Ensuite, un intervenant a un planning — activités animées et rendez-vous — qu'on veut
+ * pouvoir consulter et imprimer.
+ *
+ * ⚠️ Ce n'est pas un compte : personne ne se connecte avec ceci. Les comptes du personnel
+ * vivent dans `staff/`, et le rôle qui fait autorité reste le « custom claim ».
+ */
+export type Practitioner = {
+  id: string
+  /** Ce que les patients liront : « Docteur Lemaire », « Marc ». */
+  name: string
+  /** « Psychiatre », « Kinésithérapeute », « Animateur ». */
+  role: string
+  /** Motif de rendez-vous correspondant, quand il y en a un. */
+  kindId?: string
+  isActive: boolean
+}
+
 export type RecurrenceRule = {
   freq: 'weekly'
   /** Jours ISO concernés. « Yoga le mardi » => [2]. */
@@ -76,7 +99,10 @@ export type Activity = {
   description: string
   categoryId: string
   locationId: string
+  /** Le nom, dénormalisé : c'est lui que le patient lit. */
   facilitator?: string
+  /** L'intervenant, quand il vient du catalogue : c'est lui qui relie à son planning. */
+  facilitatorId?: string
   audience: AudienceKind
   /** Vide quand `audience === 'all'`. */
   serviceIds: string[]
@@ -108,6 +134,7 @@ export type Occurrence = {
   categoryId: string
   locationId: string
   facilitator?: string
+  facilitatorId?: string
   /**
    * Clés d'audience dénormalisées : `['all']`, ou la liste des services autorisés.
    * Permet au calendrier de ne demander que ce que le patient a le droit de voir,
@@ -178,8 +205,10 @@ export type Appointment = {
   start?: Date
   end?: Date
   localDate?: LocalDate
-  /** Prénom du professionnel, ou son rôle. Jamais un nom de famille. */
+  /** Le nom du professionnel, tel que le patient le lira. */
   withWhom?: string
+  /** L'intervenant du catalogue, quand le rendez-vous a été fixé depuis sa fiche. */
+  practitionerId?: string
   locationId?: string
   /** Motif d'annulation, en français simple. */
   cancellationReason?: string

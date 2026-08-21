@@ -395,6 +395,28 @@ qu'il n'y en ait plus jamais ensuite.
 Le compte de déploiement ne reçoit que ce qu'il faut pour publier. Il ne peut ni lire les
 données des patients, ni créer d'autres comptes de service.
 
+### 4.8 ter Les intervenants
+
+Le nom de la personne qui anime une activité, et celui du professionnel qu'on voit en
+rendez-vous, étaient deux textes libres saisis dans deux écrans différents. « Marc » d'un
+côté, « Marc » de l'autre : rien ne disait qu'il s'agissait du même homme, et l'on ne
+pouvait donc ni rassembler sa semaine, ni l'imprimer.
+
+Les intervenants sont désormais des entrées de catalogue — nom, fonction, motif de
+rendez-vous correspondant — et ils sont **choisis**, plus saisis. Leur identifiant voyage
+sur l'activité, puis sur chaque séance engendrée (`facilitatorId`, dénormalisé comme le
+reste), et sur le rendez-vous (`practitionerId`).
+
+Ce n'est **pas un compte** : personne ne se connecte avec ceci, et rien de ce qui est
+écrit là ne donne le moindre droit. Les comptes vivent dans `staff/`, et le rôle qui fait
+autorité reste le « custom claim ».
+
+Deux garde-fous sur leur planning. Il dit **quand** et **où**, jamais **qui** : le prénom
+d'un patient reçu n'y figure pas, une feuille posée sur un bureau ne doit pas révéler qui
+voit le psychiatre. Et le nom saisi reste dénormalisé à côté de l'identifiant : une
+activité d'il y a trois mois garde le nom qu'elle affichait, même si la personne a été
+retirée du catalogue depuis.
+
 ### 4.8 bis Retirer une entrée du catalogue
 
 Le catalogue est vivant : une salle ferme, un service change de nom, une catégorie créée

@@ -106,6 +106,7 @@ function build(now: Date): MockWorld {
       end: instantOf(jeudi, '11:30'),
       localDate: jeudi,
       withWhom: 'Docteur Lemaire',
+      practitionerId: 'docteur-lemaire',
       locationId: 'salon-daccueil',
     },
   ]

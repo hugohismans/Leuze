@@ -55,6 +55,8 @@ export const COLLECTIONS = {
   services: 'services',
   locations: 'locations',
   categories: 'categories',
+  practitioners: 'practitioners',
+  appointments: 'appointments',
   config: 'config',
 } as const
 

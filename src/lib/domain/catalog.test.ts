@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { planActivityRemoval, planRemoval, proposed, totalUsage } from './catalog'
 
-const RIEN = { activities: 0, occurrences: 0, patients: 0 }
+const RIEN = { activities: 0, occurrences: 0, patients: 0, appointments: 0 }
 
 describe('retrait d’une entrée du catalogue', () => {
   it('supprime ce que rien n’utilise', () => {
@@ -25,12 +25,12 @@ describe('retrait d’une entrée du catalogue', () => {
   })
 
   it('énumère les usages en français', () => {
-    const plan = planRemoval('service', 'La Couturelle', { activities: 2, occurrences: 12, patients: 1 })
+    const plan = planRemoval('service', 'La Couturelle', { activities: 2, occurrences: 12, patients: 1, appointments: 0 })
     expect(plan.message).toContain('2 activités, 12 séances et 1 personne')
   })
 
   it('compte tous les usages', () => {
-    expect(totalUsage({ activities: 1, occurrences: 2, patients: 3 })).toBe(6)
+    expect(totalUsage({ activities: 1, occurrences: 2, patients: 3, appointments: 4 })).toBe(10)
     expect(totalUsage(RIEN)).toBe(0)
   })
 })
@@ -69,5 +69,23 @@ describe('suppression d’une activité', () => {
   it('accorde le pluriel des inscriptions', () => {
     const plan = planActivityRemoval('Yoga', { registrations: 4, sessions: 8 })
     expect(plan.message).toContain('4 personnes s’y sont inscrites')
+  })
+})
+
+describe('retrait d’un intervenant', () => {
+  it('accorde l’article : « L’intervenant », pas « Le intervenant »', () => {
+    const plan = planRemoval('practitioner', 'Docteur Lemaire', RIEN)
+    expect(plan.message).toContain("L'intervenant « Docteur Lemaire »")
+  })
+
+  it('compte les rendez-vous fixés avec lui', () => {
+    const plan = planRemoval('practitioner', 'Claire', { ...RIEN, appointments: 3 })
+    expect(plan.action).toBe('deactivated')
+    expect(plan.message).toContain('3 rendez-vous')
+  })
+
+  it('ne met pas « rendez-vous » au pluriel : le mot est invariable', () => {
+    const plan = planRemoval('practitioner', 'Claire', { ...RIEN, appointments: 1 })
+    expect(plan.message).toContain('1 rendez-vous')
   })
 })

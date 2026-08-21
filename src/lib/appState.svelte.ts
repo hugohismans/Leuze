@@ -12,6 +12,7 @@ import type {
   LocalDate,
   Location,
   Occurrence,
+  Practitioner,
   Service,
 } from './domain/types'
 import { createRepository, isMockRepository, usesMock } from './data'
@@ -65,6 +66,8 @@ class AppStore {
   categories = $state<Category[]>([])
   locations = $state<Location[]>([])
   services = $state<Service[]>([])
+  /** Les intervenants : psychiatre, kinésithérapeute, animateur. */
+  practitioners = $state<Practitioner[]>([])
   /** Service du patient connecté : décide de ce que le calendrier contient. */
   serviceId = $state<string | null>(null)
   firstName = $state<string | null>(null)
@@ -109,6 +112,11 @@ class AppStore {
   serviceOf(id: string | null): Service | null {
     if (id === null) return null
     return this.services.find((s) => s.id === id) ?? null
+  }
+
+  practitionerOf(practitionerId: string | undefined): Practitioner | null {
+    if (practitionerId === undefined) return null
+    return this.practitioners.find((p) => p.id === practitionerId) ?? null
   }
 
   /**
@@ -221,14 +229,16 @@ class AppStore {
     if (this.catalogLoaded && !force) return
     this.catalogLoaded = true
     try {
-      const [categories, locations, services] = await Promise.all([
+      const [categories, locations, services, practitioners] = await Promise.all([
         (await this.repo()).catalog.listCategories(),
         (await this.repo()).catalog.listLocations(),
         (await this.repo()).catalog.listServices(),
+        (await this.repo()).catalog.listPractitioners(),
       ])
       this.categories = categories
       this.locations = locations
       this.services = services
+      this.practitioners = practitioners
     } catch {
       // Une lecture manquée ne doit pas condamner le catalogue pour toute la session :
       // le prochain passage réessaiera.

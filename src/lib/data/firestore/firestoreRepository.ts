@@ -33,6 +33,7 @@ import type {
   LocalDate,
   Location,
   Occurrence,
+  Practitioner,
   Service,
 } from '../../domain/types'
 import type {
@@ -170,6 +171,10 @@ export function createFirestoreRepository(): AppRepository {
       async listCategories(): Promise<Category[]> {
         const snapshot = await getDocs(collection(db, 'categories'))
         return snapshot.docs.map((d) => ({ ...(d.data() as Omit<Category, 'id'>), id: d.id }))
+      },
+      async listPractitioners(): Promise<Practitioner[]> {
+        const snapshot = await getDocs(query(collection(db, 'practitioners'), orderBy('name')))
+        return snapshot.docs.map((d) => ({ ...(d.data() as Omit<Practitioner, 'id'>), id: d.id }))
       },
       async listServices(): Promise<Service[]> {
         const snapshot = await getDocs(query(collection(db, 'services'), orderBy('name')))

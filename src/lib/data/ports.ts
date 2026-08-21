@@ -11,6 +11,7 @@ import type {
   LocalDate,
   Location,
   Occurrence,
+  Practitioner,
   Registration,
   Service,
 } from '../domain/types'
@@ -19,6 +20,8 @@ export interface CatalogRepository {
   listLocations(): Promise<Location[]>
   listCategories(): Promise<Category[]>
   listServices(): Promise<Service[]>
+  /** Les intervenants : psychiatre, kinésithérapeute, animateur. */
+  listPractitioners(): Promise<Practitioner[]>
 }
 
 export interface OccurrenceRepository {

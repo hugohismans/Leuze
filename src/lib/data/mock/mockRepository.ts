@@ -18,6 +18,7 @@ import type {
   LocalDate,
   Location,
   Occurrence,
+  Practitioner,
   Service,
 } from '../../domain/types'
 import {
@@ -86,6 +87,9 @@ export function createMockRepository(options: { now?: () => Date } = {}): MockRe
       },
       async listServices(): Promise<Service[]> {
         return mockCatalog.services()
+      },
+      async listPractitioners(): Promise<Practitioner[]> {
+        return mockCatalog.practitioners()
       },
     },
 

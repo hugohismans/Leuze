@@ -54,6 +54,7 @@
   let heureDirecte = $state<LocalTime>('10:00')
   let dureeDirecte = $state(30)
   let avecQuiDirecte = $state('')
+  let intervenantDirect = $state('')
   let lieuDirecte = $state('')
 
   // Les personnes sont groupées par service : c'est ainsi qu'un soignant les cherche.
@@ -72,10 +73,27 @@
     if (quelKind === '' && kinds.length > 0) quelKind = kinds[0]!.id
   })
 
-  // Le professionnel est pré-rempli par son rôle ; le soignant met un prénom s'il veut.
+  /**
+   * Les intervenants correspondant au motif viennent en tête : choisir « psychiatre »
+   * propose d'abord les psychiatres. Les autres restent proposés — un remplaçant, un
+   * intervenant sans motif attitré.
+   */
+  const intervenantsProposes = $derived(
+    [...proposed(store.practitioners)].sort((a, b) => {
+      const rang = (i: typeof a) => (i.kindId === quelKind ? 0 : 1)
+      return rang(a) - rang(b) || a.name.localeCompare(b.name, 'fr')
+    }),
+  )
+
+  // Changer de motif propose l'intervenant correspondant, tant qu'on n'en a pas choisi un.
   $effect(() => {
-    const choisi = kinds.find((k) => k.id === quelKind)
-    if (choisi !== undefined && avecQuiDirecte === '') avecQuiDirecte = choisi.name
+    const attitre = store.practitioners.find((i) => i.kindId === quelKind && i.isActive)
+    if (intervenantDirect === '' && attitre !== undefined) {
+      intervenantDirect = attitre.id
+      avecQuiDirecte = attitre.name
+    } else if (intervenantDirect === '' && avecQuiDirecte === '') {
+      avecQuiDirecte = kinds.find((k) => k.id === quelKind)?.name ?? ''
+    }
   })
 
   async function fixerDirectement(): Promise<void> {
@@ -88,6 +106,7 @@
       time: heureDirecte,
       durationMin: dureeDirecte,
       withWhom: avecQuiDirecte.trim(),
+      ...(intervenantDirect ? { practitionerId: intervenantDirect } : {}),
       ...(lieuDirecte ? { locationId: lieuDirecte } : {}),
     })
     if (ok) {
@@ -199,9 +218,24 @@
       </div>
 
       <label for="nom" class="mt-4 mb-2 block text-lg font-semibold text-ink">
-        Nom du professionnel — le patient le lira
+        Quel intervenant — le patient lira son nom
       </label>
-      <input id="nom" bind:value={avecQuiDirecte} class={champ} style="min-height: 56px;" />
+      <select
+        id="nom"
+        class={champ}
+        style="min-height: 56px;"
+        value={intervenantDirect}
+        onchange={(event) => {
+          intervenantDirect = event.currentTarget.value
+          avecQuiDirecte =
+            store.practitionerOf(intervenantDirect)?.name ?? kindName(kinds, quelKind)
+        }}
+      >
+        <option value="">{kindName(kinds, quelKind)} — sans préciser qui</option>
+        {#each intervenantsProposes as intervenant (intervenant.id)}
+          <option value={intervenant.id}>{intervenant.name} — {intervenant.role}</option>
+        {/each}
+      </select>
 
       <label for="ou" class="mt-4 mb-2 block text-lg font-semibold text-ink">Où — facultatif</label>
       <select id="ou" bind:value={lieuDirecte} class={champ} style="min-height: 56px;">

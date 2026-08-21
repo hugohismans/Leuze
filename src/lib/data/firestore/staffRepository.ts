@@ -390,7 +390,14 @@ export function createFirestoreStaffApp(): StaffApp {
 
       async scheduleAppointment(
         appointmentId: string,
-        rendezVous: { date: LocalDate; time: LocalTime; durationMin: number; withWhom: string; locationId?: string },
+        rendezVous: {
+          date: LocalDate
+          time: LocalTime
+          durationMin: number
+          withWhom: string
+          practitionerId?: string
+          locationId?: string
+        },
       ) {
         const start = instantOf(rendezVous.date, rendezVous.time)
         try {
@@ -400,6 +407,7 @@ export function createFirestoreStaffApp(): StaffApp {
             start: Timestamp.fromDate(start),
             end: Timestamp.fromDate(addMinutes(start, rendezVous.durationMin)),
             withWhom: rendezVous.withWhom,
+            ...(rendezVous.practitionerId ? { practitionerId: rendezVous.practitionerId } : {}),
             ...(rendezVous.locationId ? { locationId: rendezVous.locationId } : {}),
           })
           return { ok: true, message: 'Rendez-vous fixé. Le patient le voit dans son calendrier.' }
@@ -415,6 +423,7 @@ export function createFirestoreStaffApp(): StaffApp {
         time: LocalTime
         durationMin: number
         withWhom: string
+        practitionerId?: string
         locationId?: string
       }) {
         const start = instantOf(rendezVous.date, rendezVous.time)
@@ -431,6 +440,7 @@ export function createFirestoreStaffApp(): StaffApp {
             start: Timestamp.fromDate(start),
             end: Timestamp.fromDate(addMinutes(start, rendezVous.durationMin)),
             withWhom: rendezVous.withWhom,
+            ...(rendezVous.practitionerId ? { practitionerId: rendezVous.practitionerId } : {}),
             ...(rendezVous.locationId ? { locationId: rendezVous.locationId } : {}),
           })
           return { ok: true, message: 'Rendez-vous fixé. Le patient le voit dans son calendrier.' }
@@ -476,6 +486,10 @@ export function createFirestoreStaffApp(): StaffApp {
       async saveCategory(category) {
         const { id, ...reste } = category
         await setDoc(doc(db, 'categories', id), reste, { merge: true })
+      },
+      async savePractitioner(practitioner) {
+        const { id, ...reste } = practitioner
+        await setDoc(doc(db, 'practitioners', id), reste, { merge: true })
       },
       async removeEntry(kind, id) {
         // Le comptage des usages n'est pas faisable ici : les personnes ne sont pas

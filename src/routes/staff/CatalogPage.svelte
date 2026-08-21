@@ -1,8 +1,10 @@
 <script lang="ts">
   import { staffStore } from '../../lib/staffState.svelte'
+  import { store } from '../../lib/appState.svelte'
   import type { CatalogKind } from '../../lib/domain/catalog'
-  import type { Category, Location, Service } from '../../lib/domain/types'
+  import type { Category, Location, Practitioner, Service } from '../../lib/domain/types'
   import { uniqueSlug } from '../../lib/domain/slug'
+  import { navigate } from '../../lib/router.svelte'
 
   /**
    * Paramétrage du catalogue : lieux, services, catégories.
@@ -10,7 +12,7 @@
    * ajouter une salle, ouvrir un service, créer une famille d'activités.
    */
 
-  type Genre = 'lieu' | 'service' | 'categorie'
+  type Genre = 'lieu' | 'service' | 'categorie' | 'intervenant'
 
   // Couleurs disponibles : elles doivent exister dans tokens.css. La couleur ne porte
   // jamais seule l'information, elle est toujours doublée par l'icône.
@@ -21,6 +23,8 @@
   let indications = $state('')
   let batiment = $state('')
   let icone = $state('🎨')
+  let role = $state('')
+  let motifId = $state('')
   let couleur = $state('defaut')
   let actif = $state(true)
   let busy = $state(false)
@@ -38,6 +42,8 @@
     icone = '🎨'
     couleur = 'defaut'
     actif = true
+    role = ''
+    motifId = ''
 
     if (id === null) return
     if (genre === 'lieu') {
@@ -54,13 +60,21 @@
         nom = service.name
         actif = service.isActive
       }
-    } else {
+    } else if (genre === 'categorie') {
       const categorie = staffStore.catalog.categories.find((c) => c.id === id)
       if (categorie) {
         nom = categorie.name
         icone = categorie.icon
         couleur = categorie.colorToken
         actif = categorie.isActive !== false
+      }
+    } else {
+      const intervenant = staffStore.catalog.practitioners.find((i) => i.id === id)
+      if (intervenant) {
+        nom = intervenant.name
+        role = intervenant.role
+        motifId = intervenant.kindId ?? ''
+        actif = intervenant.isActive
       }
     }
   }
@@ -86,7 +100,7 @@
     } else if (genre === 'service') {
       const identifiant = id ?? uniqueSlug(nom, staffStore.catalog.services.map((s) => s.id))
       await staffStore.saveService({ id: identifiant, name: nom.trim(), isActive: actif })
-    } else {
+    } else if (genre === 'categorie') {
       const identifiant = id ?? uniqueSlug(nom, staffStore.catalog.categories.map((c) => c.id))
       await staffStore.saveCategory({
         id: identifiant,
@@ -95,12 +109,26 @@
         colorToken: couleur,
         isActive: actif,
       })
+    } else {
+      const identifiant = id ?? uniqueSlug(nom, staffStore.catalog.practitioners.map((i) => i.id))
+      await staffStore.savePractitioner({
+        id: identifiant,
+        name: nom.trim(),
+        role: role.trim(),
+        ...(motifId ? { kindId: motifId } : {}),
+        isActive: actif,
+      })
     }
 
     edition = null
   }
 
-  const GENRES: Record<Genre, CatalogKind> = { lieu: 'location', service: 'service', categorie: 'category' }
+  const GENRES: Record<Genre, CatalogKind> = {
+    lieu: 'location',
+    service: 'service',
+    categorie: 'category',
+    intervenant: 'practitioner',
+  }
 
   /**
    * Une action qui échoue doit le dire. Sans ce filet, le bouton restait sur
@@ -133,13 +161,22 @@
     await tenter(async () => {
       if (genre === 'lieu') await staffStore.saveLocation({ id, name: nom, isActive: true })
       else if (genre === 'service') await staffStore.saveService({ id, name: nom, isActive: true })
-      else {
+      else if (genre === 'categorie') {
         const categorie = staffStore.catalog.categories.find((c) => c.id === id)
         await staffStore.saveCategory({
           id,
           name: nom,
           icon: categorie?.icon ?? '•',
           colorToken: categorie?.colorToken ?? 'defaut',
+          isActive: true,
+        })
+      } else {
+        const intervenant = staffStore.catalog.practitioners.find((i) => i.id === id)
+        await staffStore.savePractitioner({
+          id,
+          name: nom,
+          role: intervenant?.role ?? '',
+          ...(intervenant?.kindId ? { kindId: intervenant.kindId } : {}),
           isActive: true,
         })
       }
@@ -153,6 +190,8 @@
   const servicesRetires = $derived(staffStore.catalog.services.filter((s) => !propose(s)))
   const categoriesProposees = $derived(staffStore.catalog.categories.filter(propose))
   const categoriesRetirees = $derived(staffStore.catalog.categories.filter((c) => !propose(c)))
+  const intervenantsProposes = $derived(staffStore.catalog.practitioners.filter(propose))
+  const intervenantsRetires = $derived(staffStore.catalog.practitioners.filter((i) => !propose(i)))
 
   const champ = 'w-full rounded-xl border-2 border-line bg-white p-3 text-lg text-ink'
   const resume =
@@ -164,7 +203,7 @@
 <section class="mx-auto max-w-4xl px-4 py-6">
   <h1 class="mb-2 text-3xl font-bold text-ink">Le catalogue</h1>
   <p class="mb-4 text-lg text-ink-soft">
-    Les lieux, les services et les catégories utilisés dans les activités. Ce qui est
+    Les lieux, les services, les intervenants et les catégories utilisés dans les activités. Ce qui est
     enregistré ici est immédiatement proposé dans le formulaire de création.
   </p>
 
@@ -222,6 +261,26 @@
           Bâtiment ou étage — facultatif
         </label>
         <input id="batiment" bind:value={batiment} class={champ} style="min-height: 56px;" />
+      {/if}
+
+      {#if genre === 'intervenant'}
+        <label for="role" class="mt-4 mb-2 block text-lg font-semibold text-ink">
+          Sa fonction — psychiatre, kinésithérapeute, animateur
+        </label>
+        <input id="role" bind:value={role} class={champ} style="min-height: 56px;" />
+
+        <label for="motif" class="mt-4 mb-2 block text-lg font-semibold text-ink">
+          Motif de rendez-vous correspondant — facultatif
+        </label>
+        <select id="motif" bind:value={motifId} class={champ} style="min-height: 56px;">
+          <option value="">Aucun</option>
+          {#each store.appointmentKinds as motif (motif.id)}
+            <option value={motif.id}>{motif.icon} {motif.name}</option>
+          {/each}
+        </select>
+        <p class="mt-1 text-base text-ink-soft">
+          Sert à proposer cette personne en premier quand on fixe un rendez-vous de ce motif.
+        </p>
       {/if}
 
       {#if genre === 'categorie'}
@@ -329,6 +388,27 @@
     </li>
   {/snippet}
 
+  {#snippet carteIntervenant(intervenant: Practitioner)}
+    <li class="card p-4">
+      <div class="flex flex-wrap items-baseline justify-between gap-2">
+        <h3 class="text-xl font-bold text-ink">{intervenant.name}</h3>
+        {@render actions('intervenant', intervenant.id, intervenant.name, intervenant.isActive)}
+      </div>
+      <p class="text-base text-ink-soft">{intervenant.role}</p>
+      {#if staffStore.isAdmin}
+        <button
+          type="button"
+          class="btn btn-secondary mt-2"
+          onclick={() => navigate(`/soignant/intervenant/${intervenant.id}`)}
+        >
+          Voir son planning
+        </button>
+      {/if}
+      {@render confirmation('intervenant', intervenant.id)}
+      {#if ouvertPour('intervenant', intervenant.id)}{@render formulaire('intervenant', intervenant.id)}{/if}
+    </li>
+  {/snippet}
+
   {#snippet carteCategorie(categorie: Category)}
     <li class="card p-4">
       <div class="flex flex-wrap items-baseline justify-between gap-2">
@@ -387,6 +467,36 @@
     {:else}
       <button type="button" class="btn btn-primary mt-3" onclick={() => ouvrir('service', null)}>
         <span aria-hidden="true">＋</span> Ajouter un service
+      </button>
+    {/if}
+  {/if}
+
+  <!-- Les intervenants -->
+  <h2 class="mt-8 mb-3 text-2xl font-bold text-ink">Les intervenants</h2>
+  <p class="mb-3 text-lg text-ink-soft">
+    Les personnes qui animent une activité ou reçoivent en rendez-vous. Les nommer ici
+    permet de les proposer partout, et de consulter leur planning.
+  </p>
+  <ul class="grid gap-3">
+    {#each intervenantsProposes as intervenant (intervenant.id)}{@render carteIntervenant(intervenant)}{/each}
+  </ul>
+  {#if intervenantsRetires.length > 0}
+    <details class="mt-3">
+      <summary class={resume} style="min-height: 56px;">
+        Les intervenants retirés ({intervenantsRetires.length})
+      </summary>
+      {@render explication()}
+      <ul class="mt-3 grid gap-3">
+        {#each intervenantsRetires as intervenant (intervenant.id)}{@render carteIntervenant(intervenant)}{/each}
+      </ul>
+    </details>
+  {/if}
+  {#if staffStore.isAdmin}
+    {#if ouvertPour('intervenant', null)}
+      <div class="card mt-3 p-4">{@render formulaire('intervenant', null)}</div>
+    {:else}
+      <button type="button" class="btn btn-primary mt-3" onclick={() => ouvrir('intervenant', null)}>
+        <span aria-hidden="true">＋</span> Ajouter un intervenant
       </button>
     {/if}
   {/if}

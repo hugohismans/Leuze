@@ -11,6 +11,7 @@
   import CatalogPage from './CatalogPage.svelte'
   import PatientWeekPage from './PatientWeekPage.svelte'
   import PlanningsPage from './PlanningsPage.svelte'
+  import PractitionerWeekPage from './PractitionerWeekPage.svelte'
   import StaffLoginPage from './StaffLoginPage.svelte'
   import StaffNav from './StaffNav.svelte'
   import TodayPage from './TodayPage.svelte'
@@ -51,6 +52,8 @@
     <StaffAppointmentsPage />
   {:else if router.path === '/soignant/plannings'}
     <PlanningsPage />
+  {:else if router.path.startsWith('/soignant/intervenant/')}
+    <PractitionerWeekPage practitionerId={router.path.slice('/soignant/intervenant/'.length)} />
   {:else if router.path.startsWith('/soignant/planning/')}
     <PatientWeekPage patientUid={router.path.slice('/soignant/planning/'.length)} />
   {:else if router.path === '/soignant/impression'}

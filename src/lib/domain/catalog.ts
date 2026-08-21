@@ -12,13 +12,15 @@
  * les listes ». On le dit clairement plutôt que de le faire en silence.
  */
 
-export type CatalogKind = 'location' | 'service' | 'category'
+export type CatalogKind = 'location' | 'service' | 'category' | 'practitioner'
 
 /** Ce qui pointe encore vers l'entrée. `patients` ne concerne que les services. */
 export type CatalogUsage = {
   activities: number
   occurrences: number
   patients: number
+  /** Ne concerne que les intervenants : un rendez-vous fixé avec eux. */
+  appointments: number
 }
 
 export type CatalogRemoval = {
@@ -32,10 +34,11 @@ const NOMS: Record<CatalogKind, { article: string; singulier: string }> = {
   location: { article: 'Le', singulier: 'lieu' },
   service: { article: 'Le', singulier: 'service' },
   category: { article: 'La', singulier: 'catégorie' },
+  practitioner: { article: "L'", singulier: 'intervenant' },
 }
 
 export function totalUsage(usage: CatalogUsage): number {
-  return usage.activities + usage.occurrences + usage.patients
+  return usage.activities + usage.occurrences + usage.patients + usage.appointments
 }
 
 /** « 1 activité », « 3 activités » — jamais d'abréviation, jamais de « (s) ». */
@@ -51,7 +54,8 @@ function enumere(morceaux: string[]): string {
 
 export function planRemoval(kind: CatalogKind, name: string, usage: CatalogUsage): CatalogRemoval {
   const { article, singulier } = NOMS[kind]
-  const sujet = `${article} ${singulier} « ${name} »`
+  // « L'intervenant » se colle, « Le lieu » non.
+  const sujet = `${article}${article.endsWith("'") ? '' : ' '}${singulier} « ${name} »`
 
   if (totalUsage(usage) === 0) {
     return { action: 'deleted', message: `${sujet} est supprimé. Rien ne l'utilisait.` }
@@ -61,6 +65,7 @@ export function planRemoval(kind: CatalogKind, name: string, usage: CatalogUsage
   if (usage.activities > 0) morceaux.push(compte(usage.activities, 'activité', 'activités'))
   if (usage.occurrences > 0) morceaux.push(compte(usage.occurrences, 'séance', 'séances'))
   if (usage.patients > 0) morceaux.push(compte(usage.patients, 'personne', 'personnes'))
+  if (usage.appointments > 0) morceaux.push(compte(usage.appointments, 'rendez-vous', 'rendez-vous'))
 
   return {
     action: 'deactivated',
