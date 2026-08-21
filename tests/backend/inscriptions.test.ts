@@ -180,3 +180,49 @@ describe('liste des inscrits', () => {
     expect(lignes[1]).toMatchObject({ firstName: 'Prénom inconnu', status: 'waitlist', position: 1 })
   })
 })
+
+describe('se désinscrire après s’être réinscrit', () => {
+  /*
+    Le défaut vu en réunion : le prénom se décochait, le compteur descendait, puis tout
+    revenait deux secondes plus tard. La désinscription annulait la mauvaise ligne — une
+    annulation d'un tour précédent, restée en base — et l'inscription du jour survivait.
+
+    Le cas ne se produit qu'au deuxième tour : c'est pour cela qu'il a tenu si longtemps.
+  */
+  it('retire réellement la personne, même au deuxième tour', async () => {
+    await seedOccurrence({ capacity: 10 })
+
+    await registerTx(db(), { occurrenceId: OCCURRENCE, patientUid: 'p_1', by: 'staff' })
+    await unregisterTx(db(), { occurrenceId: OCCURRENCE, patientUid: 'p_1' })
+    await registerTx(db(), { occurrenceId: OCCURRENCE, patientUid: 'p_1', by: 'staff' })
+
+    const retrait = await unregisterTx(db(), { occurrenceId: OCCURRENCE, patientUid: 'p_1' })
+    expect(retrait.ok).toBe(true)
+    // La liste que le soignant a sous les yeux : c'est elle qui le contredisait.
+    expect(await rosterFor(db(), OCCURRENCE)).toEqual([])
+    expect(await counters()).toEqual({ confirmed: 0, waitlist: 0 })
+  })
+
+  it('tient sur cinq allers-retours d’affilée', async () => {
+    await seedOccurrence({ capacity: 10 })
+    for (let tour = 0; tour < 5; tour += 1) {
+      await registerTx(db(), { occurrenceId: OCCURRENCE, patientUid: 'p_2', by: 'staff' })
+      await unregisterTx(db(), { occurrenceId: OCCURRENCE, patientUid: 'p_2' })
+    }
+    expect(await rosterFor(db(), OCCURRENCE)).toEqual([])
+    expect(await counters()).toEqual({ confirmed: 0, waitlist: 0 })
+  })
+
+  it('rend sa place au premier de la liste d’attente, au deuxième tour aussi', async () => {
+    await seedOccurrence({ capacity: 1 })
+    await registerTx(db(), { occurrenceId: OCCURRENCE, patientUid: 'p_1', by: 'staff' })
+    await unregisterTx(db(), { occurrenceId: OCCURRENCE, patientUid: 'p_1' })
+    await registerTx(db(), { occurrenceId: OCCURRENCE, patientUid: 'p_1', by: 'staff' })
+    await registerTx(db(), { occurrenceId: OCCURRENCE, patientUid: 'p_2', by: 'staff' })
+
+    await unregisterTx(db(), { occurrenceId: OCCURRENCE, patientUid: 'p_1' })
+    const liste = await rosterFor(db(), OCCURRENCE)
+    expect(liste.map((l) => [l.patientUid, l.status])).toEqual([['p_2', 'confirmed']])
+    expect(await counters()).toEqual({ confirmed: 1, waitlist: 0 })
+  })
+})

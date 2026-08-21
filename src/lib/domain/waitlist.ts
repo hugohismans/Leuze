@@ -123,7 +123,21 @@ export function register(
 }
 
 export type UnregisterOutcome =
-  | { ok: true; board: Board; promoted: Registration | null }
+  | {
+      ok: true
+      board: Board
+      /**
+       * L'inscription réellement annulée — celle-ci et pas une autre.
+       *
+       * Elle est rendue parce que celui qui écrit en base doit savoir **quel document**
+       * annuler, et qu'il ne peut pas le retrouver seul : une personne qui s'est inscrite,
+       * désinscrite, puis réinscrite a plusieurs lignes à son nom, dont une déjà annulée.
+       * Chercher « la ligne annulée de cette personne » tombait sur l'ancienne, et la
+       * nouvelle restait active. Ici, l'identifiant ne se devine pas : il se transmet.
+       */
+      cancelled: Registration
+      promoted: Registration | null
+    }
   | { ok: false; reason: 'not-registered' }
 
 /**
@@ -134,9 +148,8 @@ export function unregister(board: Board, patientUid: string): UnregisterOutcome 
   const current = registrationOf(board, patientUid)
   if (current === null) return { ok: false, reason: 'not-registered' }
 
-  let registrations = board.registrations.map((r) =>
-    r.id === current.id ? { ...r, status: 'cancelled' as const } : r,
-  )
+  const cancelled: Registration = { ...current, status: 'cancelled' }
+  let registrations = board.registrations.map((r) => (r.id === current.id ? cancelled : r))
 
   let promoted: Registration | null = null
   if (current.status === 'confirmed') {
@@ -149,20 +162,27 @@ export function unregister(board: Board, patientUid: string): UnregisterOutcome 
     }
   }
 
-  return { ok: true, board: recount({ ...board, registrations }), promoted }
+  return { ok: true, board: recount({ ...board, registrations }), cancelled, promoted }
 }
 
-/** Promotion manuelle par un soignant (par exemple après un désistement de vive voix). */
-export function promote(board: Board, patientUid: string): { ok: boolean; board: Board } {
+/**
+ * Promotion manuelle par un soignant (par exemple après un désistement de vive voix).
+ * Rend l'inscription promue pour la même raison que `unregister` rend celle qu'il annule :
+ * l'identifiant du document ne doit pas se redeviner.
+ */
+export function promote(
+  board: Board,
+  patientUid: string,
+): { ok: true; board: Board; promoted: Registration } | { ok: false; board: Board } {
   const current = registrationOf(board, patientUid)
   if (current === null || current.status !== 'waitlist') return { ok: false, board }
+  const promoted: Registration = { ...current, status: 'confirmed' }
   return {
     ok: true,
+    promoted,
     board: recount({
       ...board,
-      registrations: board.registrations.map((r) =>
-        r.id === current.id ? { ...r, status: 'confirmed' as const } : r,
-      ),
+      registrations: board.registrations.map((r) => (r.id === current.id ? promoted : r)),
     }),
   }
 }

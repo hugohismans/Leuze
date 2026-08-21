@@ -374,14 +374,19 @@ export async function unregisterTx(
     const outcome = domainUnregister(board, options.patientUid)
     if (!outcome.ok) return { ok: false, message: "Vous n'êtes pas inscrit à cette activité." }
 
-    const cancelled = outcome.board.registrations.find(
-      (r) => r.patientUid === options.patientUid && r.status === 'cancelled',
-    )
-    if (cancelled) {
-      transaction.update(database.collection(COLLECTIONS.registrations).doc(cancelled.id), {
-        status: 'cancelled',
-      })
-    }
+    /*
+      On annule le document que le domaine a désigné, et pas « une ligne annulée au nom de
+      cette personne ».
+
+      C'est la nuance qui manquait, et elle se voyait à l'écran : quelqu'un qui s'inscrit,
+      se désinscrit, puis se réinscrit laisse derrière lui une ligne déjà annulée. En la
+      cherchant par prénom et par statut, on retrouvait celle-là — on la réannulait, sans
+      effet, et l'inscription en cours restait active. Le prénom se décochait le temps de
+      l'aller-retour, puis se recochait tout seul à la relecture.
+    */
+    transaction.update(database.collection(COLLECTIONS.registrations).doc(outcome.cancelled.id), {
+      status: 'cancelled',
+    })
     // La place libérée revient au premier de la liste d'attente, dans la même transaction :
     // cela ne dépend pas du navigateur du patient qui se désinscrit.
     if (outcome.promoted) {
@@ -406,14 +411,10 @@ export async function promoteTx(
     const outcome = domainPromote(board, options.patientUid)
     if (!outcome.ok) return { ok: false, message: "Cette personne n'est pas sur la liste d'attente." }
 
-    const promoted = outcome.board.registrations.find(
-      (r) => r.patientUid === options.patientUid && r.status === 'confirmed',
-    )
-    if (promoted) {
-      transaction.update(database.collection(COLLECTIONS.registrations).doc(promoted.id), {
-        status: 'confirmed',
-      })
-    }
+    // Même précaution qu'à la désinscription : l'identifiant vient du domaine.
+    transaction.update(database.collection(COLLECTIONS.registrations).doc(outcome.promoted.id), {
+      status: 'confirmed',
+    })
     writeCounters(database, transaction, outcome.board.occurrence)
     return { ok: true, message: 'La personne est inscrite.' }
   })
