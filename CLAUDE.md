@@ -104,6 +104,7 @@ L'UI n'importe **jamais** `firebase/*` directement : elle consomme les interface
 | `npm run promote:admin` | donne le rôle administrateur à un compte existant |
 | `npm run journal` | dernières lignes du journal des Cloud Functions en ligne |
 | `npm run ouvrir:fonctions` | redonne aux fonctions appelables le droit d'être appelées |
+| `npm run autoriser:jetons` | autorise les fonctions à ouvrir une session pour un patient |
 | `npm run build` | build de production |
 
 ---

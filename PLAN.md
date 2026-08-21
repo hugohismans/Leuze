@@ -495,6 +495,13 @@ curl -s -D - -o /dev/null -X POST \
 Un `403` avec `access-control-allow-origin` : la fonction a répondu, tout va bien.
 Un `403` en `text/html` sans cet en-tête : elle n'est pas joignable.
 
+Un second droit, du même genre, manque aussi par défaut : les fonctions n'ont pas de clé
+privée et demandent à Google de signer les jetons de session des patients. Il faut activer
+l'API « IAM Service Account Credentials » et donner au compte de service le droit de signer
+pour lui-même — `npm run autoriser:jetons`. Sans cela, l'échange d'un code échoue sur un
+« INTERNAL », et **seulement pour un code valable** : un code inconnu est refusé avant la
+signature, ce qui donne l'illusion que la fonction marche.
+
 `npm run ouvrir:fonctions` repose le droit sur toutes les fonctions appelables, et le
 déploiement le fait désormais tout seul. Le déclencheur Firestore et les tâches planifiées
 en sont exclus : Google les invoque avec un compte de service, les ouvrir serait une faute.

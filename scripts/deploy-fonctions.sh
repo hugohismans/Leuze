@@ -16,6 +16,8 @@ ouvre() {
   # Une fonction reprise après un échec perd son droit d'être appelée depuis le
   # navigateur. On le repose systématiquement : c'est sans effet quand il est déjà là.
   GCLOUD_PROJECT="$PROJET" bash "$(dirname "$0")/ouvrir-fonctions.sh" || true
+  # Et le droit de signer les sessions des patients, jamais posé par défaut.
+  GCLOUD_PROJECT="$PROJET" bash "$(dirname "$0")/autoriser-jetons.sh" || true
 }
 
 if npx firebase deploy --only functions --project "$PROJET"; then

@@ -312,10 +312,23 @@ export const exchangeCode = onCall({ secrets: [CODE_PEPPER] }, async (request: C
   await clearFailures(clientKey)
   // Le service voyage dans le jeton : le patient ne peut pas le changer, et les règles
   // Firestore s'en servent pour filtrer le calendrier.
-  const token = await auth().createCustomToken(codeData.uid, {
-    patient: true,
-    serviceId: patient.serviceId,
-  })
+  //
+  // La signature du jeton est demandée à Google : les fonctions n'ont pas de clé privée.
+  // Si le droit de signer manque, l'échec est muet côté patient — d'où ce message, qui
+  // dit quoi faire plutôt que « INTERNAL ». Voir `scripts/autoriser-jetons.sh`.
+  let token: string
+  try {
+    token = await auth().createCustomToken(codeData.uid, {
+      patient: true,
+      serviceId: patient.serviceId,
+    })
+  } catch (error) {
+    logger.error('Signature du jeton patient impossible', { error })
+    throw new HttpsError(
+      'internal',
+      'La connexion n’a pas pu être ouverte. Prévenez la personne qui a installé l’application.',
+    )
+  }
   return { token, firstName: patient.firstName, serviceId: patient.serviceId }
 })
 
