@@ -13,6 +13,7 @@ import { getFirestore, Timestamp } from 'firebase-admin/firestore'
 import { config } from '../src/lib/config'
 import { firebaseOptions } from '../src/lib/data/firestore/options'
 import { activitiesSeed } from '../src/lib/data/seed/activities.seed'
+import { appointmentKindsSeed } from '../src/lib/data/seed/appointmentKinds.seed'
 import { categoriesSeed } from '../src/lib/data/seed/categories.seed'
 import { locationsSeed } from '../src/lib/data/seed/locations.seed'
 import { servicesSeed } from '../src/lib/data/seed/services.seed'
@@ -133,6 +134,7 @@ async function main(): Promise<void> {
   await seedCollection('services', servicesSeed)
   await seedCollection('locations', locationsSeed)
   await seedCollection('categories', categoriesSeed)
+  await seedCollection('appointmentKinds', appointmentKindsSeed)
   await seedCollection('activities', activitiesSeed)
   await seedOccurrences()
   await seedStaff()

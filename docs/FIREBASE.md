@@ -274,18 +274,38 @@ pas après.
 
 Les étapes suivantes demandent le plan **Blaze** (voir §5) :
 
-6. Définir le poivre des codes patients :
+6. Préparer le catalogue du vrai projet — services, lieux, catégories, motifs de
+   rendez-vous et réglages, **sans aucune donnée de démonstration** :
+
+   ```bash
+   npm run init:catalogue                  # montre ce qui sera écrit, n'écrit rien
+   npm run init:catalogue -- --confirmer   # applique
+   ```
+
+   Ces valeurs sont ensuite modifiables dans « Le catalogue », sans repasser par le code.
+
+7. Définir le poivre des codes patients :
 
    ```bash
    firebase functions:secrets:set CODE_PEPPER
    ```
 
-7. Déployer les fonctions, puis créer le premier administrateur :
+8. Déployer les fonctions, puis créer le premier administrateur — le compte doit déjà
+   exister dans Firebase Authentication :
 
    ```bash
    npm run deploy:fonctions
    npm run promote:admin -- prenom.nom@acis-asbl.be
    ```
+
+9. Publier l'application branchée sur Firestore :
+
+   ```bash
+   npm run deploy:app        # VITE_DATA_SOURCE=firestore, vers Firebase Hosting
+   ```
+
+   `npm run deploy:demo` reste la version à données fictives ; GitHub Pages continue de
+   servir celle-là, et elle ne contient aucun code Firebase.
 
 Tant que ces étapes ne sont pas faites, tout se teste en local avec `npm run emulators`,
 qui reproduit Firestore, Auth et les fonctions sans toucher au projet réel.

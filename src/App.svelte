@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { usesMock } from './lib/data'
   import { store } from './lib/appState.svelte'
   import { router } from './lib/router.svelte'
   import AppHeader from './lib/ui/AppHeader.svelte'
@@ -14,6 +15,20 @@
   // Le catalogue n'est lisible qu'une fois la session ouverte (règles Firestore).
   $effect(() => {
     if (store.isDemo || store.signedIn) void store.loadCatalog()
+  })
+
+  /**
+   * La source de données est arrêtée au chargement de la page : `/demo` est branché sur
+   * les données fictives, le reste sur Firestore. Passer de l'un à l'autre en cours de
+   * route donnerait donc le mauvais adapter — un soignant quittant la démonstration
+   * verrait de fausses activités dans l'application réelle. On recharge la page dans ce
+   * cas : c'est rare, et c'est la seule façon sûre.
+   */
+  $effect(() => {
+    // `usesMock()` lit l'adresse, qui n'est pas réactive : c'est le chemin du routeur
+    // qui déclenche la vérification.
+    void router.path
+    if (usesMock() !== store.isDemo) window.location.reload()
   })
 
   // Une seule requête par fenêtre visible : c'est ce que permet la dénormalisation
@@ -46,8 +61,17 @@
 <main id="contenu">
   {#if espaceSoignant}
     <StaffApp />
-  {:else if !store.isDemo && !store.signedIn && !store.loading}
-    <CodePage />
+  {:else if !store.isDemo && !store.signedIn}
+    <!--
+      Tant qu'on ne sait pas si une session existe, ne rien montrer plutôt qu'un
+      calendrier vide : sur un réseau lent, un écran vide sans explication est ce qui
+      inquiète le plus quelqu'un qui a déjà du mal à se repérer.
+    -->
+    {#if store.loading}
+      <p class="mx-auto max-w-xl px-4 py-8 text-xl text-ink">Un instant…</p>
+    {:else}
+      <CodePage />
+    {/if}
   {:else if occurrenceId !== null}
     <ActivityPage {occurrenceId} />
   {:else if router.path === '/mes-inscriptions'}
