@@ -43,6 +43,7 @@ import type {
   ActivityDraft,
   CatalogAdminService,
   GenerationReport,
+  PatientPlanning,
   RosterLine,
   StaffApp,
   StaffIdentity,
@@ -253,6 +254,14 @@ export function createFirestoreStaffApp(): StaffApp {
           cancellationReason: reason,
           overridden: true,
         })
+      },
+
+      async weekPlannings(from: LocalDate, to: LocalDate, serviceId: string): Promise<PatientPlanning[]> {
+        const call = httpsCallable<
+          { from: string; to: string; serviceId: string },
+          { plannings: PatientPlanning[] }
+        >(functions, 'staffWeekPlannings')
+        return (await call({ from, to, serviceId })).data.plannings
       },
 
       async restoreOccurrence(occurrenceId: string): Promise<void> {

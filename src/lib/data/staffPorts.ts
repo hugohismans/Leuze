@@ -12,6 +12,13 @@ import type {
   RegistrationStatus,
 } from '../domain/types'
 
+/** Le planning d'une personne : son prénom, et ce à quoi elle est inscrite cette semaine. */
+export type PatientPlanning = {
+  patientUid: string
+  firstName: string
+  lines: Array<{ occurrenceId: string; status: 'confirmed' | 'waitlist' }>
+}
+
 export type StaffRole = 'staff' | 'admin'
 
 export type StaffIdentity = {
@@ -99,6 +106,13 @@ export interface StaffRepository {
   listOccurrences(from: LocalDate, to: LocalDate): Promise<Occurrence[]>
 
   /** Annulation en deux clics, avec motif. Jamais une suppression. */
+  /**
+   * Les plannings de la semaine pour tout un service, un par personne — de quoi imprimer
+   * la pile à la fin de la réunion du lundi. Les inscriptions ne sont pas lisibles côté
+   * client : c'est le serveur qui les rassemble.
+   */
+  weekPlannings(from: LocalDate, to: LocalDate, serviceId: string): Promise<PatientPlanning[]>
+
   cancelOccurrence(occurrenceId: string, reason: string): Promise<void>
   restoreOccurrence(occurrenceId: string): Promise<void>
 

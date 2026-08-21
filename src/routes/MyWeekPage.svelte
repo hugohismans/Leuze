@@ -57,7 +57,7 @@
     </button>
   </div>
 
-  <article class="feuille ma-semaine card p-5">
+  <article class="feuille feuille-semaine ma-semaine card p-5">
     <!-- Même en-tête que le programme affiché dans l'unité : les deux feuilles se
          ressemblent, on les reconnaît de loin comme venant du même endroit. -->
     <header class="mb-4 flex flex-wrap items-end justify-between gap-3 border-b-2 border-line pb-3">
@@ -170,16 +170,7 @@
       l'en-tête et la légende posés. Sans cela, une semaine à cinq catégories faisait
       passer la légende sur une seconde ligne et la feuille sur une seconde page.
     */
-    .ma-semaine {
-      display: flex;
-      flex-direction: column;
-      /*
-        A4 en paysage, moins les marges de 8 mm déclarées dans `@page` : 210 − 16.
-        Une hauteur en pourcentage ne se résoudrait pas — aucun des conteneurs
-        intermédiaires n'a de hauteur — et la grille se contenterait du minimum.
-      */
-      height: 194mm;
-    }
+    /* La hauteur d'une page est posée par « .feuille-semaine », dans app.css. */
     .grille-papier {
       display: flex;
       flex-direction: column;

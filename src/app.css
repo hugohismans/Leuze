@@ -250,6 +250,24 @@ body {
     display: none !important;
   }
 
+  /*
+    Une pile de feuilles : chacune sur sa page. Sans cela, la semaine de la deuxième
+    personne commencerait au bas de la page de la première.
+  */
+  .feuille + .feuille {
+    break-before: page;
+  }
+
+  /*
+    Une feuille de semaine occupe exactement sa page : la grille prend ce qui reste une
+    fois l'en-tête posé. A4 paysage moins les marges de 8 mm déclarées dans `@page`.
+  */
+  .feuille-semaine {
+    display: flex;
+    flex-direction: column;
+    height: 194mm;
+  }
+
   /* Une journée ne se coupe pas au milieu d'une page. */
   .feuille section {
     break-inside: avoid;

@@ -12,6 +12,7 @@ import type {
   StaffPatient,
 } from './data/staffPorts'
 import { describeGeneration } from './data/generation'
+import type { PatientPlanning } from './data/staffPorts'
 import type { CatalogKind } from './domain/catalog'
 import { store } from './appState.svelte'
 import { todayLocalDate, weekDays } from './domain/time'
@@ -215,6 +216,12 @@ class StaffStore {
     await (await this.app$()).repository.cancelOccurrence(occurrenceId, reason)
     await this.refresh()
     this.message = 'Séance annulée. Les patients la voient barrée, avec le motif.'
+  }
+
+  /** Les plannings de la semaine affichée, pour tout un service. */
+  async weekPlannings(serviceId: string): Promise<PatientPlanning[]> {
+    const jours = this.week
+    return (await this.app$()).repository.weekPlannings(jours[0]!, jours[6]!, serviceId)
   }
 
   async restoreOccurrence(occurrenceId: string): Promise<void> {

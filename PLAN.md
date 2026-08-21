@@ -422,6 +422,23 @@ l'effacer laisserait une inscription orpheline. Le décompte se fait sur les doc
 d'inscription, pas sur les compteurs dénormalisés des séances — ceux-ci retombent à zéro
 après une annulation et laisseraient croire que l'activité n'a jamais servi.
 
+### 4.8 quater La pile de plannings, à la fin de la réunion
+
+Le geste qui clôt la réunion du lundi : on vient de noter qui fait quoi, on imprime, et
+chacun repart avec sa semaine sur papier. Une feuille par personne du service, la même
+grille horaire que « Ma semaine ».
+
+Trois décisions :
+
+1. **Tout le monde reçoit une feuille**, y compris qui n'est inscrit à rien. Une grille
+   vide se remplit à la main, et c'est le but de la feuille.
+2. **Les rendez-vous individuels n'y figurent pas.** Une pile imprimée d'un coup passe de
+   main en main pendant la distribution : y écrire « rendez-vous avec le psychiatre »
+   reviendrait à le dire à qui trie la pile. Chacun retrouve les siens sur son écran.
+3. **Le rassemblement se fait côté serveur** (`staffWeekPlannings`) : les inscriptions ne
+   sont lisibles par aucun client, et il faut croiser les séances de la semaine, les
+   inscriptions et les prénoms — trois collections dont deux sont fermées au navigateur.
+
 ### 4.9 Le plan du site (lot 5, préparé dès maintenant)
 
 Composant `<SitePlan zoneId?>` isolé, alimenté par `config/app.planZones` (mapping

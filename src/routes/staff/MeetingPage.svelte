@@ -1,5 +1,6 @@
 <script lang="ts">
   import { staffStore } from '../../lib/staffState.svelte'
+  import { navigate } from '../../lib/router.svelte'
   import { store } from '../../lib/appState.svelte'
   import { audienceLabelForStaff, isVisibleToService } from '../../lib/domain/audience'
   import { capacityOf, staffCapacityLabel } from '../../lib/domain/capacity'
@@ -318,6 +319,18 @@
               Activité suivante <span aria-hidden="true">→</span>
             </button>
           </div>
+
+          <!-- Le geste qui clôt la réunion : chacun repart avec sa feuille. -->
+          {#if position >= semaine.length}
+            <div class="mt-4 border-t-2 border-line pt-4">
+              <p class="mb-2 text-lg text-ink">
+                C'était la dernière activité. Il reste à distribuer les plannings.
+              </p>
+              <button type="button" class="btn btn-primary btn-huge" onclick={() => navigate('/soignant/plannings')}>
+                <span aria-hidden="true">🖨️</span> Imprimer les plannings du service
+              </button>
+            </div>
+          {/if}
         </div>
       {/if}
     </div>

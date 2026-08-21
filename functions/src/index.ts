@@ -136,6 +136,76 @@ export const staffPromote = onCall(async (request: CallableRequest) => {
 })
 
 /**
+ * Les plannings de la semaine, pour tout un service : un par personne.
+ *
+ * C'est ce qu'on imprime à la fin de la réunion du lundi, pour que chacun reparte avec
+ * sa feuille. Les personnes sans aucune inscription en reçoivent une aussi : une grille
+ * vide se remplit à la main, et c'est mieux que rien du tout.
+ *
+ * Les rendez-vous individuels n'y figurent pas. Une pile de feuilles imprimée d'un coup
+ * passe de main en main : y écrire « rendez-vous avec le psychiatre » reviendrait à le
+ * dire à qui trie la pile. Chacun retrouve les siens sur son propre écran.
+ */
+export const staffWeekPlannings = onCall(async (request: CallableRequest) => {
+  requireStaff(request)
+  const from = requireString(request.data?.from, 'from', 10)
+  const to = requireString(request.data?.to, 'to', 10)
+  const serviceId = requireString(request.data?.serviceId, 'serviceId', 60)
+
+  const maintenant = Date.now()
+  const patientsSnapshot = await db()
+    .collection(COLLECTIONS.patients)
+    .where('serviceId', '==', serviceId)
+    .get()
+  const patients = patientsSnapshot.docs
+    .map((document) => {
+      const data = document.data() as { firstName?: string; expiresAt?: Timestamp }
+      return {
+        patientUid: document.id,
+        firstName: data.firstName ?? 'Prénom inconnu',
+        // Un séjour terminé ne reçoit plus de feuille.
+        expiresAtMs: data.expiresAt?.toMillis() ?? Number.MAX_SAFE_INTEGER,
+      }
+    })
+    .filter((patient) => patient.expiresAtMs > maintenant)
+  if (patients.length === 0) return { plannings: [] }
+
+  const occurrences = await db()
+    .collection(COLLECTIONS.occurrences)
+    .where('localDate', '>=', from)
+    .where('localDate', '<=', to)
+    .get()
+
+  // `in` accepte trente valeurs : on interroge par paquets.
+  const parPatient = new Map<string, Array<{ occurrenceId: string; status: 'confirmed' | 'waitlist' }>>()
+  const identifiants = occurrences.docs.map((d) => d.id)
+  for (let i = 0; i < identifiants.length; i += 30) {
+    const paquet = identifiants.slice(i, i + 30)
+    const trouvees = await db()
+      .collection(COLLECTIONS.registrations)
+      .where('occurrenceId', 'in', paquet)
+      .get()
+    for (const document of trouvees.docs) {
+      const data = document.data() as { patientUid?: string; occurrenceId?: string; status?: string }
+      if (data.status !== 'confirmed' && data.status !== 'waitlist') continue
+      if (typeof data.patientUid !== 'string' || typeof data.occurrenceId !== 'string') continue
+      const lignes = parPatient.get(data.patientUid) ?? []
+      lignes.push({ occurrenceId: data.occurrenceId, status: data.status })
+      parPatient.set(data.patientUid, lignes)
+    }
+  }
+
+  return {
+    plannings: patients
+      .sort((a, b) => a.firstName.localeCompare(b.firstName, 'fr'))
+      .map(({ expiresAtMs: _fin, ...patient }) => ({
+        ...patient,
+        lines: parPatient.get(patient.patientUid) ?? [],
+      })),
+  }
+})
+
+/**
  * Les patients, pour la réunion du lundi : prénom et service, rien d'autre.
  * `patients` n'est lisible par aucun client — cette fonction est le seul chemin.
  */
