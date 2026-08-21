@@ -431,6 +431,18 @@ class StaffStore {
     this.message = 'Disponibilités enregistrées.'
   }
 
+  /**
+   * L'acceptation automatique des demandes de rendez-vous. Chacun décide pour lui ;
+   * l'administrateur peut le faire pour n'importe qui, comme pour les plages.
+   */
+  async setAutoAccept(practitionerId: string, autoAccept: boolean): Promise<void> {
+    await (await this.app$()).catalogAdmin.setAutoAccept(practitionerId, autoAccept)
+    await store.loadCatalog(true)
+    this.message = autoAccept
+      ? 'Les demandes qui vous concernent seront acceptées automatiquement.'
+      : 'Vous validerez vous-même chaque demande.'
+  }
+
   /** Le catalogue est partagé avec l'écran patient : mêmes lieux, mêmes catégories. */
   get catalog() {
     return {

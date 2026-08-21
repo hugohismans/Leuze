@@ -105,8 +105,9 @@ service cloud.firestore {
     function myOwnAvailability(id) {
       return id == myPractitioner()
         && myPractitioner() != ''
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['availability'])
-        && validAvailability(request.resource.data.availability);
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['availability', 'autoAccept'])
+        && (!('availability' in request.resource.data) || validAvailability(request.resource.data.availability))
+        && (!('autoAccept' in request.resource.data) || request.resource.data.autoAccept is bool);
     }
 
     match /practitioners/{practitionerId} {
@@ -249,14 +250,13 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    function validAppointmentRequest(data) {
-      return data.patientUid == request.auth.uid
-        && data.kindId is string && data.kindId.size() > 0
-        && data.preference in ['matin', 'apres-midi', 'peu-importe']
-        && data.status == 'requested'
-        // Le patient ne fixe pas son propre rendez-vous.
-        && !('start' in data) && !('withWhom' in data) && !('localDate' in data);
-    }
+    /*
+      La demande d'un patient ne passe plus par le navigateur.
+
+      Décider si une place est libre suppose de lire l'agenda d'un intervenant — ce qu'un
+      patient ne verra jamais. La demande est donc portée par une fonction appelable, qui
+      écrit avec les droits du serveur : le client n'a plus rien à créer ici.
+    */
 
     /**
      * Un soignant fixe un rendez-vous sans demande préalable.
@@ -305,8 +305,7 @@ service cloud.firestore {
       allow get, list: if isAdmin()
         || (isStaff() && mineAsPractitioner(resource.data))
         || (isPatient() && resource.data.patientUid == request.auth.uid);
-      allow create: if (isPatient() && validAppointmentRequest(request.resource.data))
-        || (isAdmin() && validStaffAppointment(request.resource.data))
+      allow create: if (isAdmin() && validStaffAppointment(request.resource.data))
         || (isStaff()
             && validStaffAppointment(request.resource.data)
             && mineAsPractitioner(request.resource.data));

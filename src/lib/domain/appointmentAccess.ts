@@ -80,3 +80,30 @@ export function appointmentAccessNotice(viewer: AppointmentViewer): string | nul
   }
   return 'Vous voyez vos rendez-vous, et vous en fixez pour vous. Ceux de vos collègues ne vous regardent pas.'
 }
+
+/**
+ * Combien de demandes attendent une réponse de la personne qui regarde.
+ *
+ * C'est la seule notification de l'application, et elle tient dans un nombre posé à
+ * côté de « Rendez-vous » : rien n'est envoyé, rien ne sonne, rien ne s'affiche par
+ * surprise. Une demande oubliée est le vrai risque de cet écran ; un compteur suffit à
+ * s'en souvenir, et il disparaît dès qu'il n'y a plus rien à traiter.
+ *
+ * Une demande en attente ne nomme encore personne : elle « concerne » un intervenant
+ * quand son motif est le sien — demander à voir le psychiatre concerne le psychiatre.
+ * L'administrateur, lui, les voit toutes : c'est lui qui répartit.
+ */
+export function pendingForViewer<T extends SeenAppointment & { kindId: string }>(
+  viewer: AppointmentViewer,
+  appointments: T[],
+  practitioners: { id: string; kindId?: string }[],
+): number {
+  const enAttente = appointments.filter((a) => a.status === 'requested')
+  if (seesEveryAppointment(viewer)) return enAttente.length
+  if (viewer.role !== 'staff') return 0
+  const lien = viewer.practitionerId
+  if (lien === undefined || lien === null || lien === '') return 0
+  const monMotif = practitioners.find((p) => p.id === lien)?.kindId
+  if (monMotif === undefined || monMotif === '') return 0
+  return enAttente.filter((a) => a.kindId === monMotif).length
+}

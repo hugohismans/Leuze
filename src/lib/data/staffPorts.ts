@@ -257,6 +257,15 @@ export interface CatalogAdminService {
   saveAvailability(practitionerId: string, windows: AvailabilityWindow[]): Promise<void>
 
   /**
+   * L'acceptation automatique des demandes de rendez-vous : chacun décide pour lui.
+   *
+   * Le droit est celui des plages — l'intéressé, ou l'administrateur. C'est cohérent :
+   * accepter automatiquement n'a de sens qu'avec des plages déclarées, et les deux
+   * réglages répondent à la même question, « quand est-ce que je reçois ? ».
+   */
+  setAutoAccept(practitionerId: string, autoAccept: boolean): Promise<void>
+
+  /**
    * Retire une entrée. Supprimée si rien ne l'utilise, simplement retirée des listes
    * sinon — la décision revient au serveur, seul à voir toutes les données.
    */

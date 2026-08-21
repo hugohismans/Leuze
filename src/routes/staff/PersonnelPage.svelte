@@ -60,6 +60,12 @@
         : [{ weekday: 2, from: '09:00', to: '12:00' }]
   }
 
+  async function basculerAutoAccept(practitionerId: string, valeur: boolean): Promise<void> {
+    await tenter(async () => {
+      await staffStore.setAutoAccept(practitionerId, valeur)
+    })
+  }
+
   async function enregistrerLesPlages(practitionerId: string): Promise<void> {
     // Le domaine remet de l'ordre avant l'enregistrement : tri, fusion, rejet du vide.
     const propres = normalizeAvailability(brouillon)
@@ -334,6 +340,29 @@
             {resume === '' ? 'Indiquer ses disponibilités' : 'Modifier ses disponibilités'}
           </button>
         {/if}
+
+        <!--
+          L'acceptation automatique tient dans la même boîte que les plages : c'est la
+          même question posée deux fois — quand cette personne reçoit, et si l'on peut
+          retenir une place sans la déranger. Sans plage déclarée, elle ne servirait à
+          rien, et l'écran ne la propose pas.
+        -->
+        {#if resume !== ''}
+          <label class="bascule mt-3">
+            <input
+              type="checkbox"
+              checked={personne.autoAccept === true}
+              disabled={busy}
+              onchange={(event) => basculerAutoAccept(personne.id, event.currentTarget.checked)}
+            />
+            <span>
+              <strong>Accepter automatiquement les demandes de rendez-vous.</strong>
+              La première place libre dans ces plages est retenue dès la demande, et le
+              patient sait tout de suite quand il vient. Sinon, la demande attend une
+              réponse.
+            </span>
+          </label>
+        {/if}
       {/if}
     </div>
   {/snippet}
@@ -499,3 +528,35 @@
     </details>
   {/if}
 </section>
+
+<style>
+  /* Toute la ligne est cliquable, la case est grande, et le focus clavier se voit. */
+  .bascule {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.85rem;
+    min-height: 56px;
+    padding: 0.9rem 1rem;
+    border: 2px solid var(--color-line);
+    border-radius: 0.85rem;
+    background: var(--color-surface);
+    font-size: 1.0625rem;
+    line-height: 1.45;
+    color: var(--color-ink);
+    cursor: pointer;
+  }
+  .bascule:hover {
+    background: var(--color-surface-soft);
+  }
+  .bascule:focus-within {
+    outline: 3px solid var(--color-brand-500);
+    outline-offset: 2px;
+  }
+  .bascule input {
+    flex-shrink: 0;
+    width: 1.5rem;
+    height: 1.5rem;
+    margin-top: 0.15rem;
+    accent-color: var(--color-brand-900);
+  }
+</style>

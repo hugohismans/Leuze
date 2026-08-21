@@ -37,6 +37,11 @@ export function instantOf(localDate: LocalDate, time: LocalTime): Date {
   return fromZonedTime(`${localDate}T${time}:00`, TIME_ZONE)
 }
 
+/** L'heure locale d'un instant, « 14:00 » — celle qu'on écrit dans une plage horaire. */
+export function localTimeOf(instant: Date): LocalTime {
+  return formatInTimeZone(instant, TIME_ZONE, 'HH:mm') as LocalTime
+}
+
 export function addMinutes(instant: Date, minutes: number): Date {
   return new Date(instant.getTime() + minutes * 60_000)
 }

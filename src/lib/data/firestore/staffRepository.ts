@@ -587,6 +587,10 @@ export function createFirestoreStaffApp(): StaffApp {
         // l'intéressé. Une écriture plus large serait refusée, et à juste titre.
         await updateDoc(doc(db, 'practitioners', practitionerId), { availability: windows })
       },
+      async setAutoAccept(practitionerId, autoAccept) {
+        // Un seul champ, comme pour les plages : les règles n'en autorisent pas plus.
+        await updateDoc(doc(db, 'practitioners', practitionerId), { autoAccept })
+      },
       async removeEntry(kind, id) {
         // Le comptage des usages n'est pas faisable ici : les personnes ne sont pas
         // lisibles côté client. C'est le serveur qui décide entre supprimer et retirer.

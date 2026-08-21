@@ -15,6 +15,8 @@
     seesEveryAppointment,
   } from '../../lib/domain/appointmentAccess'
   import { availabilityLabel, availabilityWarning } from '../../lib/domain/availability'
+  import { AUTO_DURATION_MIN, AUTO_HORIZON_DAYS } from '../../lib/domain/autoAccept'
+  import { enClair } from '../../lib/erreurs'
   import { isoWeekdayOf } from '../../lib/domain/time'
   import { formatFullWhen, todayLocalDate } from '../../lib/domain/time'
   import type { LocalDate, LocalTime } from '../../lib/domain/types'
@@ -50,6 +52,31 @@
   )
 
   const DUREES = [15, 30, 45, 60]
+
+  /**
+   * L'acceptation automatique : chacun la décide pour lui, sur sa propre page.
+   *
+   * Elle n'a de sens qu'avec des plages déclarées — sans elles, il n'y a aucune place à
+   * retenir, et l'écran le dit au lieu de proposer un réglage sans effet.
+   */
+  const mesPlages = $derived(monIntervenant?.availability ?? [])
+  const autoActive = $derived(monIntervenant?.autoAccept === true)
+  let bascule = $state(false)
+  let erreurReglage = $state<string | null>(null)
+
+  async function basculerAutoAccept(valeur: boolean): Promise<void> {
+    const id = staffStore.identity.practitionerId
+    if (id === null || bascule) return
+    bascule = true
+    erreurReglage = null
+    try {
+      await staffStore.setAutoAccept(id, valeur)
+    } catch (error) {
+      erreurReglage = enClair(error)
+    } finally {
+      bascule = false
+    }
+  }
 
   let ouvert = $state<string | null>(null)
   let date = $state<LocalDate>(todayLocalDate())
@@ -226,6 +253,73 @@
     <p role="status" class="mb-4 rounded-xl bg-brand-100 p-3 text-lg font-semibold text-brand-900">
       {staffStore.message}
     </p>
+  {/if}
+
+  {#if monIntervenant !== null && monIntervenant !== undefined}
+    <!--
+      Le réglage personnel. Il vit ici, sur la page des rendez-vous, parce que c'est ici
+      qu'on se pose la question — pas dans un écran de paramètres qu'on n'ouvre jamais.
+    -->
+    <section class="card mb-6 p-4">
+      <h2 class="mb-1 text-2xl font-bold text-ink">Vos demandes de rendez-vous</h2>
+      <p class="mb-3 text-lg text-ink-soft">
+        Quand quelqu'un demande à vous voir, faut-il attendre que vous fixiez la date, ou
+        peut-on retenir tout de suite la première place libre dans vos disponibilités ?
+      </p>
+
+      {#if erreurReglage !== null}
+        <p role="alert" class="mb-3 rounded-xl bg-red-50 p-3 text-lg font-semibold text-red-900">
+          <span aria-hidden="true">⚠️</span> {erreurReglage}
+        </p>
+      {/if}
+
+      {#if mesPlages.length === 0}
+        <p role="status" class="rounded-xl bg-surface-soft p-3 text-lg text-ink">
+          <span aria-hidden="true">🗓️</span>
+          Vous n'avez déclaré aucune plage de disponibilité. Sans elles, il n'y a pas de
+          place à retenir : les demandes continueront d'attendre votre réponse. Vos plages
+          se déclarent dans « Le personnel », sur votre fiche.
+        </p>
+      {:else}
+        <fieldset class="grid gap-2">
+          <legend class="sr-only">Traitement des demandes qui vous concernent</legend>
+          <label class="choix" class:choisi={!autoActive}>
+            <input
+              type="radio"
+              name="acceptation"
+              checked={!autoActive}
+              disabled={bascule}
+              onchange={() => basculerAutoAccept(false)}
+            />
+            <span>
+              <strong>Je réponds moi-même à chaque demande.</strong>
+              Elle attend dans la file jusqu'à ce que vous fixiez la date.
+            </span>
+          </label>
+          <label class="choix" class:choisi={autoActive}>
+            <input
+              type="radio"
+              name="acceptation"
+              checked={autoActive}
+              disabled={bascule}
+              onchange={() => basculerAutoAccept(true)}
+            />
+            <span>
+              <strong>La première place libre est retenue tout de suite.</strong>
+              Un rendez-vous de {AUTO_DURATION_MIN} minutes, dans vos plages, à partir de
+              demain et dans les {AUTO_HORIZON_DAYS} jours qui suivent. Le patient sait
+              immédiatement quand il vous voit ; vous pouvez toujours le déplacer ou
+              l'annuler.
+            </span>
+          </label>
+        </fieldset>
+
+        <p class="mt-3 text-base text-ink-soft">
+          <span aria-hidden="true">🗓️</span>
+          Vos disponibilités : {availabilityLabel(mesPlages)}.
+        </p>
+      {/if}
+    </section>
   {/if}
 
   <!--
@@ -515,3 +609,45 @@
     </ul>
   {/if}
 </section>
+
+<style>
+  /*
+    Un choix se prend au doigt, pas à la loupe : toute la ligne est cliquable, le point
+    de sélection est grand, et le choix retenu est doublé d'un cadre épais — jamais la
+    couleur seule.
+  */
+  .choix {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.85rem;
+    min-height: 56px;
+    padding: 0.9rem 1rem;
+    border: 2px solid var(--color-line);
+    border-radius: 0.85rem;
+    background: var(--color-surface);
+    font-size: 1.0625rem;
+    line-height: 1.45;
+    color: var(--color-ink);
+    cursor: pointer;
+  }
+  .choix:hover {
+    background: var(--color-surface-soft);
+  }
+  .choix.choisi {
+    border-width: 3px;
+    border-color: var(--color-brand-500);
+    background: var(--color-brand-100);
+  }
+  .choix input {
+    flex-shrink: 0;
+    width: 1.5rem;
+    height: 1.5rem;
+    margin-top: 0.15rem;
+    accent-color: var(--color-brand-900);
+  }
+  /* Le focus clavier doit se voir : il porte sur la ligne entière, pas sur le point. */
+  .choix:focus-within {
+    outline: 3px solid var(--color-brand-500);
+    outline-offset: 2px;
+  }
+</style>

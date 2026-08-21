@@ -3,6 +3,7 @@ import {
   appointmentAccessNotice,
   canScheduleAs,
   concernsViewer,
+  pendingForViewer,
   seesEveryAppointment,
   visibleAppointments,
 } from './appointmentAccess'
@@ -70,5 +71,38 @@ describe('au nom de qui on fixe un rendez-vous', () => {
   it('personne, quand le compte n’est relié à aucun intervenant', () => {
     expect(canScheduleAs(sansLien, 'claire')).toBe(false)
     expect(canScheduleAs(sansLien, null)).toBe(false)
+  })
+})
+
+describe('le compteur de demandes en attente', () => {
+  const intervenants = [
+    { id: 'docteur-lemaire', kindId: 'psychiatre' },
+    { id: 'claire', kindId: 'kine' },
+    { id: 'marc' },
+  ]
+  const file = [
+    { id: 'a', status: 'requested' as const, kindId: 'psychiatre' },
+    { id: 'b', status: 'requested' as const, kindId: 'psychiatre' },
+    { id: 'c', status: 'requested' as const, kindId: 'kine' },
+    { id: 'd', status: 'scheduled' as const, kindId: 'psychiatre', practitionerId: 'docteur-lemaire' },
+    { id: 'e', status: 'cancelled' as const, kindId: 'psychiatre' },
+  ]
+
+  it('ne compte que ce qui attend encore', () => {
+    expect(pendingForViewer(patronne, file, intervenants)).toBe(3)
+  })
+
+  it('ne montre à un intervenant que les demandes de son motif', () => {
+    expect(pendingForViewer(lemaire, file, intervenants)).toBe(2)
+    expect(pendingForViewer(claire, file, intervenants)).toBe(1)
+  })
+
+  it('ne compte rien pour un compte sans intervenant, ni pour un intervenant sans motif', () => {
+    expect(pendingForViewer(sansLien, file, intervenants)).toBe(0)
+    expect(pendingForViewer({ role: 'staff', practitionerId: 'marc' }, file, intervenants)).toBe(0)
+  })
+
+  it('ne compte rien quand la file est vide — le compteur doit disparaître', () => {
+    expect(pendingForViewer(patronne, [], intervenants)).toBe(0)
   })
 })

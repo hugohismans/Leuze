@@ -9,6 +9,13 @@
  * en réunion du lundi apparaît aussitôt dans le calendrier du patient.
  */
 import { isVisibleToService } from '../../domain/audience'
+import {
+  AUTO_DURATION_MIN,
+  AUTO_HORIZON_DAYS,
+  autoAcceptMessage,
+  findFirstSlot,
+  type BusySlot,
+} from '../../domain/autoAccept'
 import { registrationBlockMessage, type RegistrationBlock } from '../../domain/capacity'
 import type {
   Appointment,
@@ -27,6 +34,14 @@ import {
   registrationOf,
   waitlistPosition,
 } from '../../domain/waitlist'
+import {
+  addLocalDays,
+  addMinutes,
+  formatFullWhen,
+  instantOf,
+  localTimeOf,
+  todayLocalDate,
+} from '../../domain/time'
 import type { AppRepository, MyRegistration, PatientSession, RegisterResult } from '../ports'
 import { mockCatalog } from './catalog'
 import {
@@ -39,6 +54,48 @@ import {
 } from './state'
 
 export { DEMO_PATIENT_UID, DEMO_SERVICE_ID }
+
+/**
+ * La première place libre chez quelqu'un qui accepte automatiquement ce motif — la même
+ * recherche que sur le serveur, sur les données de la démonstration.
+ */
+function premierePlaceLibre(
+  kindId: string,
+  preference: AppointmentPreference,
+  maintenant: Date,
+): { practitionerId: string; name: string; slot: NonNullable<ReturnType<typeof findFirstSlot>> } | null {
+  const candidats = mockCatalog
+    .practitioners()
+    .filter((p) => p.isActive && p.autoAccept === true && p.kindId === kindId)
+    .sort((a, b) => a.name.localeCompare(b.name, 'fr'))
+
+  // Jamais aujourd'hui : un rendez-vous posé dans deux heures est un rendez-vous manqué.
+  const depart = addLocalDays(todayLocalDate(maintenant), 1)
+
+  for (const candidat of candidats) {
+    const plages = candidat.availability ?? []
+    if (plages.length === 0) continue
+    const occupes: BusySlot[] = world.appointments.flatMap((a) =>
+      a.practitionerId === candidat.id &&
+      a.status === 'scheduled' &&
+      a.localDate !== undefined &&
+      a.start !== undefined &&
+      a.end !== undefined
+        ? [{ localDate: a.localDate, from: localTimeOf(a.start), to: localTimeOf(a.end) }]
+        : [],
+    )
+    const slot = findFirstSlot({
+      windows: plages,
+      busy: occupes,
+      preference,
+      from: depart,
+      horizonDays: AUTO_HORIZON_DAYS,
+      durationMin: AUTO_DURATION_MIN,
+    })
+    if (slot !== null) return { practitionerId: candidat.id, name: candidat.name, slot }
+  }
+  return null
+}
 
 const REFUS: Record<RegistrationBlock | 'already-registered', string> = {
   cancelled: registrationBlockMessage('cancelled'),
@@ -169,23 +226,64 @@ export function createMockRepository(options: { now?: () => Date } = {}): MockRe
       async request(kindId: string, preference: AppointmentPreference) {
         const uid = world.session.patientUid
         if (uid === null) return { ok: false, message: 'Saisissez votre code pour demander un rendez-vous.' }
-        // Une seule demande en attente à la fois pour un même professionnel : sans cela,
-        // un patient inquiet en enverrait plusieurs, et la file perdrait son sens.
-        if (world.appointments.some((a) => a.patientUid === uid && a.kindId === kindId && a.status === 'requested')) {
-          return { ok: false, message: 'Vous avez déjà une demande en attente pour ce professionnel.' }
+        /*
+          Une seule demande à la fois pour un même professionnel — en attente comme déjà
+          fixée. Sans cela, quelqu'un d'inquiet qui appuie trois fois prendrait trois
+          créneaux dans l'agenda de quelqu'un.
+        */
+        const aujourdHui = todayLocalDate(clock())
+        const dejaEnCours = world.appointments.some(
+          (a) =>
+            a.patientUid === uid &&
+            a.kindId === kindId &&
+            (a.status === 'requested' ||
+              (a.status === 'scheduled' && (a.localDate ?? '') >= aujourdHui)),
+        )
+        if (dejaEnCours) {
+          return {
+            ok: false,
+            scheduled: false,
+            message: 'Vous avez déjà un rendez-vous prévu avec cette personne. Parlez-en à un soignant.',
+          }
         }
+        const commun = {
+          id: `rdv-${uid}-${clock().getTime()}`,
+          patientUid: uid,
+          kindId,
+          preference,
+          createdAt: clock(),
+        }
+
+        /*
+          L'acceptation automatique, jouée exactement comme sur le serveur : la
+          démonstration doit montrer ce qui se passera vraiment, sinon elle ment.
+        */
+        const place = premierePlaceLibre(kindId, preference, clock())
+        if (place === null) {
+          world.appointments = [...world.appointments, { ...commun, status: 'requested' }]
+          return { ok: true, scheduled: false, message: 'Votre demande est envoyée. Un soignant vous dira quand.' }
+        }
+
+        const debut = instantOf(place.slot.localDate, place.slot.time)
+        const fin = addMinutes(debut, AUTO_DURATION_MIN)
         world.appointments = [
           ...world.appointments,
           {
-            id: `rdv-${uid}-${clock().getTime()}`,
-            patientUid: uid,
-            kindId,
-            preference,
-            status: 'requested',
-            createdAt: clock(),
+            ...commun,
+            status: 'scheduled',
+            localDate: place.slot.localDate,
+            start: debut,
+            end: fin,
+            withWhom: place.name,
+            practitionerId: place.practitionerId,
+            autoAccepted: true,
           },
         ]
-        return { ok: true, message: 'Votre demande est envoyée. Un soignant vous dira quand.' }
+        return {
+          ok: true,
+          scheduled: true,
+          message: autoAcceptMessage(place.slot, formatFullWhen(place.slot.localDate, debut, fin), place.name),
+        }
       },
 
       async withdraw(appointmentId: string) {

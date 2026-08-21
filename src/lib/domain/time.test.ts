@@ -8,6 +8,7 @@ import {
   instantOf,
   isoWeekdayOf,
   localDateOf,
+  localTimeOf,
   monthGrid,
   startOfIsoWeek,
   weekDays,
@@ -60,5 +61,21 @@ describe('temps', () => {
     expect(grid[0]?.[0]).toBe('2025-07-28') // le mois commence un vendredi
     expect(grid.at(-1)?.at(-1)).toBe('2025-08-31')
     for (const week of grid) expect(week).toHaveLength(7)
+  })
+})
+
+describe('l’heure locale d’un instant', () => {
+  it('se lit à Bruxelles, pas à Greenwich', () => {
+    // 12h00 UTC en août, c'est 14h00 à Bruxelles.
+    expect(localTimeOf(new Date('2026-08-25T12:00:00Z'))).toBe('14:00')
+  })
+
+  it('suit le passage à l’heure d’hiver', () => {
+    // Même instant UTC en janvier : une heure de décalage seulement.
+    expect(localTimeOf(new Date('2026-01-20T12:00:00Z'))).toBe('13:00')
+  })
+
+  it('fait l’aller-retour avec `instantOf`', () => {
+    expect(localTimeOf(instantOf('2026-08-25', '09:30'))).toBe('09:30')
   })
 })

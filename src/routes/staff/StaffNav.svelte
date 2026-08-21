@@ -1,5 +1,7 @@
 <script lang="ts">
   import { staffStore } from '../../lib/staffState.svelte'
+  import { store } from '../../lib/appState.svelte'
+  import { pendingForViewer } from '../../lib/domain/appointmentAccess'
   import { navigate, router } from '../../lib/router.svelte'
 
   /**
@@ -29,6 +31,21 @@
   // l'entrée ne mènerait nulle part.
   const monPlanning = $derived(staffStore.identity.practitionerId)
 
+  /**
+   * La seule notification de l'application : un nombre, à côté de « Rendez-vous ».
+   *
+   * Rien n'est envoyé, rien ne sonne. Une demande oubliée est pourtant le vrai risque de
+   * cet écran — on n'y va que lorsqu'on y pense. Un compteur suffit à y penser, et il
+   * disparaît de lui-même dès qu'il n'y a plus rien à traiter.
+   */
+  const enAttente = $derived(
+    pendingForViewer(
+      { role: staffStore.identity.role, practitionerId: staffStore.identity.practitionerId },
+      staffStore.appointments,
+      store.practitioners,
+    ),
+  )
+
   const quotidiens = $derived([
     { chemin: '/soignant', libelle: 'La semaine' },
     { chemin: '/soignant/reunion', libelle: 'Réunion du lundi' },
@@ -37,7 +54,7 @@
     // pas ailleurs, et l'écran refuse de lui-même si l'on y arrive par l'adresse.
     ...(staffStore.isAdmin ? [{ chemin: '/soignant/plannings', libelle: 'Les plannings' }] : []),
     ...(monPlanning === null ? [] : [{ chemin: `/soignant/intervenant/${monPlanning}`, libelle: 'Mon planning' }]),
-    { chemin: '/soignant/rendez-vous', libelle: 'Rendez-vous' },
+    { chemin: '/soignant/rendez-vous', libelle: 'Rendez-vous', enAttente },
   ])
 
   // « Voir à leur place » est un outil de mise au point, réservé à l'administrateur :
@@ -119,7 +136,7 @@
   })
 </script>
 
-{#snippet entree(chemin: string, libelle: string)}
+{#snippet entree(chemin: string, libelle: string, attente = 0)}
   <li>
     <button
       type="button"
@@ -128,7 +145,16 @@
       aria-current={actif(chemin) ? 'page' : undefined}
       onclick={() => allerA(chemin)}
     >
-      {libelle}
+      <span class="intitule">{libelle}</span>
+      {#if attente > 0}
+        <!-- Le nombre est doublé d'un texte lu à voix haute : jamais une pastille muette. -->
+        <span class="compteur">
+          {attente}
+          <span class="sr-only">
+            {attente === 1 ? 'demande en attente' : 'demandes en attente'}
+          </span>
+        </span>
+      {/if}
     </button>
   </li>
 {/snippet}
@@ -148,6 +174,14 @@
         <span></span><span></span><span></span>
       </span>
       Menu
+      {#if enAttente > 0}
+        <span class="compteur">
+          {enAttente}
+          <span class="sr-only">
+            {enAttente === 1 ? 'demande de rendez-vous en attente' : 'demandes de rendez-vous en attente'}
+          </span>
+        </span>
+      {/if}
     </button>
     <p class="ecran">{ecranCourant}</p>
   </div>
@@ -176,7 +210,7 @@
 
     <p class="groupe">Tous les jours</p>
     <ul>
-      {#each quotidiens as item (item.chemin)}{@render entree(item.chemin, item.libelle)}{/each}
+      {#each quotidiens as item (item.chemin)}{@render entree(item.chemin, item.libelle, 'enAttente' in item ? item.enAttente : 0)}{/each}
     </ul>
 
     <p class="groupe">De temps en temps</p>
@@ -329,6 +363,7 @@
     /* La cible tactile fait 56 px de haut, comme partout ailleurs. */
     display: flex;
     align-items: center;
+    gap: 0.5rem;
     width: 100%;
     min-height: 56px;
     padding: 0 0.9rem;
@@ -349,6 +384,32 @@
     background: var(--color-brand-900);
     color: #ffffff;
     border-inline-start: 6px solid var(--color-brand-500);
+  }
+
+  .intitule {
+    flex: 1;
+    min-width: 0;
+  }
+
+  /* Un nombre, rond, lisible de loin — et jamais seul : un texte le double pour les
+     lecteurs d'écran, et il disparaît dès qu'il n'y a plus rien à traiter. */
+  .compteur {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.75rem;
+    height: 1.75rem;
+    padding: 0 0.45rem;
+    border-radius: 999px;
+    background: var(--color-brand-900);
+    color: #ffffff;
+    font-size: 1rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+  .lien.courant .compteur {
+    background: #ffffff;
+    color: var(--color-brand-900);
   }
 
   .pied {

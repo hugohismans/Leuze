@@ -557,6 +557,15 @@ export function createMockStaffApp(): StaffApp {
         if (personne === undefined) throw new Error("Cette personne n'existe pas.")
         mockCatalog.savePractitioner({ ...personne, availability: windows })
       },
+      async setAutoAccept(practitionerId, autoAccept) {
+        // Même droit que les plages : l'intéressé, ou l'administrateur.
+        if (identity.role !== 'admin' && identity.practitionerId !== practitionerId) {
+          throw new Error('Vous ne pouvez modifier que votre propre acceptation automatique.')
+        }
+        const personne = mockCatalog.practitioners().find((i) => i.id === practitionerId)
+        if (personne === undefined) throw new Error("Cette personne n'existe pas.")
+        mockCatalog.savePractitioner({ ...personne, autoAccept })
+      },
       async removeEntry(kind, id) {
         // Même décision que côté serveur, sur le petit monde de la démonstration :
         // supprimé si rien ne l'utilise, retiré des listes sinon.

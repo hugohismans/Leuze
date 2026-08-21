@@ -61,6 +61,23 @@ body {
   -webkit-text-size-adjust: 100%;
 }
 
+/*
+  Aucun mot ne sort de sa carte.
+
+  Le programme de la semaine tient dans sept colonnes étroites, et le vocabulaire du
+  métier est fait de mots longs : « ergothérapie », « thérapeutique », « kinésithérapeute ».
+  Sans césure, ils passaient par-dessus le bord du cadre et se lisaient sur la carte
+  voisine. La coupure au trait d'union est celle du français (la page est en `lang="fr"`) ;
+  la coupure brutale ne sert que de dernier recours, pour un mot plus large que la
+  colonne entière — mieux vaut un mot coupé qu'un mot dehors.
+*/
+:where(p, h1, h2, h3, h4, h5, h6, li, dt, dd, td, th, figcaption, label, button, a) {
+  overflow-wrap: break-word;
+  hyphens: auto;
+  /* Pas de fragment d'une ou deux lettres : « Gymnas-tique », jamais « Gymnastiqu-e ». */
+  hyphenate-limit-chars: 8 4 3;
+}
+
 /* Focus visible partout, jamais supprimé. */
 :where(a, button, input, select, textarea, [tabindex]):focus-visible {
   outline: 4px solid var(--color-brand-700);

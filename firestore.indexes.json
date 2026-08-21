@@ -97,6 +97,25 @@
           "order": "ASCENDING"
         }
       ]
+    },
+    {
+      "//": "Acceptation automatique : l'agenda d'un intervenant sur les trois semaines à venir.",
+      "collectionGroup": "appointments",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "practitionerId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "localDate",
+          "order": "ASCENDING"
+        }
+      ]
     }
   ],
   "fieldOverrides": []

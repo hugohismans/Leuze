@@ -36,7 +36,26 @@ function tableDe(kind: CatalogKind): Map<string, Entree> {
   return practitioners as Map<string, Entree>
 }
 
+/** Une table remise à son point de départ, sans perdre la référence partagée. */
+function recharger<T extends { id: string }>(table: Map<string, T>, seed: T[]): void {
+  table.clear()
+  for (const entree of seed) table.set(entree.id, { ...entree })
+}
+
 export const mockCatalog = {
+  /**
+   * Remet le catalogue à son état d'origine. Le monde partagé a `resetWorld` ; le
+   * catalogue vivait sans équivalent, et un test qui déclarait une disponibilité la
+   * laissait au suivant.
+   */
+  reset(): void {
+    recharger(locations, locationsSeed)
+    recharger(services, servicesSeed)
+    recharger(categories, categoriesSeed)
+    recharger(practitioners, practitionersSeed)
+    recharger(appointmentKinds, appointmentKindsSeed)
+  },
+
   // Tout est renvoyé, y compris ce qui a été retiré : sinon une séance déjà programmée
   // perdrait le nom de son lieu. Le tri se fait au moment de proposer un choix.
   locations: (): Location[] => [...locations.values()],
