@@ -92,13 +92,18 @@ class StaffStore {
     // Après connexion, le catalogue devient lisible : il faut le relire, même s'il a
     // déjà été demandé (sans succès) avant l'authentification.
     if (result.ok) {
-      await Promise.all([
-        store.loadCatalog(true),
-        store.loadAppointmentKinds(),
-        this.refresh(),
-        this.loadPatients(),
-        this.loadAppointments(),
-      ])
+      /*
+        On n'attend que le programme — ce qui s'affiche en premier. Le reste arrive
+        derrière, chacun à son rythme : la liste des patients et les rendez-vous passent
+        par des fonctions appelables, qui mettent plusieurs secondes quand elles dormaient.
+        Les attendre toutes, c'était laisser le bouton « Se connecter » tourner une demi-
+        minute pour un écran qui n'en avait besoin d'aucune.
+      */
+      void store.loadCatalog(true)
+      void store.loadAppointmentKinds()
+      void this.loadPatients()
+      void this.loadAppointments()
+      await this.refresh()
     }
     return result.ok ? { ok: true } : { ok: false, message: result.message }
   }
@@ -125,12 +130,11 @@ class StaffStore {
     await this.refresh()
     this.identity = (await this.app$()).session.current()
     if (this.identity.role !== null) {
-      await Promise.all([
-        store.loadCatalog(true),
-        store.loadAppointmentKinds(),
-        this.loadPatients(),
-        this.loadAppointments(),
-      ])
+      // Comme à la connexion : rien de tout cela ne doit retenir l'affichage.
+      void store.loadCatalog(true)
+      void store.loadAppointmentKinds()
+      void this.loadPatients()
+      void this.loadAppointments()
     }
   }
 
@@ -242,6 +246,11 @@ class StaffStore {
   /** Vrai quand la personne connectée a le droit de faire l'appel de l'activité ouverte. */
   canMarkAttendance = $state<boolean>(false)
 
+  /** Réveille la fonction d'inscription, sans rien inscrire. Voir le port. */
+  async warmRegistration(): Promise<void> {
+    await (await this.app$()).repository.warmRegistration().catch(() => undefined)
+  }
+
   async openRoster(occurrenceId: string): Promise<void> {
     const resultat = await (await this.app$()).repository
       .roster(occurrenceId)
@@ -289,12 +298,51 @@ class StaffStore {
   ): Promise<{ message: string; conflicts?: TimeConflict[] }> {
     const repository = (await this.app$()).repository
     const inscrit = this.isRegistered(patientUid)
+
+    /*
+      Le prénom change d'état tout de suite, avant la réponse du serveur.
+
+      L'inscription passe par une fonction appelable — la capacité et la liste d'attente
+      se décident dans une transaction, et un navigateur n'a pas le droit d'écrire là.
+      Cet aller-retour prend une à deux secondes, parfois plus quand la fonction dormait :
+      on cliquait, il ne se passait rien, on recliquait. Autant de doubles inscriptions
+      évitées de justesse, et une réunion qui traîne.
+
+      On affiche donc ce qui va se passer, puis on le vérifie. En cas de refus — activité
+      complète, chevauchement, réseau coupé — la liste revient exactement dans l'état
+      d'avant, et le message dit pourquoi. C'est ce que fait n'importe quelle application
+      qui « répond du tac au tac » : elle n'attend pas le serveur pour se redessiner.
+    */
+    const avant = this.roster
+    const personne = this.patients.find((p) => p.uid === patientUid)
+    this.roster = inscrit
+      ? this.roster.filter((ligne) => ligne.patientUid !== patientUid)
+      : [
+          ...this.roster,
+          {
+            patientUid,
+            firstName: personne?.firstName ?? 'Cette personne',
+            serviceId: personne?.serviceId ?? null,
+            status: 'confirmed' as const,
+            position: null,
+          },
+        ]
+
     const resultat = inscrit
       ? await repository.unregisterPatient(occurrenceId, patientUid)
       : await repository.registerPatient(occurrenceId, patientUid, options)
 
-    await this.openRoster(occurrenceId)
-    await this.refresh()
+    // Refusé : on remet la liste telle qu'elle était. Le message, lui, vient du serveur.
+    if (!resultat.ok) this.roster = avant
+
+    /*
+      La vérité vient ensuite, sans faire attendre : la liste réelle — avec les positions
+      en liste d'attente, que seul le serveur connaît — et les compteurs de la semaine se
+      remettent d'aplomb en arrière-plan. Si l'affichage optimiste s'était trompé, il se
+      corrige tout seul une seconde plus tard.
+    */
+    void this.openRoster(occurrenceId)
+    void this.refresh()
     // La désinscription ne rend jamais de chevauchement : le champ n'existe que sur
     // l'autre chemin, d'où la vérification plutôt qu'un accès direct.
     const conflits = (resultat as { conflicts?: TimeConflict[] }).conflicts

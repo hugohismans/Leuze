@@ -276,28 +276,48 @@ class AppStore {
    * laissait `loading` à vrai pour toujours, et l'application restait sur « Un instant… »
    * sans que la personne puisse rien faire — pas même redemander son code.
    */
+  /**
+   * Relit le programme, puis le reste.
+   *
+   * Le calendrier n'attend que les séances : elles viennent de Firestore, souvent du
+   * cache local, et s'affichent presque tout de suite. Les inscriptions personnelles et
+   * les rendez-vous passent par des fonctions appelables — plusieurs secondes quand
+   * elles dormaient depuis un moment — et arrivent derrière, sans retenir l'écran. Les
+   * attendre toutes, c'était « Un instant… » pendant dix secondes pour afficher un
+   * programme déjà en mémoire.
+   *
+   * Le `finally` n'est pas une précaution de style : sans lui, une lecture qui échoue
+   * laissait `loading` à vrai pour toujours, et l'application restait sur « Un instant… »
+   * sans que la personne puisse rien faire — pas même redemander son code.
+   */
   async refresh(): Promise<void> {
     const { from, to } = this.range
     this.loading = true
     try {
-      const [occurrences, mine] = await Promise.all([
-        (await this.repo()).occurrences.listBetween(from, to),
-        (await this.repo()).registrations.listMine(),
-      ])
-      this.occurrences = occurrences
-      this.mine = mine
-      await this.loadAppointments()
+      this.occurrences = await (await this.repo()).occurrences.listBetween(from, to)
       this.lectureEchouee = false
     } catch {
       // Rien à afficher plutôt qu'un écran bloqué. La session, elle, est relue ci-dessous.
       this.occurrences = []
-      this.mine = []
       this.lectureEchouee = true
     } finally {
       // La session Firebase est restaurée de façon asynchrone au démarrage : à ce
       // point-ci elle est connue, on aligne l'interface dessus.
       this.syncSession()
       this.loading = false
+    }
+
+    // Ce qui suit complète l'écran sans jamais le bloquer.
+    void this.loadMine()
+    void this.loadAppointments()
+  }
+
+  /** Les inscriptions du patient, en arrière-plan : leur absence ne cache pas le programme. */
+  private async loadMine(): Promise<void> {
+    try {
+      this.mine = await (await this.repo()).registrations.listMine()
+    } catch {
+      this.mine = []
     }
   }
 

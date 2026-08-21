@@ -611,6 +611,15 @@ export function createFirestoreStaffApp(): StaffApp {
         }
       },
 
+      async warmRegistration() {
+        try {
+          const call = httpsCallable<{ warm: boolean }, unknown>(functions, 'staffRegister')
+          await call({ warm: true })
+        } catch {
+          // Un réveil raté n'est pas un problème : il n'y avait rien à faire.
+        }
+      },
+
       async unregisterPatient(occurrenceId: string, patientUid: string) {
         try {
           const call = httpsCallable<{ occurrenceId: string; patientUid: string }, { ok: boolean; message: string }>(

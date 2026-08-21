@@ -172,6 +172,20 @@ export const myRegistrations = onCall(async (request: CallableRequest) => {
  */
 export const staffRegister = onCall(async (request: CallableRequest) => {
   requireStaff(request)
+
+  /*
+    Réveil.
+
+    Une fonction qui n'a pas servi depuis un quart d'heure s'arrête ; le premier appel
+    suivant paie le démarrage — quelques secondes, pendant lesquelles l'écran semble mort.
+    En réunion, ce premier appel tombe toujours au pire moment : le premier prénom.
+
+    L'écran envoie donc un appel vide en s'ouvrant, pendant qu'on lit la liste. Il ne fait
+    rien, il ne touche à rien, il ne coûte qu'une invocation — et le clic qui suit trouve
+    la fonction debout.
+  */
+  if (request.data?.warm === true) return { ok: true, warmed: true }
+
   const occurrenceId = requireString(request.data?.occurrenceId, 'occurrenceId')
   const patientUid = requireString(request.data?.patientUid, 'patientUid')
   const overCapacity = request.data?.overCapacity === true
