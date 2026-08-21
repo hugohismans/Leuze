@@ -9,6 +9,7 @@
  * en réunion du lundi apparaît aussitôt dans le calendrier du patient.
  */
 import { isVisibleToService } from '../../domain/audience'
+import { patientConflictNotice } from '../../domain/conflicts'
 import {
   AUTO_DURATION_MIN,
   AUTO_HORIZON_DAYS,
@@ -49,6 +50,7 @@ import {
   DEMO_SERVICE_ID,
   applyBoard,
   boardOf,
+  conflictsFor,
   resetWorld,
   world,
 } from './state'
@@ -188,6 +190,13 @@ export function createMockRepository(options: { now?: () => Date } = {}): MockRe
         if (!board || uid === null || !isVisibleToService(board.occurrence, world.session.serviceId)) {
           return { ok: false, reason: 'unknown', message: "Cette activité n'a pas été trouvée." }
         }
+        // Un rendez-vous déjà fixé interdit de s'inscrire par-dessus ; une autre
+        // activité au même moment ne fait que prévenir. Même règle que sur le serveur.
+        const avis = patientConflictNotice(conflictsFor(uid, occurrenceId))
+        if (avis !== null && avis.blocking) {
+          return { ok: false, reason: 'conflict', message: avis.message }
+        }
+
         const outcome = domainRegister(board, uid, {
           now: clock(),
           registrationId: `${occurrenceId}--${uid}--${clock().getTime()}`,
@@ -195,7 +204,12 @@ export function createMockRepository(options: { now?: () => Date } = {}): MockRe
         })
         if (!outcome.ok) return { ok: false, reason: outcome.reason, message: REFUS[outcome.reason] }
         applyBoard(outcome.board)
-        return { ok: true, status: outcome.status, position: outcome.position }
+        return {
+          ok: true,
+          status: outcome.status,
+          position: outcome.position,
+          ...(avis !== null ? { warning: avis.message } : {}),
+        }
       },
 
       async unregister(occurrenceId: string): Promise<{ ok: boolean; message: string }> {

@@ -16,6 +16,7 @@ import {
   applyBoard,
   boardOf,
   CLE_SESSION_SOIGNANT,
+  conflictsFor,
   DEMO_PATIENT_UID,
   DEMO_SERVICE_ID,
   readDemo,
@@ -405,6 +406,23 @@ export function createMockStaffApp(): StaffApp {
       async registerPatient(occurrenceId: string, patientUid: string, options = {}) {
         const board = boardOf(occurrenceId)
         if (board === null) return { ok: false, message: "Cette activité n'a pas été trouvée." }
+
+        // Rien n'est interdit au soignant, mais il doit le savoir avant d'inscrire.
+        if (options.overrideConflict !== true) {
+          const conflits = conflictsFor(patientUid, occurrenceId)
+          if (conflits.length > 0) {
+            return {
+              ok: false,
+              message: 'Cette personne a déjà quelque chose à ce moment-là.',
+              conflicts: conflits.map((c) => ({
+                label: c.label,
+                kind: c.kind,
+                start: c.start,
+                end: c.end,
+              })),
+            }
+          }
+        }
         const outcome = domainRegister(board, patientUid, {
           now: new Date(),
           registrationId: `${occurrenceId}--${patientUid}--${Date.now()}`,

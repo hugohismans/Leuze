@@ -403,14 +403,25 @@ export function createFirestoreStaffApp(): StaffApp {
       async registerPatient(occurrenceId: string, patientUid: string, options = {}) {
         try {
           const call = httpsCallable<
-            { occurrenceId: string; patientUid: string; overCapacity?: boolean },
-            { ok: boolean; status?: 'confirmed' | 'waitlist'; message?: string }
+            {
+              occurrenceId: string
+              patientUid: string
+              overCapacity?: boolean
+              overrideConflict?: boolean
+            },
+            {
+              ok: boolean
+              status?: 'confirmed' | 'waitlist'
+              message?: string
+              conflicts?: { label: string; kind: 'activity' | 'appointment'; start: string; end: string }[]
+            }
           >(functions, 'staffRegister')
           const resultat = (
             await call({
               occurrenceId,
               patientUid,
               ...(options.overCapacity === true ? { overCapacity: true } : {}),
+              ...(options.overrideConflict === true ? { overrideConflict: true } : {}),
             })
           ).data
           return {
@@ -418,6 +429,18 @@ export function createFirestoreStaffApp(): StaffApp {
             ...(resultat.status ? { status: resultat.status } : {}),
             message:
               resultat.message ?? (resultat.status === 'waitlist' ? "Sur la liste d'attente" : 'Inscrit'),
+            // Les dates traversent l'appel en texte : elles redeviennent des dates ici,
+            // à la frontière, comme partout ailleurs.
+            ...(resultat.conflicts
+              ? {
+                  conflicts: resultat.conflicts.map((c) => ({
+                    label: c.label,
+                    kind: c.kind,
+                    start: new Date(c.start),
+                    end: new Date(c.end),
+                  })),
+                }
+              : {}),
           }
         } catch (error) {
           return { ok: false, message: messageDErreur(error) }

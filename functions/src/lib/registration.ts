@@ -9,6 +9,8 @@ import {
   rosterOf,
   type Board,
 } from '../domain/waitlist'
+import { conflictsWith, localDateOfOccurrenceId, type BusyEntry } from '../domain/conflicts'
+import { kindName } from '../domain/appointments'
 import { COLLECTIONS, docToOccurrence, docToRegistration, registrationToDoc } from './firestore'
 
 /**
@@ -53,6 +55,101 @@ function writeCounters(
     confirmedCount: occurrence.confirmedCount,
     waitlistCount: occurrence.waitlistCount,
   })
+}
+
+/**
+ * Ce qui occupe déjà quelqu'un, le jour d'une séance donnée.
+ *
+ * Trois lectures, et pas une de plus. Les inscriptions d'une personne tiennent en
+ * quelques dizaines de lignes, et le jour se lit dans l'identifiant de l'occurrence —
+ * inutile d'aller chercher les séances d'un autre jour. Les rendez-vous sont filtrés sur
+ * la date, qui est stockée telle quelle.
+ *
+ * Les motifs de rendez-vous sont lus pour nommer ce qui bloque : « Rendez-vous avec le
+ * psychiatre » se comprend, « rdv kind-3 » ne se comprend pas.
+ */
+export async function busyOn(
+  database: Firestore,
+  patientUid: string,
+  localDate: string,
+  ignoreOccurrenceId?: string,
+): Promise<BusyEntry[]> {
+  const [inscriptions, rendezVous] = await Promise.all([
+    database.collection(COLLECTIONS.registrations).where('patientUid', '==', patientUid).get(),
+    database
+      .collection(COLLECTIONS.appointments)
+      .where('patientUid', '==', patientUid)
+      .where('localDate', '==', localDate)
+      .get(),
+  ])
+
+  const memeJour = inscriptions.docs
+    .map(docToRegistration)
+    .filter((r) => r.status !== 'cancelled' && r.occurrenceId !== ignoreOccurrenceId)
+    .filter((r) => localDateOfOccurrenceId(r.occurrenceId) === localDate)
+
+  const seances =
+    memeJour.length === 0
+      ? []
+      : await database.getAll(
+          ...memeJour.map((r) => database.collection(COLLECTIONS.occurrences).doc(r.occurrenceId)),
+        )
+
+  const occupe: BusyEntry[] = []
+  for (const document of seances) {
+    if (!document.exists) continue
+    const occurrence = docToOccurrence(document)
+    // Une séance annulée n'occupe plus personne.
+    if (occurrence.status === 'cancelled') continue
+    occupe.push({
+      start: occurrence.start,
+      end: occurrence.end,
+      label: occurrence.title,
+      kind: 'activity',
+    })
+  }
+
+  const motifs = rendezVous.empty
+    ? []
+    : (await database.collection(COLLECTIONS.appointmentKinds).get()).docs.map((d) => ({
+        id: d.id,
+        name: (d.data()['name'] as string) ?? '',
+        icon: '',
+        isActive: true,
+      }))
+
+  for (const document of rendezVous.docs) {
+    const data = document.data()
+    if (data['status'] !== 'scheduled') continue
+    const debut = data['start'] as FirebaseFirestore.Timestamp | undefined
+    const fin = data['end'] as FirebaseFirestore.Timestamp | undefined
+    if (debut === undefined || fin === undefined) continue
+    const qui = (data['withWhom'] as string | undefined) ?? kindName(motifs, data['kindId'] as string)
+    occupe.push({
+      start: debut.toDate(),
+      end: fin.toDate(),
+      label: `Rendez-vous avec ${qui}`,
+      kind: 'appointment',
+    })
+  }
+  return occupe
+}
+
+/**
+ * Ce qui tombe en même temps qu'une séance, pour la personne visée. Liste vide quand la
+ * séance est introuvable : c'est la transaction qui le dira, pas ce contrôle-ci.
+ */
+export async function conflictsFor(
+  database: Firestore,
+  patientUid: string,
+  occurrenceId: string,
+): Promise<BusyEntry[]> {
+  const snapshot = await database.collection(COLLECTIONS.occurrences).doc(occurrenceId).get()
+  if (!snapshot.exists) return []
+  const occurrence = docToOccurrence(snapshot)
+  const jour = occurrence.localDate
+  const occupe = await busyOn(database, patientUid, jour, occurrenceId)
+  return conflictsWith({ start: occurrence.start, end: occurrence.end }, occupe)
 }
 
 export async function registerTx(

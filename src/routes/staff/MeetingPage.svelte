@@ -1,5 +1,6 @@
 <script lang="ts">
   import { staffStore } from '../../lib/staffState.svelte'
+  import type { TimeConflict } from '../../lib/data/staffPorts'
   import { navigate } from '../../lib/router.svelte'
   import { store } from '../../lib/appState.svelte'
   import { audienceLabelForStaff, isVisibleToService } from '../../lib/domain/audience'
@@ -9,6 +10,7 @@
     addLocalDays,
     formatDayLabel,
     formatLongDayLabel,
+    formatTime,
     formatTimeRange,
     startOfIsoWeek,
     todayLocalDate,
@@ -128,19 +130,45 @@
    */
   let aConfirmer = $state<string | null>(null)
 
-  async function basculer(patientUid: string, depassement = false): Promise<void> {
+  /**
+   * Le chevauchement d'horaire, rapporté par le serveur.
+   *
+   * Il ne peut pas se calculer ici : l'écran ne voit ni les rendez-vous des autres, ni
+   * les inscriptions d'une personne dans les activités qu'il n'affiche pas. Le serveur
+   * refuse donc une première fois en disant ce qui tombe en même temps, l'écran demande,
+   * et la même inscription repart avec l'accord du soignant.
+   */
+  let chevauchement = $state<{ patientUid: string; conflicts: TimeConflict[] } | null>(null)
+
+  async function basculer(
+    patientUid: string,
+    options: { depassement?: boolean; malgreLeChevauchement?: boolean } = {},
+  ): Promise<void> {
     if (courante === null || enCours !== null) return
     const board = { occurrence: courante, registrations: inscriptionsCourantes }
-    if (!depassement && !staffStore.isRegistered(patientUid) && wouldExceedCapacity(board, patientUid)) {
+    if (
+      options.depassement !== true &&
+      !staffStore.isRegistered(patientUid) &&
+      wouldExceedCapacity(board, patientUid)
+    ) {
       aConfirmer = patientUid
       return
     }
     aConfirmer = null
+    chevauchement = null
     enCours = patientUid
-    dernierMessage = await staffStore.togglePatient(courante.id, patientUid, {
-      ...(depassement ? { overCapacity: true } : {}),
+    const resultat = await staffStore.togglePatient(courante.id, patientUid, {
+      ...(options.depassement === true ? { overCapacity: true } : {}),
+      ...(options.malgreLeChevauchement === true ? { overrideConflict: true } : {}),
     })
     enCours = null
+    // Refusé faute de confirmation : on montre ce qui tombe en même temps, on demande.
+    if (resultat.conflicts !== undefined && resultat.conflicts.length > 0) {
+      chevauchement = { patientUid, conflicts: resultat.conflicts }
+      dernierMessage = null
+      return
+    }
+    dernierMessage = resultat.message
   }
 
   function allerA(decalage: number): void {
@@ -340,6 +368,44 @@
                     </span>
                   </button>
 
+                  {#if chevauchement !== null && chevauchement.patientUid === patient.uid}
+                    <div
+                      role="alert"
+                      class="mt-2 rounded-xl border-4 border-amber-500 bg-amber-50 p-3"
+                    >
+                      <p class="text-lg font-semibold text-ink">
+                        <span aria-hidden="true">⚠️</span>
+                        {#if chevauchement.conflicts.some((c) => c.kind === 'appointment')}
+                          {patient.firstName} a un rendez-vous à ce moment-là :
+                        {:else}
+                          {patient.firstName} est déjà pris à ce moment-là :
+                        {/if}
+                      </p>
+                      <ul class="mt-1 grid gap-1">
+                        {#each chevauchement.conflicts as conflit (conflit.label + conflit.start.toISOString())}
+                          <li class="text-lg text-ink">
+                            <span aria-hidden="true">{conflit.kind === 'appointment' ? '🩺' : '📅'}</span>
+                            {conflit.label}, de {formatTime(conflit.start)} à {formatTime(conflit.end)}
+                          </li>
+                        {/each}
+                      </ul>
+                      <p class="mt-2 text-lg text-ink">Voulez-vous l'inscrire quand même ?</p>
+                      <div class="mt-3 flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          class="btn btn-primary"
+                          disabled={enCours !== null}
+                          onclick={() => basculer(patient.uid, { malgreLeChevauchement: true })}
+                        >
+                          Oui, inscrire quand même
+                        </button>
+                        <button type="button" class="btn btn-secondary" onclick={() => (chevauchement = null)}>
+                          Annuler
+                        </button>
+                      </div>
+                    </div>
+                  {/if}
+
                   {#if aConfirmer === patient.uid && courante !== null}
                     <div
                       role="alert"
@@ -359,7 +425,7 @@
                           type="button"
                           class="btn btn-primary"
                           disabled={enCours !== null}
-                          onclick={() => basculer(patient.uid, true)}
+                          onclick={() => basculer(patient.uid, { depassement: true })}
                         >
                           Oui, dépasser
                         </button>

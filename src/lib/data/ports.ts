@@ -44,7 +44,17 @@ export type MyRegistration = {
 }
 
 export type RegisterResult =
-  | { ok: true; status: 'confirmed' | 'waitlist'; position: number | null }
+  | {
+      ok: true
+      status: 'confirmed' | 'waitlist'
+      position: number | null
+      /**
+       * Une autre activité tombe au même moment. L'inscription est prise — deux
+       * activités qui se chevauchent, c'est souvent sans importance — mais la personne
+       * doit le savoir. Un rendez-vous, lui, refuse l'inscription : voir `domain/conflicts`.
+       */
+      warning?: string
+    }
   | { ok: false; reason: string; message: string }
 
 export interface RegistrationService {

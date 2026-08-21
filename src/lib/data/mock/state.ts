@@ -9,6 +9,7 @@
  * les charge ensemble pour cette raison.
  */
 import { config } from '../../config'
+import { conflictsWith, type BusyEntry } from '../../domain/conflicts'
 import { expand } from '../../domain/recurrence'
 import { addLocalDays, instantOf, startOfIsoWeek, todayLocalDate } from '../../domain/time'
 import type { Appointment, Occurrence, Registration } from '../../domain/types'
@@ -17,6 +18,7 @@ import { activitiesSeed } from '../seed/activities.seed'
 import { patientsSeed, type SeedPatient } from '../seed/patients.seed'
 export type { SeedPatient }
 import type { PatientSession } from '../ports'
+import { mockCatalog } from './catalog'
 
 export const DEMO_PATIENT_UID = 'demo-patient'
 export const DEMO_SERVICE_ID = 'le-mazurel'
@@ -206,4 +208,55 @@ function syncCounts(monde: MockWorld, occurrenceId: string): void {
     registrations: monde.registrations.filter((r) => r.occurrenceId === occurrenceId),
   }
   monde.occurrences.set(occurrenceId, recount(board).occurrence)
+}
+
+/**
+ * Ce qui occupe déjà une personne le jour d'une séance donnée — la démonstration
+ * répondant à la même question que le serveur, et par le même chemin.
+ */
+export function busyOn(
+  patientUid: string,
+  localDate: string,
+  ignoreOccurrenceId?: string,
+): BusyEntry[] {
+  const occupe: BusyEntry[] = []
+
+  for (const inscription of world.registrations) {
+    if (inscription.patientUid !== patientUid || inscription.status === 'cancelled') continue
+    if (inscription.occurrenceId === ignoreOccurrenceId) continue
+    const occurrence = world.occurrences.get(inscription.occurrenceId)
+    if (occurrence === undefined || occurrence.localDate !== localDate) continue
+    if (occurrence.status === 'cancelled') continue
+    occupe.push({
+      start: occurrence.start,
+      end: occurrence.end,
+      label: occurrence.title,
+      kind: 'activity',
+    })
+  }
+
+  for (const rendezVous of world.appointments) {
+    if (rendezVous.patientUid !== patientUid || rendezVous.status !== 'scheduled') continue
+    if (rendezVous.localDate !== localDate || rendezVous.start === undefined || rendezVous.end === undefined) {
+      continue
+    }
+    const qui = rendezVous.withWhom ?? mockCatalog.appointmentKinds().find((k) => k.id === rendezVous.kindId)?.name
+    occupe.push({
+      start: rendezVous.start,
+      end: rendezVous.end,
+      label: `Rendez-vous avec ${qui ?? 'un professionnel'}`,
+      kind: 'appointment',
+    })
+  }
+  return occupe
+}
+
+/** Ce qui tombe en même temps qu'une séance, pour cette personne. */
+export function conflictsFor(patientUid: string, occurrenceId: string): BusyEntry[] {
+  const occurrence = world.occurrences.get(occurrenceId)
+  if (occurrence === undefined) return []
+  return conflictsWith(
+    { start: occurrence.start, end: occurrence.end },
+    busyOn(patientUid, occurrence.localDate, occurrenceId),
+  )
 }
