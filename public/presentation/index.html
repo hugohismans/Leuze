@@ -284,6 +284,49 @@
         html, .pont { scroll-behavior: auto; }
       }
 
+      /* --- La ligne du temps de la mise en place --- */
+      .chrono {
+        display: grid;
+        gap: 1rem;
+        margin: 1.4rem 0 0;
+        counter-reset: etape;
+      }
+      @media (min-width: 60rem) {
+        .chrono { grid-template-columns: repeat(4, 1fr); }
+      }
+      .etape {
+        position: relative;
+        padding: 1.1rem 1.1rem 1.1rem 3.6rem;
+        border: 2px solid var(--trait);
+        border-radius: 0.9rem;
+        background: #fff;
+      }
+      @media (min-width: 60rem) {
+        .etape { padding: 3.2rem 1.1rem 1.1rem; }
+      }
+      .etape::before {
+        counter-increment: etape;
+        content: counter(etape);
+        position: absolute;
+        top: 1.1rem; left: 1.1rem;
+        display: flex; align-items: center; justify-content: center;
+        width: 2rem; height: 2rem;
+        border-radius: 999px;
+        background: var(--bleu);
+        color: #fff;
+        font-weight: 700;
+        font-size: 1rem;
+      }
+      .etape h3 { margin: 0 0 0.4rem; }
+      .etape p { font-size: 1rem; }
+      .etape .quand {
+        display: block;
+        margin-top: 0.6rem;
+        font-size: 0.9rem;
+        font-weight: 700;
+        color: var(--encre-douce);
+      }
+
       /* --- En-tête et pied de page --- */
       .marque {
         position: fixed;
@@ -966,6 +1009,112 @@
         </div>
       </section>
 
+      <!-- ================= 14 bis. Le RGPD ================= -->
+      <section class="slide" id="s14b">
+        <div class="dedans">
+          <p class="oeil">À soumettre à votre délégué à la protection des données</p>
+          <h2>Le RGPD — ce qui est fait, et ce qui ne l'est pas</h2>
+
+          <p class="mesure">
+            Je préfère le dire avant qu'on me le demande : personne dont c'est le métier
+            n'a encore regardé ce projet, et la sécurité n'a fait l'objet d'aucun audit.
+            Voici de quoi en juger.
+          </p>
+
+          <div class="deux-colonnes">
+            <div>
+              <h3>Ce qui est déjà en place</h3>
+              <ul class="points">
+                <li>Un <strong>compte par personne</strong> ; le serveur refuse ce qui ne le concerne pas, ce n'est pas un affichage filtré.</li>
+                <li>Données <strong>hébergées en Europe</strong> (Belgique), en HTTPS.</li>
+                <li><strong>Purge automatique</strong> chaque nuit : rien ne traîne au-delà de trois mois.</li>
+                <li>Site <strong>non indexé</strong> par les moteurs de recherche.</li>
+                <li>Code <strong>ouvert et vérifiable</strong> — le code, pas les données.</li>
+              </ul>
+            </div>
+            <div>
+              <h3>Ce qui manque, honnêtement</h3>
+              <ul class="points">
+                <li>Le projet tourne sur <strong>mon compte personnel</strong>. C'est le point le plus gênant : il faut que l'hôpital en devienne propriétaire.</li>
+                <li>Ni <strong>contrat de sous-traitance</strong>, ni <strong>analyse d'impact</strong>, ni durée de conservation validée par un professionnel.</li>
+                <li>Le site est <strong>invisible, pas secret</strong> : l'obscurité n'est pas une sécurité.</li>
+                <li>Aucun test d'intrusion. Les règles d'accès sont vérifiées à chaque modification — ce n'est pas un audit.</li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="encadre">
+            <p>
+              <strong>Mon avis, et il vaut ce qu'il vaut :</strong> un prénom, un
+              service, des inscriptions, le métier de la personne qu'on va voir. C'est
+              peu — mais ce n'est pas rien : ici, savoir que <em>Marie du Mazurel voit le
+              psychiatre mardi</em> en dit déjà long. Ce sont bien des données
+              personnelles, et sans doute des données de santé au sens du règlement,
+              même sans nom de famille. <strong>C'est à votre délégué de trancher</strong>,
+              et je m'aligne sur ce qu'il dira.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= 14 ter. La mise en place ================= -->
+      <section class="slide" id="s14c">
+        <div class="dedans">
+          <p class="oeil">Si vous voulez essayer</p>
+          <h2>Ce que ça demande, concrètement</h2>
+
+          <p class="mesure">
+            Pas grand-chose, et surtout pas un projet informatique. Une heure de votre
+            temps, un service pour commencer, et on regarde ce que ça donne.
+          </p>
+
+          <div class="chrono">
+            <div class="etape">
+              <h3>L'avis du délégué</h3>
+              <p>
+                Rien ne commence avant que votre délégué à la protection des données ait
+                regardé et donné son accord. S'il dit non, on s'arrête là.
+              </p>
+              <span class="quand">D'abord, et sans négociation</span>
+            </div>
+            <div class="etape">
+              <h3>Une heure de paramétrage</h3>
+              <p>
+                Avec moi, et avec <strong>quelqu'un qui connaît bien la maison</strong> :
+                les services, les lieux, les activités, qui anime quoi, qui reçoit quand.
+                Une heure suffit — c'est du remplissage, pas de la programmation.
+              </p>
+              <span class="quand">Une heure, une seule fois</span>
+            </div>
+            <div class="etape">
+              <h3>Un essai sur La Couturelle</h3>
+              <p>
+                Un seul service, quelques semaines. Le papier continue en parallèle : si
+                l'application déçoit, on arrête sans que personne n'ait rien perdu.
+              </p>
+              <span class="quand">Quelques semaines</span>
+            </div>
+            <div class="etape">
+              <h3>Ensuite, si ça sert</h3>
+              <p>
+                Un deuxième service, puis les autres, au rythme que vous voulez. Chaque
+                service garde ses activités et ses habitudes.
+              </p>
+              <span class="quand">Seulement si l'essai convainc</span>
+            </div>
+          </div>
+
+          <div class="encadre">
+            <p>
+              Je ne demande <strong>ni budget, ni matériel, ni formation</strong>. Ce qui
+              coûte vraiment, c'est l'heure de la personne qui connaît le fonctionnement
+              de l'hôpital — je ne peux pas la remplacer, et c'est elle qui fera que
+              l'outil ressemble à ce que vous faites déjà.
+            </p>
+          </div>
+        </div>
+      </section>
+
       <!-- ================= 15. Et maintenant ================= -->
       <section class="slide bleu" id="s15">
         <div class="dedans">
@@ -1001,7 +1150,7 @@
     </main>
 
     <nav class="barre" aria-label="Navigation de la présentation">
-      <span class="compte" id="compte">1 / 16</span>
+      <span class="compte" id="compte">1 / 18</span>
       <div class="jauge" aria-hidden="true"><span id="jauge"></span></div>
       <div class="fleches">
         <button type="button" class="fleche" id="precedent" aria-label="Slide précédente">←</button>
