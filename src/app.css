@@ -179,6 +179,19 @@ body {
   }
 
   /*
+    Une feuille de code tient dans un tiers de page : le portrait lui va mieux que le
+    paysage réservé aux grilles horaires. Les navigateurs qui ignorent les pages nommées
+    l'impriment en paysage — lisible aussi, simplement moins joli.
+  */
+  @page portrait {
+    size: A4 portrait;
+  }
+
+  .feuille-portrait {
+    page: portrait;
+  }
+
+  /*
     La semaine du patient s'imprime en grille horaire — sept colonnes de jours — donc
     en paysage, comme le programme de l'unité.
   */
@@ -188,6 +201,20 @@ body {
     background: #fff;
   }
 
+  /*
+    Ce qui n'appartient pas à la feuille disparaît vraiment.
+
+    La première version se contentait de `visibility: hidden`, qui masque sans libérer
+    la place : le reste de l'écran continuait d'occuper sa hauteur et une feuille courte
+    sortait suivie d'une ou deux pages blanches. `display: none` sur tout ce qui ne
+    contient pas la feuille — et n'est pas dedans — fait retomber la hauteur du document
+    sur celle de la feuille seule.
+  */
+  body:has(.feuille) *:not(:has(.feuille)):not(.feuille):not(.feuille *) {
+    display: none;
+  }
+
+  /* Repli pour un navigateur sans `:has()` : masqué mais toujours encombrant. */
   body * {
     visibility: hidden;
   }
@@ -197,13 +224,26 @@ body {
     visibility: visible;
   }
 
+  /*
+    Ce qui contient la feuille ne doit rien ajouter autour d'elle. Les marges des
+    conteneurs — celles de l'écran — suffisaient à pousser une grille qui tenait tout
+    juste sur une seconde page.
+  */
+  body:has(.feuille) *:has(.feuille) {
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
   .feuille {
-    position: absolute;
-    top: 0;
-    left: 0;
     width: 100%;
+    margin: 0 !important;
     border: 0 !important;
     padding: 0 !important;
+  }
+
+  /* Boutons, liens de retour, barres de navigation : jamais sur le papier. */
+  .no-print {
+    display: none !important;
   }
 
   /* Une journée ne se coupe pas au milieu d'une page. */

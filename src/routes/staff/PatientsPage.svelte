@@ -77,7 +77,7 @@
 
   {#if codeDelivre !== null}
     <!-- Le code, affiché une seule fois. La feuille se découpe et se remet en main propre. -->
-    <div class="feuille card mb-6 border-4 border-brand-700 p-5">
+    <div class="feuille feuille-portrait card mb-6 border-4 border-brand-700 p-5">
       <h2 class="text-2xl font-bold text-ink">Code de {codeDelivre.firstName}</h2>
       <p class="my-4 text-center text-6xl font-bold tracking-[0.2em] text-brand-900">
         {codeDelivre.printableCode}
