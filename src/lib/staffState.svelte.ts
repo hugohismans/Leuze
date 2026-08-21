@@ -256,10 +256,36 @@ class StaffStore {
     await (await this.app$()).repository.warmAttendance().catch(() => undefined)
   }
 
+  /**
+   * Deux compteurs qui protègent l'affichage immédiat des réponses en retard.
+   *
+   * Une relecture partie avant un clic revient après lui, et rapporte l'état d'avant :
+   * le prénom qu'on venait de retirer se remettait tout seul, et le nombre d'inscrits
+   * disait autre chose que l'écran. C'est le prix de l'affichage optimiste, et il se
+   * paie en ordonnant les réponses plutôt qu'en les appliquant à l'aveugle.
+   *
+   * `#versionRoster` compte les modifications locales : une réponse préparée sous une
+   * version plus ancienne est périmée, on la jette. `#ecrituresEnCours` compte les
+   * inscriptions parties et pas encore revenues : tant qu'il en reste, aucune relecture
+   * ne fait autorité — le serveur n'a pas fini d'appliquer ce qu'on lui a demandé.
+   */
+  #versionRoster = 0
+  #ecrituresEnCours = 0
+  /** L'activité dont la liste est affichée : une réponse pour une autre ne vaut rien. */
+  #rosterDe: string | null = null
+
   async openRoster(occurrenceId: string): Promise<void> {
+    const version = this.#versionRoster
+    this.#rosterDe = occurrenceId
     const resultat = await (await this.app$()).repository
       .roster(occurrenceId)
       .catch(() => ({ lines: [], canMarkAttendance: false }))
+
+    // Périmée : on a cliqué entre-temps, ou une écriture est encore en route, ou l'on
+    // regarde déjà une autre activité. Dans les trois cas, l'écran a raison, pas nous.
+    if (version !== this.#versionRoster || this.#ecrituresEnCours > 0) return
+    if (this.#rosterDe !== occurrenceId) return
+
     this.roster = resultat.lines
     this.canMarkAttendance = resultat.canMarkAttendance
   }
@@ -274,6 +300,20 @@ class StaffStore {
     await this.openRoster(occurrenceId)
     await this.refresh()
     return resultat.message
+  }
+
+  /**
+   * Le nombre d'inscrits affiché suit le clic, comme la liste.
+   *
+   * Sans cela, l'écran se contredisait : le prénom passait en vert, et « 8 inscrits sur
+   * 12 » restait à 8 jusqu'à la relecture. La vraie valeur revient du serveur derrière.
+   */
+  private ajusterCompteur(occurrenceId: string, delta: number): void {
+    this.occurrences = this.occurrences.map((occurrence) =>
+      occurrence.id === occurrenceId
+        ? { ...occurrence, confirmedCount: Math.max(0, occurrence.confirmedCount + delta) }
+        : occurrence,
+    )
   }
 
   isRegistered(patientUid: string): boolean {
@@ -320,6 +360,10 @@ class StaffStore {
     */
     const avant = this.roster
     const personne = this.patients.find((p) => p.uid === patientUid)
+    // Toute modification locale périme les relectures déjà parties.
+    this.#versionRoster += 1
+    this.#ecrituresEnCours += 1
+    this.ajusterCompteur(occurrenceId, inscrit ? -1 : 1)
     this.roster = inscrit
       ? this.roster.filter((ligne) => ligne.patientUid !== patientUid)
       : [
@@ -333,21 +377,31 @@ class StaffStore {
           },
         ]
 
-    const resultat = inscrit
-      ? await repository.unregisterPatient(occurrenceId, patientUid)
-      : await repository.registerPatient(occurrenceId, patientUid, options)
+    let resultat
+    try {
+      resultat = inscrit
+        ? await repository.unregisterPatient(occurrenceId, patientUid)
+        : await repository.registerPatient(occurrenceId, patientUid, options)
+    } finally {
+      this.#ecrituresEnCours -= 1
+    }
 
     // Refusé : on remet la liste telle qu'elle était. Le message, lui, vient du serveur.
-    if (!resultat.ok) this.roster = avant
+    if (!resultat.ok) {
+      this.#versionRoster += 1
+      this.ajusterCompteur(occurrenceId, inscrit ? 1 : -1)
+      this.roster = avant
+    }
 
     /*
-      La vérité vient ensuite, sans faire attendre : la liste réelle — avec les positions
-      en liste d'attente, que seul le serveur connaît — et les compteurs de la semaine se
-      remettent d'aplomb en arrière-plan. Si l'affichage optimiste s'était trompé, il se
-      corrige tout seul une seconde plus tard.
+      La vérité vient ensuite, sans faire attendre — mais seulement quand plus rien n'est
+      en route. Relire pendant qu'une autre inscription est partie rapporterait un état
+      déjà dépassé, et ferait clignoter l'écran.
     */
-    void this.openRoster(occurrenceId)
-    void this.refresh()
+    if (this.#ecrituresEnCours === 0) {
+      void this.openRoster(occurrenceId)
+      void this.refresh()
+    }
     // La désinscription ne rend jamais de chevauchement : le champ n'existe que sur
     // l'autre chemin, d'où la vérification plutôt qu'un accès direct.
     const conflits = (resultat as { conflicts?: TimeConflict[] }).conflicts
