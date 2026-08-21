@@ -12,6 +12,7 @@
     weekDays,
   } from '../lib/domain/time'
   import { navigate } from '../lib/router.svelte'
+  import WeekGrid from '../lib/ui/WeekGrid.svelte'
 
   /**
    * « Ma semaine » : les activités auxquelles la personne est inscrite et ses
@@ -65,13 +66,22 @@
       </p>
     </header>
 
+    <!--
+      Deux présentations des mêmes données. À l'écran, une liste : c'est ce qui se lit
+      sur un téléphone et se capture d'un coup. Sur le papier, une grille horaire, dont
+      les trous sont l'objet même — c'est là qu'on ajoute une activité à la main.
+    -->
+    <div class="grille-papier">
+      <WeekGrid week={semaine} />
+    </div>
+
     {#if total === 0}
-      <p class="text-lg text-ink">
+      <p class="liste-ecran text-lg text-ink">
         Vous n'avez rien de prévu cette semaine. Vous pouvez choisir une activité dans le
         calendrier, ou en parler à un soignant.
       </p>
     {:else}
-      <ul class="grid gap-4">
+      <ul class="liste-ecran grid gap-4">
         {#each semaine as jour (jour.date)}
           <li class="jour" class:aujourdhui={jour.date === aujourdhui}>
             <h2 class="text-xl font-bold text-ink">
@@ -130,6 +140,10 @@
       <span aria-hidden="true">🖨️</span> Imprimer ma semaine
     </button>
     <p class="text-base text-ink-soft">
+      La feuille imprimée présente la semaine en tableau, avec les heures et des cases
+      libres : vous pouvez y ajouter des activités à la main.
+    </p>
+    <p class="text-base text-ink-soft">
       Vous pouvez aussi faire une capture d'écran de cette page pour la garder dans votre
       téléphone.
     </p>
@@ -140,6 +154,19 @@
 </section>
 
 <style>
+  /* La grille n'existe que sur le papier ; la liste, qu'à l'écran. */
+  .grille-papier {
+    display: none;
+  }
+  @media print {
+    .grille-papier {
+      display: block;
+    }
+    .liste-ecran {
+      display: none;
+    }
+  }
+
   .jour.aujourdhui > h2 {
     color: var(--color-brand-700);
   }

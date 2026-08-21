@@ -179,18 +179,9 @@ body {
   }
 
   /*
-    La semaine d'un patient tient dans une colonne : elle s'imprime en portrait, et se
-    plie en quatre pour une poche. Les pages nommées ne sont pas comprises partout ;
-    au pire, la feuille sort en paysage, ce qui reste lisible.
+    La semaine du patient s'imprime en grille horaire — sept colonnes de jours — donc
+    en paysage, comme le programme de l'unité.
   */
-  @page ma-semaine {
-    size: A4 portrait;
-    margin: 12mm;
-  }
-
-  .ma-semaine {
-    page: ma-semaine;
-  }
 
   html,
   body {

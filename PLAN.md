@@ -179,6 +179,17 @@ compacte, ce qui est exactement ce qu'il faut pour l'imprimer et pour la lire su
 téléphone. Aucune image n'est générée : tous les téléphones savent faire une capture, et
 un fichier à télécharger puis à retrouver dans une galerie serait un obstacle de plus.
 
+**Deux présentations des mêmes données.** À l'écran, une liste verticale : c'est ce qui se
+lit sur un téléphone et se capture d'un coup. Sur le papier, une **grille horaire** — les
+heures à gauche, les sept jours en colonnes, les activités posées à leur place réelle.
+
+Les trous de cette grille ne sont pas un défaut de remplissage, ils en sont l'objet : la
+personne y écrit à la main ce qu'elle ajoute. D'où les lignes de demi-heure, assez claires
+pour ne pas gêner la lecture et assez visibles pour guider l'écriture, et des cases assez
+hautes pour qu'on puisse y inscrire un mot. C'est aussi pourquoi la plage horaire ne se
+resserre jamais autour des seules activités inscrites : elle part de 9 h – 18 h et ne fait
+que s'élargir.
+
 Un détail qui compte plus qu'il n'en a l'air : **les activités annulées restent, barrées**
 avec leur motif. Les faire disparaître d'un programme peut-être déjà imprimé serait pire
 que de les montrer barrées.

@@ -124,9 +124,10 @@ serveur avec un poivre secret, ce qu'un navigateur ne peut pas faire.
 ## « Ma semaine », côté patient
 
 Depuis « Mes inscriptions », le patient ouvre sa propre semaine : ses activités et ses
-rendez-vous mêlés, dans l'ordre de chaque journée. La page sert à trois usages avec la
-même mise en page — la consulter, en faire une **capture d'écran** à garder dans son
-téléphone, ou l'**imprimer** (A4 portrait, une page).
+rendez-vous mêlés, dans l'ordre de chaque journée. La page sert à trois usages — la consulter, en faire une **capture d'écran** à garder dans
+son téléphone, ou l'**imprimer**. À l'écran, une liste verticale, lisible sur un téléphone.
+Sur le papier, une **grille horaire** en A4 paysage, sur une page : les heures à gauche,
+les sept jours en colonnes, et des cases libres pour ajouter des activités à la main.
 
 Une séance annulée y reste affichée, barrée avec son motif.
 
