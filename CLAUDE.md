@@ -110,6 +110,9 @@ L'UI n'importe **jamais** `firebase/*` directement : elle consomme les interface
 | `npm run check` | `svelte-check` + `tsc --noEmit` |
 | `npm run check:functions` | typage des Cloud Functions |
 | `npm run promote:admin` | donne le rôle administrateur à un compte existant |
+| `npm run demo:reset -- --je-confirme` | **vide la vraie base** (sauf le compte administrateur) et la remplit d'un jeu de présentation |
+| `npm run demo:vider -- --je-confirme` | vide seulement |
+| `npm run demo:repetition` | rejoue le même geste sur l'émulateur, sans rien risquer |
 | `npm run journal` | dernières lignes du journal des Cloud Functions en ligne |
 | `npm run ouvrir:fonctions` | redonne aux fonctions appelables le droit d'être appelées (fait automatiquement à chaque publication ; à la main en dépannage) |
 | `npm run autoriser:jetons` | autorise les fonctions à ouvrir une session pour un patient |
