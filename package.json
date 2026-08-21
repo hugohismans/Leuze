@@ -26,7 +26,8 @@
     "deploy:app": "npm run build:app && firebase deploy --only hosting",
     "journal": "firebase functions:log --project leuze-d23b5 -n 40",
     "ouvrir:fonctions": "bash scripts/ouvrir-fonctions.sh",
-    "autoriser:jetons": "bash scripts/autoriser-jetons.sh"
+    "autoriser:jetons": "bash scripts/autoriser-jetons.sh",
+    "connexion": "python3 scripts/connexion-firebase.py"
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^5.0.2",

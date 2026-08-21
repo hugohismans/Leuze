@@ -21,11 +21,12 @@ if ! npx firebase projects:list --project "$PROJET" >/dev/null 2>&1; then
 
 Reconnectez-vous, puis relancez cette commande :
 
-  npx firebase login --reauth --no-localhost
+  npm run connexion
 
-Une adresse s'affiche : ouvrez-la, choisissez votre compte Google, puis recopiez le
-code obtenu dans le terminal. Le code expire vite — faites-le d'une traite, et
-vérifiez qu'il est collé en entier.
+Une adresse s'affiche : ouvrez-la, choisissez votre compte Google, puis collez le code
+obtenu dans le fichier « code-firebase.txt » à l'aide de l'éditeur Cloud Shell. Le
+script le récupère tout seul — rien à coller dans le terminal, où le collage est
+souvent impossible depuis un téléphone.
 
 AIDE
   exit 1
