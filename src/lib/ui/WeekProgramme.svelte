@@ -139,8 +139,18 @@
 </div>
 
 <style>
-  /* À l'écran, l'échelle du reste de l'application : 18 px de base. */
-  .titre,
+  /*
+    À l'écran, l'échelle du reste de l'application : 18 px de base.
+
+    Le titre, lui, respire selon la place réellement disponible. Sept colonnes sur un
+    écran de bureau ne laissent qu'environ 140 points par jour, et « Ergothérapie » écrit
+    en 20 points en demande 150 : le mot sortait du cadre. Il se réduit donc jusqu'à
+    18 points — le plancher de l'application, jamais franchi — et se coupe au trait
+    d'union au-delà.
+  */
+  .titre {
+    font-size: clamp(1rem, 1.15cqi, 1.125rem);
+  }
   .heure,
   .en-tete-jour {
     font-size: 1.125rem;
@@ -178,6 +188,11 @@
   */
   @media screen and (max-width: 1100px) {
     .programme {
+      grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)) !important;
+    }
+  }
+  @media screen and (max-width: 520px) {
+    .programme {
       grid-template-columns: minmax(0, 1fr) !important;
     }
   }
@@ -209,7 +224,21 @@
   .creneau {
     min-width: 0;
   }
-  @container (max-width: 1000px) {
+  /*
+    En dessous de 1460 points, sept colonnes ne tiennent plus : chacune ferait moins de
+    175 points, et « Ergothérapie » écrit en 18 points en demande 150 sans compter le
+    cadre. Plutôt qu'une seule colonne — la semaine devenait alors un très long
+    déroulé — les jours se répartissent sur autant de colonnes qu'il en tient, à
+    230 points au moins chacune. Ils restent dans l'ordre, du lundi au dimanche, et
+    chaque colonne porte son nom de jour : la semaine se relit sans compter les cases.
+  */
+  @container (max-width: 1459px) {
+    .programme {
+      grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)) !important;
+    }
+  }
+  /* Un écran étroit — un téléphone tenu à la main — revient à une seule colonne. */
+  @container (max-width: 520px) {
     .programme {
       grid-template-columns: minmax(0, 1fr) !important;
     }
