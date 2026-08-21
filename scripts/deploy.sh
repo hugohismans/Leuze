@@ -14,6 +14,18 @@ vert() { printf '\033[0;32m%s\033[0m\n' "$*"; }
 rouge() { printf '\033[0;31m%s\033[0m\n' "$*"; }
 
 PROJET="${GCLOUD_PROJECT:-leuze-d23b5}"
+DEPOT="https://github.com/hugohismans/Leuze"
+
+# Cloud Shell clone parfois depuis une copie locale : « git pull » répond alors
+# « Already up to date » sans jamais aller sur GitHub. On le signale plutôt que de
+# déployer une version périmée sans s'en rendre compte.
+ORIGINE="$(git remote get-url origin 2>/dev/null || echo '')"
+if [ -n "$ORIGINE" ] && [ "$ORIGINE" != "$DEPOT" ] && [ "$ORIGINE" != "$DEPOT.git" ]; then
+  printf '\n\033[0;31m%s\033[0m\n' "Ce dossier ne suit pas GitHub (origine : ${ORIGINE:-aucune})."
+  echo "Remettez-le d'aplomb, puis relancez :"
+  echo "  git remote set-url origin $DEPOT && git pull origin main"
+  exit 1
+fi
 
 # Les dépendances d'abord : c'est elles qui apportent le CLI Firebase.
 # Attention, le paquet « firebase » est le SDK client, sans exécutable ; le CLI
