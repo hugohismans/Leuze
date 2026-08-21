@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import { makeOccurrence, makeRegistration } from './fixtures'
-import { promote, recount, register, rosterOf, unregister, waitlistPosition, type Board } from './waitlist'
+import {
+  promote,
+  recount,
+  register,
+  rosterOf,
+  unregister,
+  waitlistPosition,
+  wouldExceedCapacity,
+  type Board,
+} from './waitlist'
 
 const now = new Date('2025-08-10T09:00:00Z')
 const plusTard = (minutes: number) => new Date(now.getTime() + minutes * 60_000)
@@ -216,5 +225,86 @@ describe('quelqu’un se présente et l’animateur l’accepte', () => {
   it('mais jamais sur une séance annulée', () => {
     const board = emptyBoard(8, { status: 'cancelled' })
     expect(register(board, 'a', { now, registrationId: 'r', by: 'staff', walkIn: true }).ok).toBe(false)
+  })
+})
+
+describe('le dépassement assumé en réunion du lundi', () => {
+  /** Deux places, deux inscrits : la troisième personne fait déborder. */
+  const complete = (overrides = {}): Board => {
+    let board = emptyBoard(2, { registrationRequired: true, waitlistEnabled: true, ...overrides })
+    board = inscrire(board, 'a', now, 'staff')
+    board = inscrire(board, 'b', plusTard(1), 'staff')
+    return board
+  }
+
+  it('prévient qu’on va dépasser, sans rien refuser', () => {
+    expect(wouldExceedCapacity(complete(), 'c')).toBe(true)
+    expect(wouldExceedCapacity(emptyBoard(2), 'a')).toBe(false)
+  })
+
+  it('ne prévient pas quand les places sont illimitées', () => {
+    expect(wouldExceedCapacity(emptyBoard(null), 'a')).toBe(false)
+  })
+
+  it('ne prévient pas pour quelqu’un déjà inscrit', () => {
+    expect(wouldExceedCapacity(complete(), 'a')).toBe(false)
+  })
+
+  it('inscrit la troisième personne pour de bon, et non en attente', () => {
+    const outcome = register(complete(), 'c', {
+      now: plusTard(2),
+      registrationId: 'reg-c',
+      by: 'staff',
+      overCapacity: true,
+    })
+    expect(outcome.ok && outcome.status).toBe('confirmed')
+    expect(outcome.ok && outcome.board.occurrence.confirmedCount).toBe(3)
+    expect(outcome.ok && outcome.board.occurrence.waitlistCount).toBe(0)
+  })
+
+  it('sans le dépassement, elle passe en liste d’attente', () => {
+    const outcome = register(complete(), 'c', {
+      now: plusTard(2),
+      registrationId: 'reg-c',
+      by: 'staff',
+    })
+    expect(outcome.ok && outcome.status).toBe('waitlist')
+  })
+
+  it('passe outre une activité complète sans liste d’attente', () => {
+    const board = complete({ waitlistEnabled: false })
+    const refus = register(board, 'c', { now: plusTard(2), registrationId: 'reg-c', by: 'staff' })
+    expect(refus).toEqual({ ok: false, reason: 'full-no-waitlist' })
+
+    const force = register(board, 'c', {
+      now: plusTard(2),
+      registrationId: 'reg-c',
+      by: 'staff',
+      overCapacity: true,
+    })
+    expect(force.ok && force.status).toBe('confirmed')
+  })
+
+  it('n’est jamais accordé à un patient qui s’inscrit seul', () => {
+    // La limite reste la limite : il passe en attente, comme tout le monde.
+    const outcome = register(complete(), 'malin', {
+      now: plusTard(2),
+      registrationId: 'reg-malin',
+      by: 'patient',
+      overCapacity: true,
+    })
+    expect(outcome.ok && outcome.status).toBe('waitlist')
+  })
+
+  it('ne rouvre pas une séance déjà passée : dépasser n’est pas faire l’appel', () => {
+    // La séance de référence commence le 19 août à 14 h : on se place le lendemain.
+    const apres = new Date('2025-08-20T09:00:00Z')
+    const outcome = register(emptyBoard(2, { registrationRequired: true }), 'c', {
+      now: apres,
+      registrationId: 'reg-c',
+      by: 'staff',
+      overCapacity: true,
+    })
+    expect(outcome).toEqual({ ok: false, reason: 'past' })
   })
 })

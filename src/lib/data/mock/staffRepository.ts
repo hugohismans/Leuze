@@ -345,13 +345,14 @@ export function createMockStaffApp(): StaffApp {
         return { ok: true, message: 'Le séjour est clôturé. Le code ne fonctionne plus.' }
       },
 
-      async registerPatient(occurrenceId: string, patientUid: string) {
+      async registerPatient(occurrenceId: string, patientUid: string, options = {}) {
         const board = boardOf(occurrenceId)
         if (board === null) return { ok: false, message: "Cette activité n'a pas été trouvée." }
         const outcome = domainRegister(board, patientUid, {
           now: new Date(),
           registrationId: `${occurrenceId}--${patientUid}--${Date.now()}`,
           by: 'staff',
+          ...(options.overCapacity === true ? { overCapacity: true } : {}),
         })
         if (!outcome.ok) {
           return {

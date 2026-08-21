@@ -150,6 +150,12 @@ export interface StaffRepository {
   registerPatient(
     occurrenceId: string,
     patientUid: string,
+    /**
+     * `overCapacity` : le soignant assume un dépassement du nombre de places, après que
+     * l'écran le lui a demandé. Sans lui, la personne passe en liste d'attente ou est
+     * refusée, comme pour tout le monde.
+     */
+    options?: { overCapacity?: boolean },
   ): Promise<{ ok: boolean; status?: 'confirmed' | 'waitlist'; message: string }>
 
   unregisterPatient(occurrenceId: string, patientUid: string): Promise<{ ok: boolean; message: string }>

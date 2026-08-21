@@ -249,12 +249,17 @@ class StaffStore {
    * il est retiré. Rien d'autre à faire — le patient retrouvera l'activité dans son
    * calendrier s'il ouvre l'application.
    */
-  async togglePatient(occurrenceId: string, patientUid: string): Promise<string> {
+  async togglePatient(
+    occurrenceId: string,
+    patientUid: string,
+    /** Le soignant a confirmé le dépassement : voir `wouldExceedCapacity` dans le domaine. */
+    options: { overCapacity?: boolean } = {},
+  ): Promise<string> {
     const repository = (await this.app$()).repository
     const inscrit = this.isRegistered(patientUid)
     const resultat = inscrit
       ? await repository.unregisterPatient(occurrenceId, patientUid)
-      : await repository.registerPatient(occurrenceId, patientUid)
+      : await repository.registerPatient(occurrenceId, patientUid, options)
 
     await this.openRoster(occurrenceId)
     await this.refresh()

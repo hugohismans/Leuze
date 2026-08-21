@@ -65,6 +65,12 @@ export async function registerTx(
     serviceId?: string | null
     /** L'animateur accepte quelqu'un qui s'est présenté : voir `register` dans le domaine. */
     walkIn?: boolean
+    /**
+     * Le personnel assume un dépassement du nombre de places, en réunion. Le domaine
+     * l'ignore pour une inscription faite par un patient : c'est là que la garantie vit,
+     * pas dans l'appel.
+     */
+    overCapacity?: boolean
     now?: Date
   },
 ): Promise<RegisterOutput> {
@@ -85,6 +91,7 @@ export async function registerTx(
       registrationId,
       by: options.by,
       ...(options.walkIn === true ? { walkIn: true } : {}),
+      ...(options.overCapacity === true ? { overCapacity: true } : {}),
     })
     if (!outcome.ok) {
       return {

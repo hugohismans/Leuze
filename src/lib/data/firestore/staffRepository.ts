@@ -385,13 +385,19 @@ export function createFirestoreStaffApp(): StaffApp {
         }
       },
 
-      async registerPatient(occurrenceId: string, patientUid: string) {
+      async registerPatient(occurrenceId: string, patientUid: string, options = {}) {
         try {
           const call = httpsCallable<
-            { occurrenceId: string; patientUid: string },
+            { occurrenceId: string; patientUid: string; overCapacity?: boolean },
             { ok: boolean; status?: 'confirmed' | 'waitlist'; message?: string }
           >(functions, 'staffRegister')
-          const resultat = (await call({ occurrenceId, patientUid })).data
+          const resultat = (
+            await call({
+              occurrenceId,
+              patientUid,
+              ...(options.overCapacity === true ? { overCapacity: true } : {}),
+            })
+          ).data
           return {
             ok: resultat.ok,
             ...(resultat.status ? { status: resultat.status } : {}),

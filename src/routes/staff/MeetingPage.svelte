@@ -4,6 +4,7 @@
   import { store } from '../../lib/appState.svelte'
   import { audienceLabelForStaff, isVisibleToService } from '../../lib/domain/audience'
   import { capacityOf, staffCapacityLabel } from '../../lib/domain/capacity'
+  import { wouldExceedCapacity } from '../../lib/domain/waitlist'
   import {
     addLocalDays,
     formatDayLabel,
@@ -88,6 +89,23 @@
 
   const etat = $derived(courante === null ? null : capacityOf(courante))
 
+  /**
+   * Les inscriptions telles que le domaine les attend. La liste servie par le serveur ne
+   * porte que ce que l'écran affiche : on la complète de ce que `wouldExceedCapacity`
+   * regarde — le statut suffit, il ne compte que les confirmés.
+   */
+  const inscriptionsCourantes = $derived(
+    staffStore.roster.map((ligne) => ({
+      id: ligne.patientUid,
+      occurrenceId: courante?.id ?? '',
+      patientUid: ligne.patientUid,
+      status: ligne.status,
+      createdAt: new Date(0),
+      queuedAt: new Date(0),
+      createdBy: 'staff' as const,
+    })),
+  )
+
   // À chaque changement d'activité, on relit la liste des inscrits.
   let chargeePour = $state<string | null>(null)
   $effect(() => {
@@ -97,10 +115,31 @@
     void staffStore.openRoster(id)
   })
 
-  async function basculer(patientUid: string): Promise<void> {
+  /**
+   * Le dépassement, demandé et non subi.
+   *
+   * L'équipe décide parfois qu'on peut être neuf pour huit places : elle connaît la salle,
+   * le groupe et la personne. L'application n'a pas à discuter cette décision — mais elle
+   * la demande, sinon un dépassement passerait inaperçu et l'on découvrirait la salle
+   * trop petite le jour même.
+   *
+   * Uniquement ici. Un patient qui s'inscrit seul depuis sa tablette n'y a pas droit : le
+   * domaine ignore le drapeau pour une inscription faite par un patient.
+   */
+  let aConfirmer = $state<string | null>(null)
+
+  async function basculer(patientUid: string, depassement = false): Promise<void> {
     if (courante === null || enCours !== null) return
+    const board = { occurrence: courante, registrations: inscriptionsCourantes }
+    if (!depassement && !staffStore.isRegistered(patientUid) && wouldExceedCapacity(board, patientUid)) {
+      aConfirmer = patientUid
+      return
+    }
+    aConfirmer = null
     enCours = patientUid
-    dernierMessage = await staffStore.togglePatient(courante.id, patientUid)
+    dernierMessage = await staffStore.togglePatient(courante.id, patientUid, {
+      ...(depassement ? { overCapacity: true } : {}),
+    })
     enCours = null
   }
 
@@ -300,6 +339,40 @@
                       {#if attente}· en liste d'attente{/if}
                     </span>
                   </button>
+
+                  {#if aConfirmer === patient.uid && courante !== null}
+                    <div
+                      role="alert"
+                      class="mt-2 rounded-xl border-4 border-amber-500 bg-amber-50 p-3"
+                    >
+                      <p class="text-lg font-semibold text-ink">
+                        <span aria-hidden="true">⚠️</span>
+                        L'activité est complète : {courante.confirmedCount} inscrits pour
+                        {courante.capacity} places.
+                      </p>
+                      <p class="mt-1 text-lg text-ink">
+                        Inscrire {patient.firstName} fera
+                        {courante.confirmedCount + 1} personnes. Voulez-vous continuer ?
+                      </p>
+                      <div class="mt-3 flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          class="btn btn-primary"
+                          disabled={enCours !== null}
+                          onclick={() => basculer(patient.uid, true)}
+                        >
+                          Oui, dépasser
+                        </button>
+                        <button
+                          type="button"
+                          class="btn btn-secondary"
+                          onclick={() => (aConfirmer = null)}
+                        >
+                          Annuler
+                        </button>
+                      </div>
+                    </div>
+                  {/if}
                 </li>
               {/each}
             </ul>

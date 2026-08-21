@@ -115,11 +115,17 @@ export const myRegistrations = onCall(async (request: CallableRequest) => {
 })
 
 /** Le soignant inscrit quelqu'un à sa place — un patient sans borne, une demande orale. */
+/**
+ * Inscription prise par un soignant. Il peut assumer un dépassement du nombre de places —
+ * l'équipe décide parfois qu'on peut être neuf pour huit, elle connaît la salle et le
+ * groupe. L'écran le lui a demandé avant d'en arriver là.
+ */
 export const staffRegister = onCall(async (request: CallableRequest) => {
   requireStaff(request)
   const occurrenceId = requireString(request.data?.occurrenceId, 'occurrenceId')
   const patientUid = requireString(request.data?.patientUid, 'patientUid')
-  return registerTx(db(), { occurrenceId, patientUid, by: 'staff' })
+  const overCapacity = request.data?.overCapacity === true
+  return registerTx(db(), { occurrenceId, patientUid, by: 'staff', overCapacity })
 })
 
 export const staffUnregister = onCall(async (request: CallableRequest) => {
