@@ -17,7 +17,14 @@
    *
    * Le tiroir est une vraie boîte de dialogue : « Échap » le ferme, le fond cliquable
    * aussi, et le focus revient sur le bouton qui l'a ouvert. On n'y est jamais enfermé.
+   *
+   * Sur un grand écran, il ne se cache plus : il devient une colonne fixe à gauche, et
+   * la barre disparaît. Quelqu'un qui passe la journée là-dedans ne doit pas cliquer pour
+   * atteindre son menu ; sur un téléphone ou une tablette, la place manque et le tiroir
+   * reprend ses droits. Le seuil est déclaré ici **et** dans `App.svelte`, qui décale
+   * l'application d'autant : les deux doivent rester d'accord.
    */
+  const GRAND_ECRAN = '(min-width: 1280px)'
   // « Mon planning » n'apparaît que pour un compte relié à un intervenant : ailleurs,
   // l'entrée ne mènerait nulle part.
   const monPlanning = $derived(staffStore.identity.practitionerId)
@@ -64,6 +71,18 @@
   let ouvert = $state(false)
   let bouton = $state<HTMLButtonElement | null>(null)
   let tiroir = $state<HTMLElement | null>(null)
+  let grand = $state(typeof window === 'undefined' ? false : window.matchMedia(GRAND_ECRAN).matches)
+
+  $effect(() => {
+    const media = window.matchMedia(GRAND_ECRAN)
+    const suivre = (event: MediaQueryListEvent): void => {
+      grand = event.matches
+      // Redevenu large, un tiroir resté « ouvert » verrouillerait le défilement pour rien.
+      if (event.matches) ouvert = false
+    }
+    media.addEventListener('change', suivre)
+    return () => media.removeEventListener('change', suivre)
+  })
 
   function fermer(rendreLeFocus = true): void {
     if (!ouvert) return
@@ -74,12 +93,14 @@
 
   function allerA(chemin: string): void {
     navigate(chemin)
-    fermer()
+    // Dépliée à demeure, la colonne n'a rien à refermer.
+    if (!grand) fermer()
   }
 
   // Ouvert, le tiroir prend le focus et retient la page derrière lui. « Échap » en sort.
+  // Rien de tout cela quand il est déplié à demeure : ce n'est plus une boîte de dialogue.
   $effect(() => {
-    if (!ouvert) return
+    if (!ouvert || grand) return
     tiroir?.querySelector<HTMLElement>('button')?.focus()
 
     const precedent = document.body.style.overflow
@@ -112,6 +133,7 @@
   </li>
 {/snippet}
 
+{#if !grand}
 <div class="barre no-print">
   <div class="dedans">
     <button
@@ -130,20 +152,25 @@
     <p class="ecran">{ecranCourant}</p>
   </div>
 </div>
+{/if}
 
-{#if ouvert}
+{#if ouvert && !grand}
   <!--
     Le fond n'est pas qu'un décor : c'est la façon la plus naturelle de refermer un
     tiroir. Il porte donc un vrai bouton, et non une division cliquable.
   -->
   <button type="button" class="voile no-print" aria-label="Fermer le menu" onclick={() => fermer()}
   ></button>
+{/if}
 
+{#if ouvert || grand}
   <nav id="tiroir-soignant" class="tiroir no-print" bind:this={tiroir} aria-label="Espace soignant">
     <div class="tete">
-      <button type="button" class="btn btn-secondary" onclick={() => fermer()}>
-        <span aria-hidden="true">✕</span> Fermer
-      </button>
+      {#if !grand}
+        <button type="button" class="btn btn-secondary" onclick={() => fermer()}>
+          <span aria-hidden="true">✕</span> Fermer
+        </button>
+      {/if}
       <p class="qui">{staffStore.identity.firstName ?? staffStore.identity.email}</p>
     </div>
 
@@ -244,6 +271,23 @@
   @keyframes entrer {
     from {
       transform: translateX(-100%);
+    }
+  }
+
+  /*
+    Dépliée à demeure : plus une boîte posée par-dessus, mais une colonne du décor. Elle
+    perd donc son ombre et son entrée en scène, et rend sa place au contenu — c'est
+    `App.svelte` qui décale l'application de la même largeur.
+  */
+  @media screen and (min-width: 1280px) {
+    .tiroir {
+      /*
+        Plus étroite que le tiroir : chaque point pris ici est un point de moins pour la
+        semaine, qui a sept colonnes à loger. 18 rem suffisent à « Réunion du lundi ».
+      */
+      width: 18rem;
+      box-shadow: none;
+      animation: none;
     }
   }
 

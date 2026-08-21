@@ -53,6 +53,13 @@
 
 <a class="skip-link" href="#contenu">Aller au contenu</a>
 
+<!--
+  Sur un grand écran, la navigation soignante reste dépliée à gauche, en colonne fixe :
+  quelqu'un qui l'utilise toute la journée ne doit pas cliquer pour l'atteindre. Toute
+  l'application se décale d'autant. En dessous, elle redevient un tiroir — la largeur ne
+  suffit pas à porter les deux.
+-->
+<div class="application" class:soignant={espaceSoignant}>
 <AppHeader />
 <ImpersonationBanner />
 
@@ -136,3 +143,16 @@
     Le logo est celui du groupe ACIS et reste sa propriété.
   </p>
 </footer>
+</div>
+
+<style>
+  /*
+    Même largeur que le tiroir, déclarée une seule fois : les deux doivent s'accorder au
+    pixel près, sinon la colonne laisserait un bord vide ou mordrait sur le contenu.
+  */
+  @media screen and (min-width: 1280px) {
+    .application.soignant {
+      padding-inline-start: 18rem;
+    }
+  }
+</style>

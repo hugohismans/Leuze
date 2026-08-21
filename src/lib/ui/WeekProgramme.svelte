@@ -25,6 +25,12 @@
   const aujourdhui = todayLocalDate()
 </script>
 
+<!--
+  L'enveloppe ne sert qu'à une chose : donner à la grille une largeur de référence qui
+  soit la sienne, et non celle de la fenêtre. Depuis que la navigation soignante occupe
+  une colonne fixe à gauche, les deux ne coïncident plus — les sept jours débordaient.
+-->
+<div class="enveloppe">
 <div class="programme grid gap-3" style="grid-template-columns: repeat(7, minmax(0, 1fr));">
   {#each programme as jour (jour.date)}
     <section class="jour flex min-w-0 flex-col rounded-xl border-2 border-line" class:aujourdhui={jour.date === aujourdhui}>
@@ -33,7 +39,13 @@
         <span class="text-ink-soft">{formatDayNumber(jour.date)}</span>
       </h3>
 
-      <div class="flex flex-1 flex-col gap-2 p-2">
+      <!--
+        `min-w-0` n'est pas décoratif : un élément de « flex » refuse par défaut de
+        rétrécir sous la largeur de son contenu, et les cartes débordaient alors de leur
+        colonne. Le défaut ne se voyait pas tant que la semaine se dépliait en liste dès
+        1100 points — il est apparu le jour où la navigation a pris une colonne.
+      -->
+      <div class="flex min-w-0 flex-1 flex-col gap-2 p-2">
         {#each jour.groups as groupe (groupe.label)}
           <div class="creneau">
             <p class="heure font-bold text-ink">
@@ -47,7 +59,7 @@
               Deux activités au même créneau sont posées côte à côte sous le même repère
               horaire : la simultanéité se lit, elle ne se devine pas.
             -->
-            <div class="mt-1 grid gap-2" class:simultane={groupe.occurrences.length > 1}>
+            <div class="cartes mt-1 grid gap-2" class:simultane={groupe.occurrences.length > 1}>
               {#each groupe.occurrences as occurrence (occurrence.id)}
                 {@const categorie = store.categoryOf(occurrence.categoryId)}
                 {@const lieu = store.locationOf(occurrence.locationId)}
@@ -124,6 +136,7 @@
     </section>
   {/each}
 </div>
+</div>
 
 <style>
   /* À l'écran, l'échelle du reste de l'application : 18 px de base. */
@@ -166,6 +179,47 @@
   @media screen and (max-width: 1100px) {
     .programme {
       grid-template-columns: minmax(0, 1fr) !important;
+    }
+  }
+
+  /*
+    La même règle, mais mesurée sur la place réellement disponible plutôt que sur la
+    fenêtre. C'est elle qui compte : une fenêtre de 1280 points dont 378 sont pris par la
+    navigation n'en laisse que 900 à la grille — trop peu pour sept jours. Le seuil est un
+    peu plus bas que celui de la fenêtre : une colonne de 143 points reste lisible, et
+    c'est ce qui permet de garder les sept jours sur un portable de 1366 points. La règle
+    ci-dessus reste, comme filet pour les navigateurs qui ignorent les conteneurs.
+  */
+  .enveloppe {
+    container-type: inline-size;
+    /*
+      Sept colonnes fractionnaires laissent parfois deux ou trois points de large en
+      trop, et un navigateur en fait une barre de défilement horizontale sur toute la
+      page. « clip » les absorbe sans créer de conteneur de défilement ; la marge laisse
+      passer le contour de focus, qu'il ne faut jamais rogner.
+    */
+    overflow-x: clip;
+    overflow-clip-margin: 6px;
+  }
+
+  /* Même raison que `min-w-0` : une colonne implicite se dimensionne sur son contenu. */
+  .cartes {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .creneau {
+    min-width: 0;
+  }
+  @container (max-width: 1000px) {
+    .programme {
+      grid-template-columns: minmax(0, 1fr) !important;
+    }
+  }
+
+  /* Une enveloppe de mise en page ne doit rien changer à l'impression. */
+  @media print {
+    .enveloppe {
+      container-type: normal;
+      overflow: visible;
     }
   }
 
