@@ -1,7 +1,14 @@
 <script lang="ts">
   import { staffStore } from '../../lib/staffState.svelte'
   import { weekProgramme, programmeCount } from '../../lib/domain/programme'
-  import { addLocalDays, formatDayLabel, startOfIsoWeek, todayLocalDate } from '../../lib/domain/time'
+  import {
+    addLocalDays,
+    formatDayLabel,
+    formatLongDayLabel,
+    formatTimeRange,
+    startOfIsoWeek,
+    todayLocalDate,
+  } from '../../lib/domain/time'
   import { navigate } from '../../lib/router.svelte'
   import WeekProgramme from '../../lib/ui/WeekProgramme.svelte'
 
@@ -14,6 +21,28 @@
    */
   const programme = $derived(weekProgramme(staffStore.week, staffStore.occurrences))
   const total = $derived(programmeCount(programme))
+
+  /**
+   * Les séances annulées de la semaine, avec de quoi revenir en arrière.
+   *
+   * Une annulation arrive par erreur, et une modification d'activité annule d'office les
+   * séances déjà inscrites qui ne correspondent plus. Sans ce retour, il fallait recréer
+   * l'activité — en perdant les inscriptions, ce qui est précisément ce que l'annulation
+   * cherchait à éviter.
+   */
+  const annulees = $derived(
+    staffStore.occurrences
+      .filter((o) => o.status === 'cancelled')
+      .sort((a, b) => a.start.getTime() - b.start.getTime()),
+  )
+  let busy = $state(false)
+
+  async function retablir(occurrenceId: string): Promise<void> {
+    if (busy) return
+    busy = true
+    await staffStore.restoreOccurrence(occurrenceId)
+    busy = false
+  }
 
   const semaineDe = (decalage: number): void => {
     staffStore.date = addLocalDays(startOfIsoWeek(staffStore.date), decalage * 7)
@@ -65,5 +94,38 @@
       onAjouter={(date) => navigate(`/soignant/activite/nouvelle/${date}`)}
       onOuvrir={(occurrence) => navigate(`/soignant/activite/${occurrence.activityId}/${occurrence.localDate}`)}
     />
+
+    {#if annulees.length > 0}
+      <section class="mt-8">
+        <h2 class="mb-2 text-2xl font-bold text-ink">
+          Séances annulées cette semaine ({annulees.length})
+        </h2>
+        <p class="mb-3 text-lg text-ink-soft">
+          Elles restent visibles, barrées, sur le programme et chez les personnes inscrites.
+          Rétablir une séance la remet au programme avec ses inscriptions.
+        </p>
+        <ul class="grid gap-3">
+          {#each annulees as occurrence (occurrence.id)}
+            <li class="card flex flex-wrap items-center justify-between gap-3 p-4">
+              <div>
+                <p class="text-xl font-bold text-ink">
+                  <span aria-hidden="true">🚫</span>
+                  <span class="line-through">{occurrence.title}</span>
+                </p>
+                <p class="text-base text-ink-soft">
+                  {formatLongDayLabel(occurrence.localDate)} · {formatTimeRange(occurrence.start, occurrence.end)}
+                </p>
+                <p class="text-base text-ink">
+                  Motif : {occurrence.cancellationReason || 'sans motif'}
+                </p>
+              </div>
+              <button type="button" class="btn btn-secondary" disabled={busy} onclick={() => retablir(occurrence.id)}>
+                {busy ? 'Un instant…' : 'Rétablir'}
+              </button>
+            </li>
+          {/each}
+        </ul>
+      </section>
+    {/if}
   {/if}
 </section>
