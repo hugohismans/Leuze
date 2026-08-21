@@ -11,8 +11,11 @@
  *   2. un projet explicite (`--projet=...` ou la variable `GCLOUD_PROJECT`) ;
  *   3. l'adresse de l'administrateur à préserver (`ADMIN_EMAIL`, ou la valeur par défaut).
  *
- * Il se lance depuis Cloud Shell, où l'identité Google est déjà présente :
+ * Il se lance depuis Cloud Shell, où l'identité Google est déjà présente. La machine
+ * étant remise à neuf régulièrement, les deux premières lignes ne sont pas facultatives :
  *
+ *   npm install
+ *   gcloud config set project leuze-d23b5
  *   export CODE_PEPPER="$(gcloud secrets versions access latest --secret=CODE_PEPPER)"
  *   npm run demo:reset -- --je-confirme
  *
@@ -521,8 +524,10 @@ async function main(): Promise<void> {
   } else {
     console.log(
       '\nAucun code patient : la variable CODE_PEPPER était absente.\n' +
+        `  gcloud config set project ${PROJET}\n` +
         '  export CODE_PEPPER="$(gcloud secrets versions access latest --secret=CODE_PEPPER)"\n' +
-        '  puis relancez « npm run demo:remplir -- --je-confirme ».',
+        '  puis relancez « npm run demo:remplir -- --je-confirme ».\n' +
+        '  (Les patients sont bien créés ; il ne leur manque qu’un code pour se connecter.)',
     )
   }
   console.log('\nTerminé.')
