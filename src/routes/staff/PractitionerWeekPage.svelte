@@ -4,6 +4,10 @@
   import { myWeek, type WeekEntry } from '../../lib/domain/myWeek'
   import { kindIcon, kindName } from '../../lib/domain/appointments'
   import {
+    canSeePractitionerPlanning,
+    practitionerPlanningRefusal,
+  } from '../../lib/domain/appointmentAccess'
+  import {
     addLocalDays,
     formatDayLabel,
     formatLongDayLabel,
@@ -29,6 +33,18 @@
    * le tiennent, pas l'interface.
    */
   let { practitionerId }: { practitionerId: string } = $props()
+
+  /**
+   * Qui regarde. Chacun ouvre son propre planning ; l'administrateur ouvre ceux de tous.
+   * Le serveur applique déjà la même chose — un intervenant ne reçoit que les rendez-vous
+   * qui portent son nom — mais un écran qui s'ouvre à demi vaut refus mal dit : autant
+   * refuser franchement, et expliquer pourquoi.
+   */
+  const moi = $derived({
+    role: staffStore.identity.role,
+    practitionerId: staffStore.identity.practitionerId,
+  })
+  const autorise = $derived(canSeePractitionerPlanning(moi, practitionerId))
 
   const intervenant = $derived(store.practitionerOf(practitionerId))
 
@@ -102,7 +118,12 @@
       <span aria-hidden="true">←</span> Retour au personnel
     </button>
 
-    {#if intervenant === null}
+    {#if !autorise}
+      <p role="status" class="card p-5 text-lg text-ink">
+        <span aria-hidden="true">🔒</span>
+        {practitionerPlanningRefusal(moi)}
+      </p>
+    {:else if intervenant === null}
       <p class="card p-5 text-lg text-ink-soft">Cet intervenant n'a pas été trouvé.</p>
     {:else}
       <h1 class="mb-1 text-3xl font-bold text-ink">La semaine de {intervenant.name}</h1>
@@ -174,7 +195,8 @@
     {/if}
   </div>
 
-  {#if intervenant !== null}
+  <!-- La feuille imprimable suit la même règle : refusée, elle ne s'imprime pas non plus. -->
+  {#if autorise && intervenant !== null}
     <WeekSheet
       titre={`Semaine de ${intervenant.name}`}
       sousTitre={`${intervenant.role} · du ${formatDayLabel(staffStore.week[0]!)} au ${formatDayLabel(staffStore.week[6]!)}`}

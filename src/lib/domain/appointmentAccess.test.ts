@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
   appointmentAccessNotice,
   canScheduleAs,
+  canSeePractitionerPlanning,
+  practitionerPlanningRefusal,
   concernsViewer,
   pendingForViewer,
   seesEveryAppointment,
@@ -104,5 +106,27 @@ describe('le compteur de demandes en attente', () => {
 
   it('ne compte rien quand la file est vide — le compteur doit disparaître', () => {
     expect(pendingForViewer(patronne, [], intervenants)).toBe(0)
+  })
+})
+
+describe('le planning d’un intervenant', () => {
+  it('s’ouvre pour soi-même, jamais pour un collègue', () => {
+    expect(canSeePractitionerPlanning(lemaire, 'docteur-lemaire')).toBe(true)
+    expect(canSeePractitionerPlanning(lemaire, 'claire')).toBe(false)
+    expect(canSeePractitionerPlanning(claire, 'docteur-lemaire')).toBe(false)
+  })
+
+  it('s’ouvre pour l’administrateur, qui répartit et imprime', () => {
+    expect(canSeePractitionerPlanning(patronne, 'docteur-lemaire')).toBe(true)
+    expect(canSeePractitionerPlanning(patronne, 'claire')).toBe(true)
+  })
+
+  it('ne s’ouvre pas pour un compte relié à personne', () => {
+    expect(canSeePractitionerPlanning(sansLien, 'docteur-lemaire')).toBe(false)
+  })
+
+  it('dit pourquoi, en nommant ce qui est en jeu', () => {
+    expect(practitionerPlanningRefusal(lemaire)).toContain('nomme les patients')
+    expect(practitionerPlanningRefusal({ role: null })).toContain('réservé au personnel')
   })
 })

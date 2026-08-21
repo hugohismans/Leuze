@@ -8,6 +8,7 @@
     weekdayName,
   } from '../../lib/domain/availability'
   import type { AvailabilityWindow, IsoWeekday, Practitioner } from '../../lib/domain/types'
+  import { canSeePractitionerPlanning } from '../../lib/domain/appointmentAccess'
   import { navigate } from '../../lib/router.svelte'
   import { enClair } from '../../lib/erreurs'
 
@@ -27,6 +28,12 @@
   let motifId = $state('')
   let busy = $state(false)
   let erreur = $state<string | null>(null)
+
+  /** Qui regarde : la règle d'accès aux plannings vit dans le domaine, pas ici. */
+  const moi = $derived({
+    role: staffStore.identity.role,
+    practitionerId: staffStore.identity.practitionerId,
+  })
 
   /** Modification d'une personne existante, dépliée sous sa fiche. */
   let edition = $state<string | null>(null)
@@ -381,13 +388,20 @@
         {#if personne.isActive}{@render plages(personne)}{/if}
 
         <div class="mt-3 flex flex-wrap gap-2">
-          <button
-            type="button"
-            class="btn btn-secondary"
-            onclick={() => navigate(`/soignant/intervenant/${personne.id}`)}
-          >
-            Voir son planning
-          </button>
+          {#if canSeePractitionerPlanning(moi, personne.id)}
+            <!--
+              Le planning de quelqu'un nomme les patients qu'il reçoit : chacun ouvre le
+              sien, l'administrateur ouvre ceux de tous. Proposer le bouton aux autres
+              reviendrait à annoncer une porte que le serveur referme.
+            -->
+            <button
+              type="button"
+              class="btn btn-secondary"
+              onclick={() => navigate(`/soignant/intervenant/${personne.id}`)}
+            >
+              {staffStore.identity.practitionerId === personne.id ? 'Voir mon planning' : 'Voir son planning'}
+            </button>
+          {/if}
           {#if staffStore.isAdmin}
             {#if personne.isActive}
               <button type="button" class="btn btn-secondary" onclick={() => ouvrirEdition(personne.id)}>
