@@ -68,7 +68,21 @@ bleu "5/6  Cloud Functions"
 # toujours ; au-delà, c'est une vraie erreur et il faut la lire.
 if ! npm run deploy:fonctions; then
   rouge "Une partie des fonctions n'est pas passée — seconde tentative."
-  npm run deploy:fonctions
+  if ! npm run deploy:fonctions; then
+    rouge "Les mêmes fonctions échouent : ce n'est pas un aléa."
+    cat <<'AIDE'
+
+La cause la plus fréquente est le quota de CPU de Cloud Run dans la région, qu'un projet
+neuf a bas. Pour lire la vraie raison :
+
+  npx firebase deploy --only functions --debug 2>&1 | grep -iA4 "quota\|denied\|error:" | head -40
+
+Et pour voir les quotas de la région :
+  https://console.cloud.google.com/iam-admin/quotas?project=leuze-d23b5&service=run.googleapis.com
+
+AIDE
+    exit 1
+  fi
 fi
 
 # Sans politique de nettoyage, les images de construction s'accumulent et finissent par

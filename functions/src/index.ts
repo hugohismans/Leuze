@@ -14,8 +14,16 @@ import { assertNotRateLimited, clearFailures, recordFailure } from './lib/rateLi
 import { myRegistrationsFor, promoteTx, registerTx, rosterFor, unregisterTx } from './lib/registration'
 import type { LocalDate } from './domain/types'
 
-// Bruxelles : les fonctions vivent au plus près des données et des utilisateurs.
-setGlobalOptions({ region: 'europe-west1', maxInstances: 10 })
+/**
+ * Bruxelles : les fonctions vivent au plus près des données et des utilisateurs.
+ *
+ * `maxInstances` est délibérément bas. Chaque instance réserve un CPU, et le quota de
+ * CPU par région d'un projet neuf se compte en dizaines : dix-huit fonctions à dix
+ * instances en réclameraient cent quatre-vingts, et une partie d'entre elles échoue
+ * alors à se créer. Trois suffisent très largement — un hôpital de 133 lits, c'est
+ * quelques dizaines d'appels par jour, jamais simultanés.
+ */
+setGlobalOptions({ region: 'europe-west1', maxInstances: 3 })
 
 const DEFAULT_RETENTION_DAYS = 90
 const DEFAULT_CODE_VALIDITY_DAYS = 60
