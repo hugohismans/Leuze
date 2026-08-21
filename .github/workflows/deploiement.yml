@@ -80,6 +80,25 @@ jobs:
           LEUZE_SANS_JETONS: '1'
         run: npm run deploy:fonctions
 
+      # Une fonction qui vient d'être créée n'est pas toujours joignable : Firebase pose
+      # le droit d'appel à la création, mais pas quand une fonction est reprise après un
+      # échec partiel. Le symptôme est déroutant — Google refuse avant la fonction, sans
+      # en-tête CORS, et le navigateur ne rapporte qu'« internal [0] ».
+      #
+      # Ce droit se reposait jusqu'ici à la main depuis Cloud Shell, sur un téléphone, ce
+      # qui suppose un Cloud Shell en état de marche au bon moment. Le compte de
+      # déploiement a déjà « run.admin » : il peut le faire lui-même, à chaque publication.
+      #
+      # L'étape ne bloque pas la publication : le droit peut mettre quelques secondes à se
+      # propager, et une vérification trop rapide crierait au loup. Le résultat est
+      # rapporté dans le récapitulatif de la publication.
+      - name: Droit d'appel des fonctions
+        id: ouverture
+        continue-on-error: true
+        env:
+          GCLOUD_PROJECT: leuze-d23b5
+        run: npm run ouvrir:fonctions
+
       - name: Construction de l'application
         run: npm run build:app
 
@@ -103,4 +122,12 @@ jobs:
             echo "### En ligne"
             echo ""
             echo "https://leuze-d23b5.web.app"
+            echo ""
+            if [ "${{ steps.ouverture.outcome }}" = "success" ]; then
+              echo "Toutes les fonctions appelables répondent."
+            else
+              echo "⚠️ Une ou plusieurs fonctions ne répondaient pas juste après la"
+              echo "publication. Rouvrez cette publication dans quelques minutes, ou"
+              echo "lancez \`npm run ouvrir:fonctions\` depuis Cloud Shell."
+            fi
           } >> "$GITHUB_STEP_SUMMARY"

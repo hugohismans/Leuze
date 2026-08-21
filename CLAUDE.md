@@ -103,7 +103,7 @@ L'UI n'importe **jamais** `firebase/*` directement : elle consomme les interface
 | `npm run check:functions` | typage des Cloud Functions |
 | `npm run promote:admin` | donne le rôle administrateur à un compte existant |
 | `npm run journal` | dernières lignes du journal des Cloud Functions en ligne |
-| `npm run ouvrir:fonctions` | redonne aux fonctions appelables le droit d'être appelées |
+| `npm run ouvrir:fonctions` | redonne aux fonctions appelables le droit d'être appelées (fait automatiquement à chaque publication ; à la main en dépannage) |
 | `npm run autoriser:jetons` | autorise les fonctions à ouvrir une session pour un patient |
 | `npm run connexion` | reconnecte le CLI Firebase sans rien coller dans le terminal |
 | `npm run connecter:github` | autorise GitHub à publier — une seule fois, sans clé |
