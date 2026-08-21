@@ -49,10 +49,13 @@
     const result = await store.registerTo(occurrence.id)
     messageIsError = !result.ok
     if (result.ok) {
-      message =
+      const pris =
         result.status === 'confirmed'
           ? 'Vous êtes inscrit.'
           : `Vous êtes sur la liste d'attente, en position ${result.position}.`
+      // Une autre activité tombe au même moment : l'inscription est prise, et on le dit
+      // dans la foulée plutôt que de laisser la personne le découvrir le jour même.
+      message = result.warning === undefined ? pris : `${pris} ${result.warning}`
     } else {
       message = result.message
     }

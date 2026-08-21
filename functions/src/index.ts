@@ -11,7 +11,15 @@ import { CODE_LENGTH, formatCodeForPrint, generateCode, hashCode, newPatientUid 
 import { auth, COLLECTIONS, db } from './lib/firestore'
 import { generationWindow, regenerateActivity, regenerateAll } from './lib/occurrences'
 import { assertNotRateLimited, clearFailures, recordFailure } from './lib/rateLimit'
-import { myRegistrationsFor, promoteTx, registerTx, rosterFor, unregisterTx } from './lib/registration'
+import {
+  conflictsFor,
+  myRegistrationsFor,
+  promoteTx,
+  registerTx,
+  rosterFor,
+  unregisterTx,
+} from './lib/registration'
+import { patientConflictNotice } from './domain/conflicts'
 import { attendanceRefusal, canMarkAttendance } from './domain/attendance'
 import {
   AUTO_DURATION_MIN,
@@ -114,12 +122,32 @@ export const regenerateSeries = onCall(async (request: CallableRequest) => {
 export const register = onCall(async (request: CallableRequest) => {
   const patient = requirePatient(request)
   const occurrenceId = requireString(request.data?.occurrenceId, 'occurrenceId')
-  return registerTx(db(), {
+
+  /*
+    Un rendez-vous déjà fixé interdit de s'inscrire par-dessus : quelqu'un a bloqué du
+    temps pour cette personne, et c'est le rendez-vous qui sauterait. Une autre activité
+    au même moment ne bloque pas — on arrive parfois en retard, et personne n'en fait un
+    drame — mais elle est dite.
+
+    Le contrôle vit ici et non dans la transaction : il lit d'autres documents que ceux
+    qu'elle verrouille, et une transaction qui lit trop finit par échouer sous la
+    concurrence. Le risque assumé est mince : deux écritures simultanées pourraient créer
+    un chevauchement, ce qu'un soignant corrigera d'un geste.
+  */
+  const avis = patientConflictNotice(await conflictsFor(db(), patient.uid, occurrenceId))
+  if (avis !== null && avis.blocking) {
+    return { ok: false, reason: 'conflict', message: avis.message }
+  }
+
+  const resultat = await registerTx(db(), {
     occurrenceId,
     patientUid: patient.uid,
     by: 'patient',
     serviceId: patient.serviceId,
   })
+  // L'avertissement voyage avec le succès : l'inscription est prise, et la personne sait
+  // qu'elle a deux choses en même temps.
+  return avis !== null && resultat.ok ? { ...resultat, warning: avis.message } : resultat
 })
 
 export const unregister = onCall(async (request: CallableRequest) => {
@@ -145,6 +173,30 @@ export const staffRegister = onCall(async (request: CallableRequest) => {
   const occurrenceId = requireString(request.data?.occurrenceId, 'occurrenceId')
   const patientUid = requireString(request.data?.patientUid, 'patientUid')
   const overCapacity = request.data?.overCapacity === true
+  const overrideConflict = request.data?.overrideConflict === true
+
+  /*
+    Rien n'est interdit au soignant : il connaît la situation, il peut déplacer le
+    rendez-vous. Mais il doit le savoir avant d'inscrire, pas le découvrir le jour même.
+    L'écran le lui demande, puis renvoie la même demande avec `overrideConflict`.
+  */
+  if (!overrideConflict) {
+    const conflits = await conflictsFor(db(), patientUid, occurrenceId)
+    if (conflits.length > 0) {
+      return {
+        ok: false,
+        reason: 'conflict',
+        message: 'Cette personne a déjà quelque chose à ce moment-là.',
+        conflicts: conflits.map((c) => ({
+          label: c.label,
+          kind: c.kind,
+          start: c.start.toISOString(),
+          end: c.end.toISOString(),
+        })),
+      }
+    }
+  }
+
   return registerTx(db(), { occurrenceId, patientUid, by: 'staff', overCapacity })
 })
 

@@ -10,6 +10,7 @@ import type {
   StaffApp,
   StaffIdentity,
   StaffPatient,
+  TimeConflict,
 } from './data/staffPorts'
 import { describeGeneration } from './data/generation'
 import type { Account } from './domain/impersonation'
@@ -249,12 +250,22 @@ class StaffStore {
    * il est retiré. Rien d'autre à faire — le patient retrouvera l'activité dans son
    * calendrier s'il ouvre l'application.
    */
+  /**
+   * Inscrire ou désinscrire quelqu'un depuis la réunion.
+   *
+   * Rend le résultat entier et non le seul message : un chevauchement d'horaire revient
+   * du serveur avec la liste de ce qui tombe en même temps, et l'écran doit pouvoir la
+   * montrer avant de redemander la même inscription.
+   */
   async togglePatient(
     occurrenceId: string,
     patientUid: string,
-    /** Le soignant a confirmé le dépassement : voir `wouldExceedCapacity` dans le domaine. */
-    options: { overCapacity?: boolean } = {},
-  ): Promise<string> {
+    /**
+     * `overCapacity` : le dépassement du nombre de places est assumé.
+     * `overrideConflict` : le chevauchement d'horaire l'est aussi.
+     */
+    options: { overCapacity?: boolean; overrideConflict?: boolean } = {},
+  ): Promise<{ message: string; conflicts?: TimeConflict[] }> {
     const repository = (await this.app$()).repository
     const inscrit = this.isRegistered(patientUid)
     const resultat = inscrit
@@ -263,7 +274,10 @@ class StaffStore {
 
     await this.openRoster(occurrenceId)
     await this.refresh()
-    return resultat.message
+    // La désinscription ne rend jamais de chevauchement : le champ n'existe que sur
+    // l'autre chemin, d'où la vérification plutôt qu'un accès direct.
+    const conflits = (resultat as { conflicts?: TimeConflict[] }).conflicts
+    return { message: resultat.message, ...(conflits === undefined ? {} : { conflicts: conflits }) }
   }
 
   /** Appelé à chaque changement d'écran par `StaffApp`. */

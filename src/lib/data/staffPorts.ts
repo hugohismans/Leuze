@@ -54,6 +54,9 @@ export type GenerationReport = {
 /** Portée d'une modification, comme dans un agenda classique. */
 export type EditScope = 'occurrence' | 'following' | 'series'
 
+/** Ce qui occupe déjà quelqu'un au moment visé, tel que le serveur le rapporte. */
+export type TimeConflict = { label: string; kind: 'activity' | 'appointment'; start: Date; end: Date }
+
 /** Un patient, tel que le personnel le voit : un prénom, un service. Rien d'autre. */
 export type StaffPatient = {
   uid: string
@@ -164,9 +167,19 @@ export interface StaffRepository {
      * `overCapacity` : le soignant assume un dépassement du nombre de places, après que
      * l'écran le lui a demandé. Sans lui, la personne passe en liste d'attente ou est
      * refusée, comme pour tout le monde.
+     *
+     * `overrideConflict` : il assume de même un chevauchement d'horaire — la personne a
+     * déjà une activité ou un rendez-vous à ce moment-là. Sans lui, le serveur refuse et
+     * rend la liste de ce qui tombe en même temps, pour que l'écran puisse demander.
      */
-    options?: { overCapacity?: boolean },
-  ): Promise<{ ok: boolean; status?: 'confirmed' | 'waitlist'; message: string }>
+    options?: { overCapacity?: boolean; overrideConflict?: boolean },
+  ): Promise<{
+    ok: boolean
+    status?: 'confirmed' | 'waitlist'
+    message: string
+    /** Renseigné quand l'inscription est refusée faute de confirmation du chevauchement. */
+    conflicts?: TimeConflict[]
+  }>
 
   unregisterPatient(occurrenceId: string, patientUid: string): Promise<{ ok: boolean; message: string }>
 
