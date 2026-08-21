@@ -24,6 +24,14 @@
   let busy = $state(false)
   let ajoutOuvert = $state(false)
 
+  /*
+    Réveiller la fonction de l'appel pendant qu'on lit la liste : la première case cochée
+    ne paie plus le démarrage d'une fonction endormie.
+  */
+  $effect(() => {
+    void staffStore.warmAttendance()
+  })
+
   $effect(() => {
     void occurrenceId
     void staffStore.openRoster(occurrenceId)

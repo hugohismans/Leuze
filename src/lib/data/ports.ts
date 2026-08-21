@@ -99,6 +99,16 @@ export interface SessionService {
   current(): PatientSession
   /** Échange un code court contre une session. Côté Firestore, ce sera une Cloud Function. */
   signInWithCode(code: string): Promise<{ ok: true } | { ok: false; message: string }>
+
+  /**
+   * Réveille la fonction qui échange un code contre une session, sans rien échanger.
+   *
+   * C'est là que l'attente coûtait le plus cher : quelqu'un tape son code, appuie, et
+   * patiente une dizaine de secondes le temps qu'une fonction endormie redémarre.
+   * L'écran du code le demande en s'affichant — saisir six caractères prend plus de
+   * temps qu'un réveil. Sans effet sur la démonstration.
+   */
+  warmSignIn(): Promise<void>
   signOut(): Promise<void>
 }
 

@@ -139,6 +139,11 @@ class AppStore {
     this.signedIn = session.patientUid !== null
   }
 
+  /** Réveille la fonction qui échange un code, sans rien échanger. Voir le port. */
+  async warmSignIn(): Promise<void> {
+    await (await this.repo()).session.warmSignIn().catch(() => undefined)
+  }
+
   async signInWithCode(code: string): Promise<{ ok: boolean; message?: string }> {
     const result = await (await this.repo()).session.signInWithCode(code)
     this.syncSession()

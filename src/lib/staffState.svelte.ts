@@ -251,6 +251,11 @@ class StaffStore {
     await (await this.app$()).repository.warmRegistration().catch(() => undefined)
   }
 
+  /** Même chose pour l'appel, demandé en ouvrant la feuille de présence. */
+  async warmAttendance(): Promise<void> {
+    await (await this.app$()).repository.warmAttendance().catch(() => undefined)
+  }
+
   async openRoster(occurrenceId: string): Promise<void> {
     const resultat = await (await this.app$()).repository
       .roster(occurrenceId)

@@ -317,6 +317,10 @@ export function createMockRepository(options: { now?: () => Date } = {}): MockRe
       current(): PatientSession {
         return world.session
       },
+      async warmSignIn() {
+        // Rien à réveiller : la démonstration n'appelle aucun serveur.
+      },
+
       async signInWithCode(code: string) {
         // En démonstration, tout code d'au moins quatre caractères est accepté.
         if (code.trim().length < 4) {

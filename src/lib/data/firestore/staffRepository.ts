@@ -620,6 +620,15 @@ export function createFirestoreStaffApp(): StaffApp {
         }
       },
 
+      async warmAttendance() {
+        try {
+          const call = httpsCallable<{ warm: boolean }, unknown>(functions, 'markAttendance')
+          await call({ warm: true })
+        } catch {
+          // Sans effet : il n'y avait rien à faire.
+        }
+      },
+
       async unregisterPatient(occurrenceId: string, patientUid: string) {
         try {
           const call = httpsCallable<{ occurrenceId: string; patientUid: string }, { ok: boolean; message: string }>(
