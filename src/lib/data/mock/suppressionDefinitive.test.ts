@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createMockStaffApp } from './index'
 import { resetWorld, world } from './state'
+import { deletionConsequences } from '../../domain/catalog'
 
 /**
  * Supprimer pour de bon, à ne pas confondre avec annuler.
@@ -75,6 +76,32 @@ describe('supprimer une activité pour de bon', () => {
     expect(
       [...world.occurrences.values()].filter((o) => o.activityId === seance.activityId).length,
     ).toBe(soeurs)
+  })
+
+  it('compte les présences notées : c’est la perte la moins visible', async () => {
+    const app = await ouvrir()
+    const inscription = world.registrations.find((r) => r.status === 'confirmed')!
+    const seance = world.occurrences.get(inscription.occurrenceId)!
+    await app.repository.markAttendance(seance.id, inscription.patientUid, 'present')
+
+    const plan = await app.repository.deleteActivity(seance.activityId)
+
+    expect(plan.usage!.attendances).toBe(1)
+    expect(plan.usage!.pastSessions).toBeGreaterThanOrEqual(0)
+    expect(deletionConsequences(plan.usage!).some((l) => l.includes('1 présence notée'))).toBe(true)
+    expect(deletionConsequences(plan.usage!).some((l) => l.includes('qui est venu'))).toBe(true)
+  })
+
+  it('efface aussi les présences quand on supprime pour de bon', async () => {
+    const app = await ouvrir()
+    const inscription = world.registrations.find((r) => r.status === 'confirmed')!
+    const seance = world.occurrences.get(inscription.occurrenceId)!
+    await app.repository.markAttendance(seance.id, inscription.patientUid, 'present')
+    expect(world.attendance.size).toBeGreaterThan(0)
+
+    await app.repository.deleteActivity(seance.activityId, { force: true })
+
+    expect(world.attendance.has(`${seance.id}|${inscription.patientUid}`)).toBe(false)
   })
 
   it('refuse à qui n’anime pas l’activité : une suppression n’a pas de retour', async () => {

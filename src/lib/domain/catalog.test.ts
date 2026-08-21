@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
-  deletionWarning,
+  deletionConsequences,
+  deletionCosts,
   planActivityRemoval,
   planForcedRemoval,
   planRemoval,
@@ -97,25 +98,63 @@ describe('retrait d’un intervenant', () => {
   })
 })
 
-describe('la suppression définitive d’une activité', () => {
-  it('ne prévient de rien quand personne n’était inscrit', () => {
-    expect(deletionWarning('Yoga', { registrations: 0, sessions: 4 })).toBeNull()
+describe('les conséquences d’une suppression définitive', () => {
+  const rien = { registrations: 0, sessions: 0, pastSessions: 0, attendances: 0 }
+
+  it('ne dit rien quand il n’y a rien à perdre', () => {
+    expect(deletionConsequences(rien)).toEqual([])
+    expect(deletionCosts(rien)).toBe(false)
   })
 
-  it('nomme ce qui va disparaître, et qu’il n’y a pas de retour', () => {
-    const message = deletionWarning('Yoga', { registrations: 6, sessions: 4 })
-    expect(message).toContain('6 inscriptions')
-    expect(message).toContain('4 séances')
-    expect(message).toContain('sans retour en arrière')
+  it('nomme les séances, et lesquelles sont déjà passées', () => {
+    const lignes = deletionConsequences({ ...rien, sessions: 16, pastSessions: 12 })
+    expect(lignes[0]).toBe('16 séances, dont 12 déjà passées.')
   })
 
-  it('rappelle qu’annuler avec un motif prévient, alors que supprimer efface', () => {
-    const message = deletionWarning('Yoga', { registrations: 1, sessions: 1 })
-    expect(message).toContain('1 inscription')
-    expect(message).toContain('motif')
+  it('ne parle pas de passé quand il n’y en a pas', () => {
+    expect(deletionConsequences({ ...rien, sessions: 4 })[0]).toBe('4 séances.')
   })
 
-  it('rend compte de ce qui a été effacé, une fois la suppression faite', () => {
+  it('dit ce qu’il advient des personnes inscrites', () => {
+    const lignes = deletionConsequences({ ...rien, registrations: 40 })
+    expect(lignes[0]).toContain('40 inscriptions')
+    expect(lignes[0]).toContain('sans motif')
+  })
+
+  it('nomme la perte de l’historique de présence — c’est la moins visible', () => {
+    const lignes = deletionConsequences({ ...rien, attendances: 34 })
+    expect(lignes[0]).toContain('34 présences notées')
+    expect(lignes[0]).toContain('qui est venu')
+  })
+
+  it('accorde le singulier', () => {
+    const lignes = deletionConsequences({
+      registrations: 1,
+      sessions: 1,
+      pastSessions: 1,
+      attendances: 1,
+    })
+    expect(lignes[0]).toBe('1 séance, dont 1 déjà passée.')
+    expect(lignes[1]).toContain('1 inscription.')
+    expect(lignes[2]).toContain('1 présence notée')
+  })
+
+  it('les rend dans l’ordre du plus visible au moins visible', () => {
+    const lignes = deletionConsequences({
+      registrations: 5,
+      sessions: 3,
+      pastSessions: 1,
+      attendances: 2,
+    })
+    expect(lignes).toHaveLength(3)
+    expect(lignes[0]).toContain('séance')
+    expect(lignes[1]).toContain('inscription')
+    expect(lignes[2]).toContain('présence')
+  })
+})
+
+describe('le compte rendu d’une suppression', () => {
+  it('rend compte de ce qui a été effacé', () => {
     const plan = planForcedRemoval('Yoga', { registrations: 6, sessions: 4 })
     expect(plan.action).toBe('deleted')
     expect(plan.message).toContain('6 inscriptions ont été effacées')

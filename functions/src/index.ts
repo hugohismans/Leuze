@@ -545,8 +545,19 @@ export const deleteActivity = onCall(async (request: CallableRequest) => {
       .get()
     inscriptions.push(...trouvees.docs)
   }
+  // Ce qui coûte, et qu'il faut pouvoir nommer avant d'effacer : les séances déjà
+  // passées portent une histoire, et les présences notées y répondent à « qui est venu ? ».
+  const aujourdHui = new Date().toISOString().slice(0, 10)
   const registrations = inscriptions.length
-  const usage = { registrations, sessions: occurrences.size }
+  const usage = {
+    registrations,
+    sessions: occurrences.size,
+    pastSessions: occurrences.docs.filter((d) => {
+      const jour = d.data()['localDate'] as string | undefined
+      return typeof jour === 'string' && jour < aujourdHui
+    }).length,
+    attendances: inscriptions.filter((d) => d.data()['attendance'] !== undefined).length,
+  }
 
   const plan = force ? planForcedRemoval(title, usage) : planActivityRemoval(title, usage)
 
@@ -607,7 +618,8 @@ export const deleteOccurrence = onCall(async (request: CallableRequest) => {
   await supprimerParPaquets(inscriptions.docs.map((d) => d.ref))
   await reference.delete()
 
-  logger.info('Séance supprimée', { occurrenceId, registrations: inscriptions.size })
+  const presences = inscriptions.docs.filter((d) => d.data()['attendance'] !== undefined).length
+  logger.info('Séance supprimée', { occurrenceId, registrations: inscriptions.size, presences })
   const titre = (donnees['title'] as string | undefined) ?? 'Cette séance'
   const combien =
     inscriptions.size === 0
@@ -615,7 +627,13 @@ export const deleteOccurrence = onCall(async (request: CallableRequest) => {
       : inscriptions.size === 1
         ? 'Une inscription a été effacée.'
         : `${inscriptions.size} inscriptions ont été effacées.`
-  return { ok: true, message: `La séance de « ${titre} » est supprimée. ${combien}` }
+  const notees =
+    presences === 0
+      ? ''
+      : presences === 1
+        ? ' Une présence notée disparaît avec elle.'
+        : ` ${presences} présences notées disparaissent avec elle.`
+  return { ok: true, message: `La séance de « ${titre} » est supprimée. ${combien}${notees}` }
 })
 
 // ---------------------------------------------------------------------------

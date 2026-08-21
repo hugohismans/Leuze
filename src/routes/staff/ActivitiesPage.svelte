@@ -3,7 +3,7 @@
   import { store } from '../../lib/appState.svelte'
   import { audienceLabelForStaff, isPublished } from '../../lib/domain/audience'
   import { byChronology } from '../../lib/domain/activityOrder'
-  import { deletionWarning } from '../../lib/domain/catalog'
+  import { deletionConsequences, deletionCosts } from '../../lib/domain/catalog'
   import { formatDuration, todayLocalDate } from '../../lib/domain/time'
   import type { Activity } from '../../lib/domain/types'
   import { navigate } from '../../lib/router.svelte'
@@ -34,7 +34,7 @@
    * Le second geste efface tout, sans retour. On ne le propose donc jamais avant d'avoir
    * nommé ce qui va disparaître.
    */
-  let aEffacer = $state<{ id: string; titre: string; message: string } | null>(null)
+  let aEffacer = $state<{ id: string; titre: string; consequences: string[] } | null>(null)
 
   async function supprimer(activityId: string, force = false): Promise<void> {
     if (busy) return
@@ -44,14 +44,14 @@
       const activite = staffStore.activities.find((a) => a.id === activityId)
       const plan = await staffStore.removeActivity(activityId, force ? { force: true } : {})
       aSupprimer = null
-      const avertissement =
-        plan.action === 'deactivated' && plan.usage !== undefined
-          ? deletionWarning(activite?.title ?? 'Cette activité', plan.usage)
-          : null
       aEffacer =
-        avertissement === null
-          ? null
-          : { id: activityId, titre: activite?.title ?? '', message: avertissement }
+        plan.action === 'deactivated' && plan.usage !== undefined && deletionCosts(plan.usage)
+          ? {
+              id: activityId,
+              titre: activite?.title ?? 'Cette activité',
+              consequences: deletionConsequences(plan.usage),
+            }
+          : null
     } catch (error) {
       erreur = enClair(error)
     } finally {
@@ -139,9 +139,26 @@
             -->
             <div role="alert" class="mt-3 rounded-xl border-4 border-red-600 bg-red-50 p-4">
               <h3 class="text-xl font-bold text-red-900">
-                <span aria-hidden="true">⚠️</span> Effacer pour de bon ?
+                <span aria-hidden="true">⚠️</span>
+                Effacer « {aEffacer.titre} » pour de bon ?
               </h3>
-              <p class="mt-2 text-lg text-ink">{aEffacer.message}</p>
+              <p class="mt-2 text-lg font-semibold text-ink">
+                Cette suppression est définitive. Voici ce qui disparaît :
+              </p>
+              <!--
+                Une liste, et non un paragraphe : chaque conséquence se lit d'un coup
+                d'œil, et l'on voit du même regard combien il y en a.
+              -->
+              <ul class="mt-2 list-disc pl-6 text-lg text-ink">
+                {#each aEffacer.consequences as ligne (ligne)}
+                  <li class="mt-1">{ligne}</li>
+                {/each}
+              </ul>
+              <p class="mt-3 text-lg text-ink">
+                Pour prévenir plutôt qu'effacer, laissez-la retirée du programme, ou
+                annulez ses séances avec un motif : elles restent alors visibles, barrées,
+                avec la raison.
+              </p>
               <div class="mt-3 flex flex-wrap gap-2">
                 <button
                   type="button"

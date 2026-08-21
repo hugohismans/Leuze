@@ -33,7 +33,7 @@ export type CatalogRemoval = {
    * qu'il propose. Les inscriptions ne sont pas lisibles côté client : sans ce compte,
    * l'écran ne pourrait pas nommer ce qu'il s'apprête à effacer.
    */
-  usage?: { registrations: number; sessions: number }
+  usage?: DeletionUsage
 }
 
 const NOMS: Record<CatalogKind, { article: string; singulier: string }> = {
@@ -98,45 +98,86 @@ export function proposed<T extends { isActive?: boolean }>(entries: T[]): T[] {
  * à laquelle quelqu'un s'est inscrit, même une seule fois, ne peut plus disparaître —
  * sa trace sert à répondre à « qui est venu ? ».
  */
+/** Ce que porte une activité au moment où l'on envisage de l'effacer. */
+export type DeletionUsage = {
+  registrations: number
+  sessions: number
+  /** Séances déjà passées : ce sont elles qui portent une histoire. */
+  pastSessions: number
+  /** Présences notées lors de l'appel. C'est ce qui répond à « qui est venu ? ». */
+  attendances: number
+}
+
 /**
- * Ce qu'on s'apprête à effacer, dit avant de le faire.
+ * Les conséquences d'une suppression définitive, une par ligne.
  *
- * Une suppression définitive n'a pas de retour en arrière : les inscriptions partent avec
- * l'activité, et la réponse à « qui est venu ? » avec elles. Ce n'est pas une raison de
- * l'interdire — une activité créée par erreur n'a rien à faire dans le calendrier de
- * quelqu'un — mais c'en est une de la nommer en toutes lettres.
+ * Rendues séparément et non en un paragraphe : chacune se lit d'un coup d'œil, et l'on
+ * voit du même regard combien il y en a. Une phrase de dix lignes se survole ; une liste
+ * de trois points s'arrête.
  *
- * `null` quand il n'y a rien à perdre : personne n'était inscrit.
+ * Ce n'est pas un refus déguisé. On efface parfois pour de bonnes raisons — une activité
+ * créée par erreur n'a rien à faire dans le calendrier de quelqu'un. Mais on ne le fait
+ * pas sans savoir : la réponse à « qui est venu ? » part avec l'activité, et rien ne la
+ * ramènera.
+ *
+ * Liste vide quand il n'y a rien à perdre : ni inscription, ni présence, ni passé.
  */
-export function deletionWarning(
-  title: string,
-  usage: { registrations: number; sessions: number },
-): string | null {
-  if (usage.registrations === 0) return null
-  return (
-    `« ${title} » compte ${compte(usage.registrations, 'inscription', 'inscriptions')} ` +
-    `sur ${compte(usage.sessions, 'séance', 'séances')}. ` +
-    'Les supprimer efface aussi ces inscriptions, sans retour en arrière possible : ' +
-    'les personnes concernées ne verront plus rien dans leur calendrier, et sans motif. ' +
-    "Pour prévenir plutôt qu'effacer, annulez la séance avec un motif."
-  )
+export function deletionConsequences(usage: DeletionUsage): string[] {
+  const lignes: string[] = []
+
+  if (usage.sessions > 0) {
+    const passees =
+      usage.pastSessions > 0 ? `, dont ${compte(usage.pastSessions, 'déjà passée', 'déjà passées')}` : ''
+    lignes.push(`${compte(usage.sessions, 'séance', 'séances')}${passees}.`)
+  }
+
+  if (usage.registrations > 0) {
+    lignes.push(
+      `${compte(usage.registrations, 'inscription', 'inscriptions')}. ` +
+        'Les personnes concernées ne verront plus rien dans leur calendrier, et sans motif.',
+    )
+  }
+
+  if (usage.attendances > 0) {
+    lignes.push(
+      `${compte(usage.attendances, 'présence notée', 'présences notées')}. ` +
+        'Vous ne pourrez plus dire qui est venu à cette activité : cet historique disparaît avec elle.',
+    )
+  }
+
+  return lignes
+}
+
+/** Vrai quand la suppression coûte quelque chose, et mérite donc d'être expliquée. */
+export function deletionCosts(usage: DeletionUsage): boolean {
+  return deletionConsequences(usage).length > 0
+}
+
+/** Les comptes manquants valent zéro : un appelant ancien ne doit pas faire échouer le calcul. */
+function complet(usage: { registrations: number; sessions: number } & Partial<DeletionUsage>): DeletionUsage {
+  return {
+    registrations: usage.registrations,
+    sessions: usage.sessions,
+    pastSessions: usage.pastSessions ?? 0,
+    attendances: usage.attendances ?? 0,
+  }
 }
 
 export function planActivityRemoval(
   title: string,
-  usage: { registrations: number; sessions: number },
+  usage: { registrations: number; sessions: number } & Partial<DeletionUsage>,
 ): CatalogRemoval {
   if (usage.registrations === 0) {
     const seances = usage.sessions > 0 ? `, avec ${compte(usage.sessions, 'séance', 'séances')}` : ''
     return {
       action: 'deleted',
-      usage,
+      usage: complet(usage),
       message: `L'activité « ${title} » est supprimée${seances}. Personne n'y était inscrit.`,
     }
   }
   return {
     action: 'deactivated',
-    usage,
+    usage: complet(usage),
     message:
       `L'activité « ${title} » est retirée du programme. ` +
       `${compte(usage.registrations, 'personne s’y est inscrite', 'personnes s’y sont inscrites')} : ` +
@@ -150,7 +191,7 @@ export function planActivityRemoval(
  */
 export function planForcedRemoval(
   title: string,
-  usage: { registrations: number; sessions: number },
+  usage: { registrations: number; sessions: number } & Partial<DeletionUsage>,
 ): CatalogRemoval {
   const seances = usage.sessions > 0 ? `, avec ${compte(usage.sessions, 'séance', 'séances')}` : ''
   const inscriptions =
@@ -159,7 +200,7 @@ export function planForcedRemoval(
       : ' Personne n’y était inscrit.'
   return {
     action: 'deleted',
-    usage,
+    usage: complet(usage),
     message: `L'activité « ${title} » est supprimée${seances}.${inscriptions}`,
   }
 }

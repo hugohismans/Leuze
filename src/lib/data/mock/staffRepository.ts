@@ -194,7 +194,17 @@ export function createMockStaffApp(): StaffApp {
         const seances = [...world.occurrences.values()].filter((o) => o.activityId === activityId)
         const identifiants = new Set(seances.map((o) => o.id))
         const inscriptions = world.registrations.filter((r) => identifiants.has(r.occurrenceId))
-        const usage = { registrations: inscriptions.length, sessions: seances.length }
+        const aujourdHui = todayLocalDate()
+        const usage = {
+          registrations: inscriptions.length,
+          sessions: seances.length,
+          pastSessions: seances.filter((o) => o.localDate < aujourdHui).length,
+          // La présence vit à part dans la démonstration ; côté serveur, c'est un champ
+          // de l'inscription. Le compte est le même.
+          attendances: inscriptions.filter((r) =>
+            world.attendance.has(`${r.occurrenceId}|${r.patientUid}`),
+          ).length,
+        }
 
         const plan =
           options.force === true
@@ -203,6 +213,7 @@ export function createMockStaffApp(): StaffApp {
 
         if (plan.action === 'deleted') {
           if (options.force === true) {
+            for (const r of inscriptions) world.attendance.delete(`${r.occurrenceId}|${r.patientUid}`)
             world.registrations = world.registrations.filter((r) => !identifiants.has(r.occurrenceId))
           }
           for (const seance of seances) world.occurrences.delete(seance.id)
@@ -224,7 +235,11 @@ export function createMockStaffApp(): StaffApp {
           }
         }
         const inscriptions = world.registrations.filter((r) => r.occurrenceId === occurrenceId)
+        const presences = inscriptions.filter((r) =>
+          world.attendance.has(`${occurrenceId}|${r.patientUid}`),
+        ).length
         world.registrations = world.registrations.filter((r) => r.occurrenceId !== occurrenceId)
+        for (const r of inscriptions) world.attendance.delete(`${occurrenceId}|${r.patientUid}`)
         world.occurrences.delete(occurrenceId)
         const combien =
           inscriptions.length === 0
@@ -232,7 +247,16 @@ export function createMockStaffApp(): StaffApp {
             : inscriptions.length === 1
               ? 'Une inscription a été effacée.'
               : `${inscriptions.length} inscriptions ont été effacées.`
-        return { ok: true, message: `La séance de « ${seance.title} » est supprimée. ${combien}` }
+        const notees =
+          presences === 0
+            ? ''
+            : presences === 1
+              ? ' Une présence notée disparaît avec elle.'
+              : ` ${presences} présences notées disparaissent avec elle.`
+        return {
+          ok: true,
+          message: `La séance de « ${seance.title} » est supprimée. ${combien}${notees}`,
+        }
       },
 
       async listOccurrences(from: LocalDate, to: LocalDate): Promise<Occurrence[]> {

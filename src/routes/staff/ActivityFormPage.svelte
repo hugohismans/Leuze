@@ -13,6 +13,7 @@
     canChooseFacilitator,
     facilitatorFor,
   } from '../../lib/domain/activityAccess'
+  import { deletionConsequences } from '../../lib/domain/catalog'
   import { navigate } from '../../lib/router.svelte'
 
   let { activityId, date }: { activityId: string; date?: string } = $props()
@@ -292,6 +293,22 @@
    */
   let aSupprimerLaSeance = $state(false)
 
+  /**
+   * Ce que la suppression de cette séance ferait disparaître. Les présences sont déjà
+   * sous les yeux — la liste des inscrits est juste au-dessus — mais les nommer une
+   * dernière fois, au moment de décider, n'est pas de trop.
+   */
+  const consequencesDeLaSeance = $derived(
+    seance === null
+      ? []
+      : deletionConsequences({
+          registrations: inscrits.length + enAttente.length,
+          sessions: 0,
+          pastSessions: 0,
+          attendances: staffStore.roster.filter((l) => l.attendance !== undefined).length,
+        }),
+  )
+
   async function supprimerLaSeance(): Promise<void> {
     if (seance === null || retirant !== null) return
     retirant = 'seance'
@@ -349,14 +366,22 @@
           <h3 class="text-xl font-bold text-red-900">
             <span aria-hidden="true">⚠️</span> Supprimer, ou annuler ?
           </h3>
-          <p class="mt-2 text-lg text-ink">
-            {inscrits.length + enAttente.length === 0
-              ? 'Cette séance disparaît complètement. Personne n’y est inscrit.'
-              : `Cette séance disparaît complètement, avec ses ${
-                  inscrits.length + enAttente.length
-                } inscriptions, sans retour en arrière possible. Ces personnes ne verront plus rien dans leur calendrier, et sans motif.`}
-          </p>
-          <p class="mt-2 text-lg text-ink">
+          {#if consequencesDeLaSeance.length === 0}
+            <p class="mt-2 text-lg text-ink">
+              Cette séance disparaît complètement. Personne n'y est inscrit : il n'y a rien
+              d'autre à perdre.
+            </p>
+          {:else}
+            <p class="mt-2 text-lg font-semibold text-ink">
+              Cette suppression est définitive. Voici ce qui disparaît :
+            </p>
+            <ul class="mt-2 list-disc pl-6 text-lg text-ink">
+              {#each consequencesDeLaSeance as ligne (ligne)}
+                <li class="mt-1">{ligne}</li>
+              {/each}
+            </ul>
+          {/if}
+          <p class="mt-3 text-lg text-ink">
             Pour prévenir plutôt qu'effacer, fermez ceci et utilisez « Annuler cette
             séance » : elle reste visible, barrée, avec la raison.
           </p>
