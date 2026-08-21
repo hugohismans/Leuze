@@ -25,6 +25,7 @@
   let busy = $state(false)
   /** Un retrait se confirme sur place : pas de fenêtre système, pas de clic malheureux. */
   let aRetirer = $state<{ genre: Genre; id: string; nom: string } | null>(null)
+  let erreur = $state<string | null>(null)
 
   function ouvrir(genre: Genre, id: string | null): void {
     edition = { genre, id }
@@ -64,8 +65,11 @@
   async function enregistrer(event: SubmitEvent): Promise<void> {
     event.preventDefault()
     if (edition === null || nom.trim().length === 0 || busy) return
-    busy = true
     const { genre, id } = edition
+    await tenter(() => enregistrement(genre, id))
+  }
+
+  async function enregistrement(genre: Genre, id: string | null): Promise<void> {
 
     if (genre === 'lieu') {
       const identifiant = id ?? uniqueSlug(nom, staffStore.catalog.locations.map((l) => l.id))
@@ -91,36 +95,51 @@
     }
 
     edition = null
-    busy = false
   }
 
   const GENRES: Record<Genre, CatalogKind> = { lieu: 'location', service: 'service', categorie: 'category' }
 
-  async function retirer(): Promise<void> {
-    if (aRetirer === null || busy) return
+  /**
+   * Une action qui échoue doit le dire. Sans ce filet, le bouton restait sur
+   * « Un instant… » indéfiniment et l'écran paraissait figé sans raison.
+   */
+  async function tenter(action: () => Promise<void>): Promise<void> {
+    if (busy) return
     busy = true
+    erreur = null
+    try {
+      await action()
+    } catch (error) {
+      erreur = error instanceof Error ? error.message.replace(/^.*?:\s*/, '') : "L'action n'a pas abouti."
+    } finally {
+      busy = false
+    }
+  }
+
+  async function retirer(): Promise<void> {
+    if (aRetirer === null) return
     const { genre, id } = aRetirer
-    await staffStore.removeCatalogEntry(GENRES[genre], id)
-    aRetirer = null
-    busy = false
+    await tenter(async () => {
+      await staffStore.removeCatalogEntry(GENRES[genre], id)
+      aRetirer = null
+    })
   }
 
   async function remettre(genre: Genre, id: string, nom: string): Promise<void> {
-    if (busy) return
-    busy = true
-    if (genre === 'lieu') await staffStore.saveLocation({ id, name: nom, isActive: true })
-    else if (genre === 'service') await staffStore.saveService({ id, name: nom, isActive: true })
-    else {
-      const categorie = staffStore.catalog.categories.find((c) => c.id === id)
-      await staffStore.saveCategory({
-        id,
-        name: nom,
-        icon: categorie?.icon ?? '•',
-        colorToken: categorie?.colorToken ?? 'defaut',
-        isActive: true,
-      })
-    }
-    busy = false
+    await tenter(async () => {
+      if (genre === 'lieu') await staffStore.saveLocation({ id, name: nom, isActive: true })
+      else if (genre === 'service') await staffStore.saveService({ id, name: nom, isActive: true })
+      else {
+        const categorie = staffStore.catalog.categories.find((c) => c.id === id)
+        await staffStore.saveCategory({
+          id,
+          name: nom,
+          icon: categorie?.icon ?? '•',
+          colorToken: categorie?.colorToken ?? 'defaut',
+          isActive: true,
+        })
+      }
+    })
   }
 
   const champ = 'w-full rounded-xl border-2 border-line bg-white p-3 text-lg text-ink'
@@ -139,6 +158,12 @@
     <p role="status" class="mb-4 rounded-xl bg-surface-soft p-3 text-lg text-ink">
       <span aria-hidden="true">🔒</span>
       Seul un administrateur peut modifier le catalogue. Vous pouvez le consulter.
+    </p>
+  {/if}
+
+  {#if erreur !== null}
+    <p role="alert" class="mb-4 rounded-xl bg-red-50 p-3 text-lg font-semibold text-red-900">
+      <span aria-hidden="true">⚠️</span> {erreur}
     </p>
   {/if}
 

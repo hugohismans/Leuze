@@ -23,7 +23,8 @@
     "deploy:fonctions": "firebase deploy --only functions",
     "init:catalogue": "vite-node scripts/init-catalogue.ts",
     "build:app": "VITE_DATA_SOURCE=firestore vite build",
-    "deploy:app": "npm run build:app && firebase deploy --only hosting"
+    "deploy:app": "npm run build:app && firebase deploy --only hosting",
+    "journal": "firebase functions:log --project leuze-d23b5 -n 40"
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^5.0.2",

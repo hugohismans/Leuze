@@ -102,6 +102,7 @@ L'UI n'importe **jamais** `firebase/*` directement : elle consomme les interface
 | `npm run check` | `svelte-check` + `tsc --noEmit` |
 | `npm run check:functions` | typage des Cloud Functions |
 | `npm run promote:admin` | donne le rôle administrateur à un compte existant |
+| `npm run journal` | dernières lignes du journal des Cloud Functions en ligne |
 | `npm run build` | build de production |
 
 ---
