@@ -72,21 +72,39 @@ export function createFirestoreRepository(): AppRepository {
   })
 
   const readSession = async (user: User | null): Promise<void> => {
-    // Être connecté ne suffit pas : il faut l'être *en tant que patient*. Firebase ne
-    // tient qu'une session par navigateur, partagée avec l'espace soignant. La règle
-    // vit dans le domaine, testée : voir `patientIdentityOf`.
-    const token = user === null ? null : await user.getIdTokenResult()
-    const identite = patientIdentityOf(user?.uid ?? null, token?.claims ?? null)
-    session =
-      identite === null
-        ? SIGNED_OUT
-        : { ...identite, firstName: localStorage.getItem(FIRST_NAME_KEY) }
-    notifySessionReady()
+    try {
+      // Être connecté ne suffit pas : il faut l'être *en tant que patient*. Firebase ne
+      // tient qu'une session par navigateur, partagée avec l'espace soignant. La règle
+      // vit dans le domaine, testée : voir `patientIdentityOf`.
+      const token = user === null ? null : await user.getIdTokenResult()
+      const identite = patientIdentityOf(user?.uid ?? null, token?.claims ?? null)
+      session =
+        identite === null
+          ? SIGNED_OUT
+          : { ...identite, firstName: localStorage.getItem(FIRST_NAME_KEY) }
+    } catch {
+      // Le jeton n'a pas pu être relu — code régénéré, séjour terminé, réseau coupé.
+      // On repart de la page du code plutôt que de laisser l'écran figé : c'est le seul
+      // état dont la personne puisse sortir seule.
+      session = SIGNED_OUT
+      await signOut(auth).catch(() => undefined)
+    } finally {
+      // Quoi qu'il arrive, les lectures en attente doivent repartir. Sans ce `finally`,
+      // une erreur ici laissait l'application sur « Un instant… » indéfiniment.
+      notifySessionReady()
+    }
   }
 
   onAuthStateChanged(auth, (user) => {
     void readSession(user)
   })
+
+  /**
+   * Filet de sécurité : si Firebase ne rend jamais la main — réseau coupé au démarrage,
+   * service injoignable — on repart au bout de dix secondes comme si personne n'était
+   * connecté. Mieux vaut redemander le code qu'un écran qui ne bouge plus.
+   */
+  setTimeout(() => notifySessionReady(), 10_000)
 
   /**
    * Les positions en liste d'attente exigent de lire les inscriptions des autres :

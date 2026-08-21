@@ -64,7 +64,24 @@
 
   <Filters />
 
-  {#if store.loading}
+  {#if store.lectureEchouee}
+    <!--
+      Une lecture qui échoue ne doit pas laisser un calendrier vide sans explication :
+      quelqu'un pourrait croire qu'il n'y a rien de prévu et ne pas venir.
+    -->
+    <div role="alert" class="card p-5">
+      <p class="text-xl font-semibold text-ink">
+        <span aria-hidden="true">⚠️</span>
+        Le programme n'a pas pu être chargé.
+      </p>
+      <p class="mt-1 text-lg text-ink-soft">
+        Cela arrive quand la connexion est mauvaise. Réessayez dans un instant.
+      </p>
+      <button type="button" class="btn btn-primary mt-3" onclick={() => store.refresh()}>
+        Réessayer
+      </button>
+    </div>
+  {:else if store.loading}
     <p class="card p-6 text-lg" aria-live="polite">Chargement du programme…</p>
   {:else if store.view === 'day'}
     <DayView date={store.date} />

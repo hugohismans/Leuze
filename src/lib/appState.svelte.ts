@@ -76,6 +76,8 @@ class AppStore {
   appointments = $state<Appointment[]>([])
   appointmentKinds = $state<AppointmentKind[]>([])
   loading = $state(true)
+  /** Vrai quand la dernière lecture n'a pas abouti : l'écran doit le dire et proposer de réessayer. */
+  lectureEchouee = $state<boolean>(false)
 
   readonly range = $derived(rangeOf(this.view, this.date))
 
@@ -218,30 +220,52 @@ class AppStore {
   async loadCatalog(force = false): Promise<void> {
     if (this.catalogLoaded && !force) return
     this.catalogLoaded = true
-    const [categories, locations, services] = await Promise.all([
-      (await this.repo()).catalog.listCategories(),
-      (await this.repo()).catalog.listLocations(),
-      (await this.repo()).catalog.listServices(),
-    ])
-    this.categories = categories
-    this.locations = locations
-    this.services = services
+    try {
+      const [categories, locations, services] = await Promise.all([
+        (await this.repo()).catalog.listCategories(),
+        (await this.repo()).catalog.listLocations(),
+        (await this.repo()).catalog.listServices(),
+      ])
+      this.categories = categories
+      this.locations = locations
+      this.services = services
+    } catch {
+      // Une lecture manquée ne doit pas condamner le catalogue pour toute la session :
+      // le prochain passage réessaiera.
+      this.catalogLoaded = false
+    }
   }
 
+  /**
+   * Relit le programme et les inscriptions.
+   *
+   * Le `finally` n'est pas une précaution de style : sans lui, une lecture qui échoue
+   * laissait `loading` à vrai pour toujours, et l'application restait sur « Un instant… »
+   * sans que la personne puisse rien faire — pas même redemander son code.
+   */
   async refresh(): Promise<void> {
     const { from, to } = this.range
     this.loading = true
-    const [occurrences, mine] = await Promise.all([
-      (await this.repo()).occurrences.listBetween(from, to),
-      (await this.repo()).registrations.listMine(),
-    ])
-    this.occurrences = occurrences
-    this.mine = mine
-    await this.loadAppointments()
-    // La session Firebase est restaurée de façon asynchrone au démarrage : à ce
-    // point-ci elle est connue, on aligne l'interface dessus.
-    this.syncSession()
-    this.loading = false
+    try {
+      const [occurrences, mine] = await Promise.all([
+        (await this.repo()).occurrences.listBetween(from, to),
+        (await this.repo()).registrations.listMine(),
+      ])
+      this.occurrences = occurrences
+      this.mine = mine
+      await this.loadAppointments()
+      this.lectureEchouee = false
+    } catch {
+      // Rien à afficher plutôt qu'un écran bloqué. La session, elle, est relue ci-dessous.
+      this.occurrences = []
+      this.mine = []
+      this.lectureEchouee = true
+    } finally {
+      // La session Firebase est restaurée de façon asynchrone au démarrage : à ce
+      // point-ci elle est connue, on aligne l'interface dessus.
+      this.syncSession()
+      this.loading = false
+    }
   }
 
   /** Après une inscription : on relit l'occurrence concernée et « Mes inscriptions ». */

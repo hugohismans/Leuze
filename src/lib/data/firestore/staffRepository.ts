@@ -90,6 +90,17 @@ export function createFirestoreStaffApp(): StaffApp {
   })
 
   const readIdentity = async (user: User | null): Promise<void> => {
+    try {
+      await lireIdentite(user)
+    } catch {
+      identity = SIGNED_OUT
+    } finally {
+      // Même précaution que côté patient : une erreur ne doit pas figer l'écran.
+      notifyReady()
+    }
+  }
+
+  const lireIdentite = async (user: User | null): Promise<void> => {
     if (user === null) {
       identity = SIGNED_OUT
     } else {
@@ -107,12 +118,13 @@ export function createFirestoreStaffApp(): StaffApp {
       }
       identity = { uid: user.uid, email: user.email, firstName, role }
     }
-    notifyReady()
   }
 
   onAuthStateChanged(auth, (user) => {
     void readIdentity(user)
   })
+
+  setTimeout(() => notifyReady(), 10_000)
 
   /** Relit les occurrences d'une activité sur la fenêtre, applique le plan, renvoie le compte rendu. */
   const regenerate = async (
