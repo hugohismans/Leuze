@@ -253,7 +253,34 @@ ACIS, avec la facturation de l'institution — ce qui règle la question des 10 
 C'est une discussion à avoir avec leur service informatique **avant** la mise en service,
 pas après.
 
-## 6. Mise en service, dans l'ordre
+## 6. Déployer sans ordinateur, depuis un téléphone
+
+Tout ce qui suit demande un terminal. Il n'en faut pas un sur soi : **Google Cloud Shell**
+en fournit un dans le navigateur, déjà connecté au compte Google, y compris sur un
+téléphone.
+
+1. Ouvrir **shell.cloud.google.com** et se connecter avec le compte propriétaire du projet.
+2. Autoriser le Firebase CLI, une seule fois :
+
+   ```
+   npx firebase login --no-localhost
+   ```
+
+   La commande affiche une adresse à ouvrir et un code à recopier.
+3. Récupérer le dépôt et tout déployer :
+
+   ```
+   git clone https://github.com/hugohismans/Leuze && cd Leuze && bash scripts/deploy.sh
+   ```
+
+Le script enchaîne les six étapes de la section suivante, s'arrête à la première erreur, et
+ne détruit jamais rien : le relancer est sans risque. Il fabrique le poivre des codes
+patients s'il n'existe pas encore, et ne le réécrit jamais s'il existe.
+
+Cloud Shell s'éteint après vingt minutes d'inactivité ; le déploiement complet en prend
+moins de cinq. En cas de coupure, relancer la même commande.
+
+## 7. Mise en service, dans l'ordre
 
 1. Vérifier l'emplacement de Firestore (§4).
 2. **Authentication** → activer Adresse e-mail/Mot de passe.
@@ -309,3 +336,6 @@ Les étapes suivantes demandent le plan **Blaze** (voir §5) :
 
 Tant que ces étapes ne sont pas faites, tout se teste en local avec `npm run emulators`,
 qui reproduit Firestore, Auth et les fonctions sans toucher au projet réel.
+
+Ces étapes sont exactement celles qu'enchaîne `scripts/deploy.sh` (§6) : la liste ci-dessus
+sert à comprendre ce qui se passe, le script à ne pas les taper une par une.
