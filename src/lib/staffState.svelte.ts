@@ -246,10 +246,11 @@ class StaffStore {
    * listes selon ce qui l'utilise ; on répète sa phrase telle quelle, elle explique ce
    * qui vient de se passer.
    */
-  async removeCatalogEntry(kind: CatalogKind, id: string): Promise<void> {
+  async removeCatalogEntry(kind: CatalogKind, id: string): Promise<string[]> {
     const plan = await (await this.app$()).catalogAdmin.removeEntry(kind, id)
     await store.loadCatalog(true)
     this.message = plan.message
+    return plan.activityTitles ?? []
   }
 
   async saveCategory(category: {

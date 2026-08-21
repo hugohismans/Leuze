@@ -1,6 +1,7 @@
 <script lang="ts">
   import { staffStore } from '../../lib/staffState.svelte'
   import type { CatalogKind } from '../../lib/domain/catalog'
+  import type { Category, Location, Service } from '../../lib/domain/types'
   import { uniqueSlug } from '../../lib/domain/slug'
 
   /**
@@ -26,6 +27,8 @@
   /** Un retrait se confirme sur place : pas de fenêtre système, pas de clic malheureux. */
   let aRetirer = $state<{ genre: Genre; id: string; nom: string } | null>(null)
   let erreur = $state<string | null>(null)
+  /** Les activités qui empêchent une suppression définitive, nommées après un retrait. */
+  let bloquantes = $state<string[]>([])
 
   function ouvrir(genre: Genre, id: string | null): void {
     edition = { genre, id }
@@ -120,12 +123,13 @@
     if (aRetirer === null) return
     const { genre, id } = aRetirer
     await tenter(async () => {
-      await staffStore.removeCatalogEntry(GENRES[genre], id)
+      bloquantes = await staffStore.removeCatalogEntry(GENRES[genre], id)
       aRetirer = null
     })
   }
 
   async function remettre(genre: Genre, id: string, nom: string): Promise<void> {
+    bloquantes = []
     await tenter(async () => {
       if (genre === 'lieu') await staffStore.saveLocation({ id, name: nom, isActive: true })
       else if (genre === 'service') await staffStore.saveService({ id, name: nom, isActive: true })
@@ -142,7 +146,17 @@
     })
   }
 
+  const propose = (entree: { isActive?: boolean }): boolean => entree.isActive !== false
+  const lieuxProposes = $derived(staffStore.catalog.locations.filter(propose))
+  const lieuxRetires = $derived(staffStore.catalog.locations.filter((l) => !propose(l)))
+  const servicesProposes = $derived(staffStore.catalog.services.filter(propose))
+  const servicesRetires = $derived(staffStore.catalog.services.filter((s) => !propose(s)))
+  const categoriesProposees = $derived(staffStore.catalog.categories.filter(propose))
+  const categoriesRetirees = $derived(staffStore.catalog.categories.filter((c) => !propose(c)))
+
   const champ = 'w-full rounded-xl border-2 border-line bg-white p-3 text-lg text-ink'
+  const resume =
+    'flex cursor-pointer items-center rounded-xl border-2 border-line bg-white px-4 text-lg font-semibold text-ink'
   const ouvertPour = (genre: Genre, id: string | null): boolean =>
     edition !== null && edition.genre === genre && edition.id === id
 </script>
@@ -168,9 +182,23 @@
   {/if}
 
   {#if staffStore.message !== null}
-    <p role="status" class="mb-4 rounded-xl bg-brand-100 p-3 text-lg font-semibold text-brand-900">
-      {staffStore.message}
-    </p>
+    <div role="status" class="mb-4 rounded-xl bg-brand-100 p-3 text-lg text-brand-900">
+      <p class="font-semibold">{staffStore.message}</p>
+      {#if bloquantes.length > 0}
+        <p class="mt-2">
+          Pour le supprimer pour de bon, changez d'abord ces activités :
+        </p>
+        <ul class="mt-1 list-disc pl-6">
+          {#each bloquantes as titre (titre)}
+            <li>{titre}</li>
+          {/each}
+        </ul>
+        <p class="mt-2">
+          Les séances déjà passées, elles, gardent leur lieu : une entrée qui a servi ne
+          peut plus disparaître complètement.
+        </p>
+      {/if}
+    </div>
   {/if}
 
   <!-- Formulaire commun aux trois genres : les champs varient, la mécanique non. -->
@@ -254,10 +282,10 @@
     {/if}
   {/snippet}
 
-  {#snippet retire()}
-    <p class="mt-1 text-base font-semibold text-ink-soft">
-      <span aria-hidden="true">🚫</span>
-      Retiré : ne sera plus proposé quand on crée une activité.
+  {#snippet explication()}
+    <p class="mt-3 text-base text-ink-soft">
+      Ces entrées ne sont plus proposées quand on crée quelque chose. Elles restent ici
+      parce que des activités ou des séances les utilisent encore et gardent leur nom.
     </p>
   {/snippet}
 
@@ -278,22 +306,57 @@
     {/if}
   {/snippet}
 
+  {#snippet carteLieu(lieu: Location)}
+    <li class="card p-4">
+      <div class="flex flex-wrap items-baseline justify-between gap-2">
+        <h3 class="text-xl font-bold text-ink">{lieu.name}</h3>
+        {@render actions('lieu', lieu.id, lieu.name, lieu.isActive)}
+      </div>
+      {#if lieu.accessNotes}<p class="text-base text-ink-soft">{lieu.accessNotes}</p>{/if}
+      {@render confirmation('lieu', lieu.id)}
+      {#if ouvertPour('lieu', lieu.id)}{@render formulaire('lieu', lieu.id)}{/if}
+    </li>
+  {/snippet}
+
+  {#snippet carteService(service: Service)}
+    <li class="card p-4">
+      <div class="flex flex-wrap items-baseline justify-between gap-2">
+        <h3 class="text-xl font-bold text-ink">{service.name}</h3>
+        {@render actions('service', service.id, service.name, service.isActive)}
+      </div>
+      {@render confirmation('service', service.id)}
+      {#if ouvertPour('service', service.id)}{@render formulaire('service', service.id)}{/if}
+    </li>
+  {/snippet}
+
+  {#snippet carteCategorie(categorie: Category)}
+    <li class="card p-4">
+      <div class="flex flex-wrap items-baseline justify-between gap-2">
+        <h3 class="text-xl font-bold text-ink">
+          <span aria-hidden="true">{categorie.icon}</span>
+          {categorie.name}
+        </h3>
+        {@render actions('categorie', categorie.id, categorie.name, categorie.isActive !== false)}
+      </div>
+      {@render confirmation('categorie', categorie.id)}
+      {#if ouvertPour('categorie', categorie.id)}{@render formulaire('categorie', categorie.id)}{/if}
+    </li>
+  {/snippet}
+
   <!-- Les lieux -->
   <h2 class="mt-6 mb-3 text-2xl font-bold text-ink">Les lieux</h2>
   <ul class="grid gap-3">
-    {#each staffStore.catalog.locations as lieu (lieu.id)}
-      <li class="card p-4">
-        <div class="flex flex-wrap items-baseline justify-between gap-2">
-          <h3 class="text-xl font-bold text-ink">{lieu.name}</h3>
-          {@render actions('lieu', lieu.id, lieu.name, lieu.isActive)}
-        </div>
-        {#if lieu.accessNotes}<p class="text-base text-ink-soft">{lieu.accessNotes}</p>{/if}
-        {#if !lieu.isActive}{@render retire()}{/if}
-        {@render confirmation('lieu', lieu.id)}
-        {#if ouvertPour('lieu', lieu.id)}{@render formulaire('lieu', lieu.id)}{/if}
-      </li>
-    {/each}
+    {#each lieuxProposes as lieu (lieu.id)}{@render carteLieu(lieu)}{/each}
   </ul>
+  {#if lieuxRetires.length > 0}
+    <details class="mt-3">
+      <summary class={resume} style="min-height: 56px;">Les lieux retirés ({lieuxRetires.length})</summary>
+      {@render explication()}
+      <ul class="mt-3 grid gap-3">
+        {#each lieuxRetires as lieu (lieu.id)}{@render carteLieu(lieu)}{/each}
+      </ul>
+    </details>
+  {/if}
   {#if staffStore.isAdmin}
     {#if ouvertPour('lieu', null)}
       <div class="card mt-3 p-4">{@render formulaire('lieu', null)}</div>
@@ -307,18 +370,17 @@
   <!-- Les services -->
   <h2 class="mt-8 mb-3 text-2xl font-bold text-ink">Les services</h2>
   <ul class="grid gap-3">
-    {#each staffStore.catalog.services as service (service.id)}
-      <li class="card p-4">
-        <div class="flex flex-wrap items-baseline justify-between gap-2">
-          <h3 class="text-xl font-bold text-ink">{service.name}</h3>
-          {@render actions('service', service.id, service.name, service.isActive)}
-        </div>
-        {#if !service.isActive}{@render retire()}{/if}
-        {@render confirmation('service', service.id)}
-        {#if ouvertPour('service', service.id)}{@render formulaire('service', service.id)}{/if}
-      </li>
-    {/each}
+    {#each servicesProposes as service (service.id)}{@render carteService(service)}{/each}
   </ul>
+  {#if servicesRetires.length > 0}
+    <details class="mt-3">
+      <summary class={resume} style="min-height: 56px;">Les services retirés ({servicesRetires.length})</summary>
+      {@render explication()}
+      <ul class="mt-3 grid gap-3">
+        {#each servicesRetires as service (service.id)}{@render carteService(service)}{/each}
+      </ul>
+    </details>
+  {/if}
   {#if staffStore.isAdmin}
     {#if ouvertPour('service', null)}
       <div class="card mt-3 p-4">{@render formulaire('service', null)}</div>
@@ -332,21 +394,17 @@
   <!-- Les catégories -->
   <h2 class="mt-8 mb-3 text-2xl font-bold text-ink">Les catégories</h2>
   <ul class="grid gap-3">
-    {#each staffStore.catalog.categories as categorie (categorie.id)}
-      <li class="card p-4">
-        <div class="flex flex-wrap items-baseline justify-between gap-2">
-          <h3 class="text-xl font-bold text-ink">
-            <span aria-hidden="true">{categorie.icon}</span>
-            {categorie.name}
-          </h3>
-          {@render actions('categorie', categorie.id, categorie.name, categorie.isActive !== false)}
-        </div>
-        {#if categorie.isActive === false}{@render retire()}{/if}
-        {@render confirmation('categorie', categorie.id)}
-        {#if ouvertPour('categorie', categorie.id)}{@render formulaire('categorie', categorie.id)}{/if}
-      </li>
-    {/each}
+    {#each categoriesProposees as categorie (categorie.id)}{@render carteCategorie(categorie)}{/each}
   </ul>
+  {#if categoriesRetirees.length > 0}
+    <details class="mt-3">
+      <summary class={resume} style="min-height: 56px;">Les catégories retirées ({categoriesRetirees.length})</summary>
+      {@render explication()}
+      <ul class="mt-3 grid gap-3">
+        {#each categoriesRetirees as categorie (categorie.id)}{@render carteCategorie(categorie)}{/each}
+      </ul>
+    </details>
+  {/if}
   {#if staffStore.isAdmin}
     {#if ouvertPour('categorie', null)}
       <div class="card mt-3 p-4">{@render formulaire('categorie', null)}</div>

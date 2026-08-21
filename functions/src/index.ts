@@ -353,11 +353,14 @@ export const removeCatalogEntry = onCall(async (request: CallableRequest) => {
     return (await requete.limit(PLAFOND).get()).size
   }
 
+  const requeteActivites =
+    champActivite === null
+      ? db().collection(COLLECTIONS.activities).where('serviceIds', 'array-contains', id)
+      : db().collection(COLLECTIONS.activities).where(champActivite, '==', id)
+  const activites = await requeteActivites.limit(PLAFOND).get()
+
   const usage = {
-    activities:
-      champActivite === null
-        ? await combien(db().collection(COLLECTIONS.activities).where('serviceIds', 'array-contains', id))
-        : await combien(db().collection(COLLECTIONS.activities).where(champActivite, '==', id)),
+    activities: activites.size,
     occurrences:
       champActivite === null
         ? await combien(db().collection(COLLECTIONS.occurrences).where('audienceKeys', 'array-contains', id))
@@ -371,7 +374,12 @@ export const removeCatalogEntry = onCall(async (request: CallableRequest) => {
   else await reference.set({ isActive: false }, { merge: true })
 
   logger.info('Entrée de catalogue retirée', { kind, id, action: plan.action, ...usage })
-  return plan
+  // Nommer les activités concernées : c'est ce qu'il faut modifier pour pouvoir un jour
+  // supprimer l'entrée pour de bon. Un décompte seul ne dit pas où aller.
+  return {
+    ...plan,
+    activityTitles: activites.docs.slice(0, 8).map((d) => (d.data()['title'] as string | undefined) ?? d.id),
+  }
 })
 
 // ---------------------------------------------------------------------------

@@ -304,14 +304,15 @@ export function createMockStaffApp(): StaffApp {
               ? mockCatalog.services().find((s) => s.id === id)?.name
               : mockCatalog.categories().find((c) => c.id === id)?.name) ?? id
 
+        const concernees = [...activities.values()].filter(parActivite)
         const plan = planRemoval(kind, nom, {
-          activities: [...activities.values()].filter(parActivite).length,
+          activities: concernees.length,
           occurrences: [...world.occurrences.values()].filter(parOccurrence).length,
           patients: kind === 'service' ? world.patients.filter((p) => p.serviceId === id).length : 0,
         })
         if (plan.action === 'deleted') mockCatalog.remove(kind, id)
         else mockCatalog.deactivate(kind, id)
-        return plan
+        return { ...plan, activityTitles: concernees.slice(0, 8).map((a) => a.title) }
       },
     },
   }

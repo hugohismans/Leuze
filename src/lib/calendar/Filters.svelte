@@ -4,6 +4,16 @@
   // Replié par défaut : sur une borne, la première chose visible doit être
   // le programme, pas un panneau de réglages.
   let open = $state(false)
+
+  /**
+   * Les choix se déduisent de ce qui est affiché, pas du catalogue entier : proposer
+   * un lieu où rien n'a lieu ne mène qu'à une liste vide. Un lieu retiré du catalogue
+   * mais qui porte encore des séances reste donc proposé, tant qu'elles sont là.
+   */
+  const presents = $derived(new Set(store.occurrences.map((o) => o.locationId)))
+  const typesPresents = $derived(new Set(store.occurrences.map((o) => o.categoryId)))
+  const lieuxPresents = $derived(store.locations.filter((l) => presents.has(l.id)))
+  const categoriesPresentes = $derived(store.categories.filter((c) => typesPresents.has(c.id)))
 </script>
 
 <details class="card" bind:open>
@@ -27,7 +37,7 @@
         bind:value={store.categoryId}
       >
         <option value={null}>Toutes les activités</option>
-        {#each store.categories as category (category.id)}
+        {#each categoriesPresentes as category (category.id)}
           <option value={category.id}>{category.icon} {category.name}</option>
         {/each}
       </select>
@@ -42,7 +52,7 @@
         bind:value={store.locationId}
       >
         <option value={null}>Tous les lieux</option>
-        {#each store.locations as location (location.id)}
+        {#each lieuxPresents as location (location.id)}
           <option value={location.id}>{location.name}</option>
         {/each}
       </select>

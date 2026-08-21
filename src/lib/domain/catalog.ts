@@ -24,6 +24,8 @@ export type CatalogUsage = {
 export type CatalogRemoval = {
   action: 'deleted' | 'deactivated'
   message: string
+  /** Les activités qui l'utilisent encore, par leur titre. Vide après une suppression. */
+  activityTitles?: string[]
 }
 
 const NOMS: Record<CatalogKind, { article: string; singulier: string }> = {
