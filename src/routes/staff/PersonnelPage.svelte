@@ -9,6 +9,7 @@
   } from '../../lib/domain/availability'
   import type { AvailabilityWindow, IsoWeekday, Practitioner } from '../../lib/domain/types'
   import { canSeePractitionerPlanning } from '../../lib/domain/appointmentAccess'
+  import type { Account } from '../../lib/domain/impersonation'
   import { navigate } from '../../lib/router.svelte'
   import { enClair } from '../../lib/erreurs'
 
@@ -28,6 +29,37 @@
   let motifId = $state('')
   let busy = $state(false)
   let erreur = $state<string | null>(null)
+
+  /**
+   * Les comptes existants, pour savoir qui est administrateur.
+   *
+   * Un intervenant n'est pas un compte : la case « Administrateur » n'a de sens que si
+   * quelqu'un se connecte avec ce nom-là. On lit donc les comptes, et la case n'apparaît
+   * que sur les fiches qui en ont un.
+   */
+  let comptes = $state<Account[]>([])
+
+  $effect(() => {
+    if (!staffStore.isAdmin || comptes.length > 0) return
+    void staffStore
+      .listAccounts()
+      .then((valeur) => (comptes = valeur))
+      .catch(() => undefined)
+  })
+
+  const compteDe = (practitionerId: string): Account | undefined =>
+    comptes.find((c) => c.kind === 'staff' && c.practitionerId === practitionerId)
+
+  async function basculerAdministrateur(compte: Account, administrateur: boolean): Promise<void> {
+    await tenter(async () => {
+      const ok = await staffStore.setStaffRole(compte.uid, administrateur ? 'admin' : 'staff', {
+        ...(compte.practitionerId === undefined ? {} : { practitionerId: compte.practitionerId }),
+        firstName: compte.label,
+      })
+      // La liste vient du serveur : on la relit plutôt que de deviner ce qu'il a écrit.
+      if (ok) comptes = await staffStore.listAccounts()
+    })
+  }
 
   /** Qui regarde : la règle d'accès aux plannings vit dans le domaine, pas ici. */
   const moi = $derived({
@@ -412,7 +444,7 @@
                 class="btn btn-secondary"
                 onclick={() => { accesPour = personne.id; adresse = ''; motDePasse = null }}
               >
-                Lui donner un accès
+                {compteDe(personne.id) === undefined ? 'Lui donner un accès' : 'Refaire un accès'}
               </button>
               <button type="button" class="btn btn-secondary" onclick={() => (aRetirer = personne.id)}>
                 Retirer
@@ -424,6 +456,33 @@
             {/if}
           {/if}
         </div>
+
+        {#if staffStore.isAdmin && compteDe(personne.id) !== undefined}
+          {@const compte = compteDe(personne.id)!}
+          <!--
+            Le rôle vit dans le jeton, pas dans un document : le changer déconnecte la
+            personne, qui devra se reconnecter. On le dit, plutôt que de la laisser
+            constater que « rien n'a changé ».
+          -->
+          <label class="bascule mt-3">
+            <input
+              type="checkbox"
+              checked={compte.role === 'admin'}
+              disabled={busy || compte.uid === staffStore.identity.uid}
+              onchange={(event) => basculerAdministrateur(compte, event.currentTarget.checked)}
+            />
+            <span>
+              <strong>Administrateur.</strong>
+              {#if compte.uid === staffStore.identity.uid}
+                C'est votre compte : vous ne pouvez pas retirer vos propres droits.
+              {:else}
+                Voit tous les plannings et tous les rendez-vous, gère les patients, le
+                personnel et le catalogue. La personne devra se reconnecter pour que le
+                changement s'applique.
+              {/if}
+            </span>
+          </label>
+        {/if}
 
         {#if aRetirer === personne.id}
           <div class="mt-3 rounded-xl border-2 border-line p-4">

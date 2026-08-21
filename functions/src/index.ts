@@ -1177,6 +1177,10 @@ export const listAccounts = onCall(async (request: CallableRequest) => {
         label: utilisateur.displayName ?? utilisateur.email ?? utilisateur.uid,
         detail: `${claims.role === 'admin' ? 'Administrateur' : 'Soignant'} · ${utilisateur.email ?? ''}`.trim(),
         kind: 'staff' as const,
+        // De quoi savoir, à l'écran, qui est administrateur et à quel intervenant ce
+        // compte est relié — sans avoir à lire une phrase pour le deviner.
+        role: claims.role === 'admin' ? ('admin' as const) : ('staff' as const),
+        ...(claims.practitionerId === undefined ? {} : { practitionerId: claims.practitionerId }),
       }
     })
 
@@ -1253,12 +1257,26 @@ export const impersonate = onCall(async (request: CallableRequest) => {
 })
 
 export const setStaffRole = onCall(async (request: CallableRequest) => {
-  requireAdmin(request)
+  const administrateur = requireAdmin(request)
   const uid = requireString(request.data?.uid, 'uid')
   const role = request.data?.role
   if (role !== 'staff' && role !== 'admin' && role !== null) {
     throw new HttpsError('invalid-argument', 'Le rôle doit être « staff », « admin » ou vide.')
   }
+  /*
+    On ne se retire pas ses propres droits.
+
+    Un administrateur qui décoche sa propre case se retrouverait dehors, sans personne
+    pour l'y remettre : il faudrait relancer un script depuis un terminal. Le refus est
+    ici, sur le serveur, parce qu'une garde d'interface se contourne.
+  */
+  if (uid === administrateur.uid && role !== 'admin') {
+    throw new HttpsError(
+      'failed-precondition',
+      'Vous ne pouvez pas retirer vos propres droits d’administrateur. Demandez-le à un autre administrateur.',
+    )
+  }
+
   const firstName = typeof request.data?.firstName === 'string' ? request.data.firstName : undefined
   const lien = request.data?.practitionerId
   const practitionerId = typeof lien === 'string' && lien !== '' ? lien : null

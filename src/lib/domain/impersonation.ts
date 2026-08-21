@@ -21,6 +21,10 @@ export type Account = {
   /** Ce qui le précise : le service pour un patient, le poste ou l'adresse pour le personnel. */
   detail: string
   kind: AccountKind
+  /** Le rôle porté par le jeton, pour un compte du personnel. */
+  role?: 'staff' | 'admin'
+  /** L'intervenant auquel ce compte est relié, quand il l'est. */
+  practitionerId?: string
 }
 
 export type Actor = { uid: string | null; role: 'staff' | 'admin' | null }

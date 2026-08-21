@@ -282,6 +282,19 @@ export interface CatalogAdminService {
     practitionerId: string,
   ): Promise<{ ok: boolean; message: string; password?: string }>
 
+  /**
+   * Donne ou retire les droits d'administrateur à un compte existant.
+   *
+   * Le rôle qui fait autorité est le jeton : le changer déconnecte la personne, qui
+   * devra se reconnecter pour que ses nouveaux droits s'appliquent. On le dit à l'écran.
+   * Le serveur refuse qu'un administrateur se retire ses propres droits.
+   */
+  setStaffRole(
+    uid: string,
+    role: 'staff' | 'admin',
+    options?: { practitionerId?: string; firstName?: string },
+  ): Promise<{ ok: boolean; message: string }>
+
   savePractitioner(practitioner: {
     id: string
     name: string

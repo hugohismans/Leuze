@@ -43,6 +43,17 @@
     store.refresh()
   })
 
+  /** Vrai quand « Un instant… » s'éternise : voir le bouton de secours plus bas. */
+  let attenteLongue = $state(false)
+  $effect(() => {
+    if (!store.loading) {
+      attenteLongue = false
+      return
+    }
+    const minuteur = setTimeout(() => (attenteLongue = true), 8_000)
+    return () => clearTimeout(minuteur)
+  })
+
   const occurrenceId = $derived(
     router.path.startsWith('/activite/') ? router.path.slice('/activite/'.length) : null,
   )
@@ -77,7 +88,22 @@
       inquiète le plus quelqu'un qui a déjà du mal à se repérer.
     -->
     {#if store.loading}
-      <p class="mx-auto max-w-xl px-4 py-8 text-xl text-ink">Un instant…</p>
+      <div class="mx-auto max-w-xl px-4 py-8">
+        <p class="text-xl text-ink">Un instant…</p>
+        <!--
+          Passé quelques secondes, l'attente cesse d'être une attente : c'est un écran
+          bloqué, et il faut pouvoir en sortir seul. Le bouton n'apparaît qu'à ce
+          moment-là — l'afficher tout de suite inquiéterait pour rien.
+        -->
+        {#if attenteLongue}
+          <p class="mt-4 text-lg text-ink">
+            La connexion est lente. Vous pouvez patienter encore, ou recharger la page.
+          </p>
+          <button type="button" class="btn btn-primary mt-3" onclick={() => window.location.reload()}>
+            Recharger la page
+          </button>
+        {/if}
+      </div>
     {:else}
       <CodePage />
     {/if}

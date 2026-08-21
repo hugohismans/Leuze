@@ -78,6 +78,34 @@ body {
   hyphenate-limit-chars: 8 4 3;
 }
 
+/*
+  Un appui doit compter du premier coup.
+
+  Sur un téléphone, un navigateur attend environ trois cents millisecondes avant de
+  traiter un appui : il guette un second appui, qui voudrait dire « agrandir ». Cette
+  attente donne exactement la sensation qu'on nous a décrite — on appuie, il ne se passe
+  rien, on réappuie. `manipulation` dit au navigateur que ces éléments-là ne réagissent
+  pas au double appui : il n'attend plus. Le pincement pour agrandir, lui, reste possible
+  partout — on ne retire rien à personne.
+*/
+:where(a, button, input, select, textarea, label, summary, [role='button'], [tabindex]) {
+  touch-action: manipulation;
+}
+
+/*
+  Et l'appui se voit tout de suite, avant même que le serveur réponde : sans retour
+  immédiat, une seconde d'attente se lit comme une panne.
+*/
+:where(button, .btn, a.btn):active:not(:disabled) {
+  transform: scale(0.98);
+  filter: brightness(0.96);
+}
+@media (prefers-reduced-motion: reduce) {
+  :where(button, .btn, a.btn):active:not(:disabled) {
+    transform: none;
+  }
+}
+
 /* Focus visible partout, jamais supprimé. */
 :where(a, button, input, select, textarea, [tabindex]):focus-visible {
   outline: 4px solid var(--color-brand-700);

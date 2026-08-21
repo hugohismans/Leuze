@@ -28,9 +28,17 @@ describe('voir l’application à la place de quelqu’un', () => {
 
     expect(comptes.filter((c) => c.kind === 'staff').length).toBeGreaterThan(0)
     expect(comptes.filter((c) => c.kind === 'patient').length).toBeGreaterThan(0)
-    // Un prénom, un service ou un poste : rien de plus ne sort de la liste.
+    /*
+      Un prénom, un service ou un poste : rien de plus ne sort de la liste. Un compte du
+      personnel porte en plus son rôle et l'intervenant auquel il est relié — ce qu'il
+      faut pour proposer la case « Administrateur », et rien qui touche à quelqu'un.
+    */
     for (const compte of comptes) {
-      expect(Object.keys(compte).sort()).toEqual(['detail', 'kind', 'label', 'uid'])
+      const attendu =
+        compte.kind === 'staff'
+          ? ['detail', 'kind', 'label', 'practitionerId', 'role', 'uid']
+          : ['detail', 'kind', 'label', 'uid']
+      expect(Object.keys(compte).sort()).toEqual(attendu)
     }
   })
 

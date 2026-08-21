@@ -74,6 +74,12 @@ function codeDeDemonstration(): string {
 
 const pourLaFeuille = (code: string): string => code.replace(/(.{3})(?=.)/g, '$1-')
 
+/**
+ * Qui est administrateur, dans la démonstration. Les comptes n'y existent pas vraiment ;
+ * ce petit registre tient lieu de jeton, le temps de la visite.
+ */
+const rolesDeDemonstration = new Map<string, 'staff' | 'admin'>()
+
 export function createMockStaffApp(): StaffApp {
   // Les activités vivent ici, les occurrences et les inscriptions dans le monde partagé
   // avec l'adapter patient : ce qui est décidé en réunion se voit côté patient.
@@ -639,6 +645,24 @@ export function createMockStaffApp(): StaffApp {
         if (personne === undefined) throw new Error("Cette personne n'existe pas.")
         mockCatalog.savePractitioner({ ...personne, availability: windows })
       },
+      async setStaffRole(uid, role) {
+        // La démonstration n'a pas de comptes réels : on répond ce que répondrait le
+        // serveur, pour que l'écran se comporte pareil.
+        if (identity.role !== 'admin') {
+          return { ok: false, message: "Cette action est réservée à l'administrateur." }
+        }
+        // Le changement se voit dans la démonstration comme il se verrait en vrai.
+        const intervenantId = uid.replace(/^staff-/, '')
+        rolesDeDemonstration.set(intervenantId, role)
+        return {
+          ok: true,
+          message:
+            role === 'admin'
+              ? 'Cette personne est administratrice. Elle devra se reconnecter pour que cela s’applique.'
+              : 'Cette personne n’est plus administratrice. Elle devra se reconnecter pour que cela s’applique.',
+        }
+      },
+
       async setAutoAccept(practitionerId, autoAccept) {
         // Même droit que les plages : l'intéressé, ou l'administrateur.
         if (identity.role !== 'admin' && identity.practitionerId !== practitionerId) {
@@ -707,7 +731,16 @@ export function createMockStaffApp(): StaffApp {
         const personnel: Account[] = mockCatalog
           .practitioners()
           .filter((i) => i.isActive)
-          .map((i) => ({ uid: `staff-${i.id}`, label: i.name, detail: i.role, kind: 'staff' as const }))
+          .map((i) => ({
+            uid: `staff-${i.id}`,
+            label: i.name,
+            detail: i.role,
+            kind: 'staff' as const,
+            // La démonstration relie chaque intervenant à un compte : c'est ce qui permet
+            // d'y montrer la case « Administrateur », comme en vrai.
+            role: rolesDeDemonstration.get(i.id) ?? ('staff' as const),
+            practitionerId: i.id,
+          }))
         const patients: Account[] = world.patients.map((p) => ({
           uid: p.uid,
           label: p.firstName,
