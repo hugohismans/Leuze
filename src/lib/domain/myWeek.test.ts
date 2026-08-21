@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { makeOccurrence } from './fixtures'
-import { myWeek, weekEntryCount } from './myWeek'
+import { myWeek, weekEntryCount, weekSummary, type WeekDay, type WeekEntry } from './myWeek'
 import type { Appointment } from './types'
 
 const JOURS = ['2026-08-31', '2026-09-01', '2026-09-02']
@@ -91,5 +91,55 @@ describe('la semaine d’un patient', () => {
     )
     const entree = semaine[0]!.entries[0]!
     expect(entree.kind === 'activity' && entree.waiting).toBe(true)
+  })
+})
+
+describe('ce que porte une feuille, en toutes lettres', () => {
+  const jour = (entries: WeekEntry[]): WeekDay[] => [{ date: '2026-08-24', entries }]
+  const activite = (cancelled = false): WeekEntry => ({
+    kind: 'activity',
+    start: new Date('2026-08-24T08:00:00Z'),
+    end: new Date('2026-08-24T09:00:00Z'),
+    title: 'Atelier',
+    locationId: 'atelier',
+    categoryId: 'creatif',
+    cancelled,
+    waiting: false,
+  })
+  const rendezVous = (): WeekEntry => ({
+    kind: 'appointment',
+    start: new Date('2026-08-24T10:00:00Z'),
+    end: new Date('2026-08-24T10:30:00Z'),
+    kindId: 'psychiatre',
+    patientUid: 'p1',
+  })
+
+  it('ne parle de rendez-vous que lorsqu’il y en a', () => {
+    expect(weekSummary(jour([activite(), activite()]))).toBe('2 activités')
+    expect(weekSummary(jour([activite()]))).toBe('1 activité')
+  })
+
+  it('ne parle d’activités que lorsqu’il y en a', () => {
+    expect(weekSummary(jour([rendezVous()]))).toBe('1 rendez-vous')
+    // « rendez-vous » a déjà son « s ».
+    expect(weekSummary(jour([rendezVous(), rendezVous()]))).toBe('2 rendez-vous')
+  })
+
+  it('nomme les deux quand les deux sont là', () => {
+    expect(weekSummary(jour([activite(), activite(), rendezVous()]))).toBe(
+      '2 activités et 1 rendez-vous',
+    )
+  })
+
+  it('compte les séances annulées à part : elles sont barrées sur la feuille', () => {
+    expect(weekSummary(jour([activite(), activite(true)]))).toBe('1 activité et 1 annulée')
+    expect(weekSummary(jour([activite(), rendezVous(), activite(true)]))).toBe(
+      '1 activité, 1 rendez-vous et 1 annulée',
+    )
+  })
+
+  it('dit qu’une feuille est vierge plutôt que « 0 »', () => {
+    expect(weekSummary(jour([]))).toBe('Rien de prévu — feuille vierge')
+    expect(weekSummary([])).toBe('Rien de prévu — feuille vierge')
   })
 })

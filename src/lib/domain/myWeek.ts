@@ -99,3 +99,28 @@ export function myWeek(
 export function weekEntryCount(week: WeekDay[]): number {
   return week.reduce((total, jour) => total + jour.entries.length, 0)
 }
+
+/**
+ * Ce que porte une feuille, en toutes lettres.
+ *
+ * Un décompte seul — « 2 lignes : activités et rendez-vous » — annonçait des rendez-vous
+ * même quand il n'y en avait aucun. Un soignant lisait donc qu'une personne en avait un,
+ * cherchait sur la feuille imprimée, et n'y trouvait rien : la feuille avait raison,
+ * l'étiquette mentait. Elle dit désormais ce qu'il y a, et rien de plus.
+ */
+export function weekSummary(week: WeekDay[]): string {
+  const entries = week.flatMap((jour) => jour.entries)
+  const activites = entries.filter((e) => e.kind === 'activity' && !e.cancelled).length
+  const annulees = entries.filter((e) => e.kind === 'activity' && e.cancelled).length
+  const rendezVous = entries.filter((e) => e.kind === 'appointment').length
+
+  const morceaux: string[] = []
+  if (activites > 0) morceaux.push(`${activites} ${activites > 1 ? 'activités' : 'activité'}`)
+  // « rendez-vous » ne prend pas de « s » : il en a déjà un.
+  if (rendezVous > 0) morceaux.push(`${rendezVous} rendez-vous`)
+  if (annulees > 0) morceaux.push(`${annulees} ${annulees > 1 ? 'annulées' : 'annulée'}`)
+
+  if (morceaux.length === 0) return 'Rien de prévu — feuille vierge'
+  if (morceaux.length === 1) return morceaux[0] as string
+  return `${morceaux.slice(0, -1).join(', ')} et ${morceaux[morceaux.length - 1] as string}`
+}

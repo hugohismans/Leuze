@@ -1,7 +1,7 @@
 <script lang="ts">
   import { staffStore } from '../../lib/staffState.svelte'
   import { proposed } from '../../lib/domain/catalog'
-  import { myWeek, weekEntryCount } from '../../lib/domain/myWeek'
+  import { myWeek, weekSummary } from '../../lib/domain/myWeek'
   import { addLocalDays, formatDayLabel, startOfIsoWeek, todayLocalDate } from '../../lib/domain/time'
   import type { PatientPlanning } from '../../lib/data/staffPorts'
   import WeekSheet from '../../lib/ui/WeekSheet.svelte'
@@ -171,14 +171,10 @@
 
       <ul class="grid gap-2">
         {#each plannings as planning (planning.patientUid)}
-          {@const compte = weekEntryCount(semaineDe(planning))}
           <li class="card flex flex-wrap items-baseline justify-between gap-2 p-3">
             <span class="text-xl font-bold text-ink">{planning.firstName}</span>
-            <span class="text-base text-ink-soft">
-              {compte === 0
-                ? 'Rien de prévu — feuille vierge'
-                : `${compte} ${compte === 1 ? 'ligne' : 'lignes'} : activités et rendez-vous`}
-            </span>
+            <!-- Ce que porte réellement la feuille, et rien d'autre : voir `weekSummary`. -->
+            <span class="text-base text-ink-soft">{weekSummary(semaineDe(planning))}</span>
           </li>
         {/each}
       </ul>
