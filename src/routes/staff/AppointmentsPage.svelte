@@ -597,6 +597,16 @@
               {#if rendezVous.locationId}· {store.locationOf(rendezVous.locationId)?.name}{/if}
             </p>
           {/if}
+          {#if rendezVous.autoAccepted === true}
+            <!--
+              Personne n'a posé ce rendez-vous à la main : il faut que cela se lise, sans
+              quoi on se demanderait qui l'a mis là. C'est aussi la façon la plus simple
+              de repérer que le réglage fait ce qu'on croit.
+            -->
+            <p class="text-base font-semibold text-ink-soft">
+              <span aria-hidden="true">⚡</span> Fixé automatiquement, à la demande du patient
+            </p>
+          {/if}
           <button
             type="button"
             class="btn btn-secondary mt-2"

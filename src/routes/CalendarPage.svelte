@@ -5,10 +5,13 @@
   import MonthView from '../lib/calendar/MonthView.svelte'
   import ViewSwitcher from '../lib/calendar/ViewSwitcher.svelte'
   import WeekView from '../lib/calendar/WeekView.svelte'
+  import { kindName, nextScheduled } from '../lib/domain/appointments'
+  import { navigate } from '../lib/router.svelte'
   import {
     addLocalDays,
     addLocalMonths,
     formatDayLabel,
+    formatFullWhen,
     formatMonthLabel,
     todayLocalDate,
     weekDays,
@@ -25,6 +28,19 @@
     else if (store.view === 'week') store.date = addLocalDays(store.date, 7 * direction)
     else store.date = addLocalMonths(store.date, direction)
   }
+
+  /**
+   * Le prochain rendez-vous, annoncé dès l'accueil.
+   *
+   * C'est la moitié patient de la seule notification du projet. Une demande peut être
+   * acceptée pendant qu'on ne regarde pas — d'autant plus depuis que certaines le sont
+   * automatiquement — et personne n'envoie de message : il faut donc que la réponse
+   * saute aux yeux là où l'on arrive, sans avoir à ouvrir un écran de plus.
+   *
+   * Elle reste tant que le rendez-vous n'a pas eu lieu : pour quelqu'un de désorienté,
+   * revoir « c'est mardi à 9 heures » vaut mieux qu'un avis qui disparaît une fois lu.
+   */
+  const prochainRendezVous = $derived(nextScheduled(store.appointments))
 
   const periodLabel = $derived(
     store.view === 'day'
@@ -59,6 +75,22 @@
   {#if store.date !== todayLocalDate()}
     <button type="button" class="btn btn-quiet" onclick={() => (store.date = todayLocalDate())}>
       Revenir à aujourd'hui
+    </button>
+  {/if}
+
+  {#if prochainRendezVous !== null && prochainRendezVous.localDate !== undefined && prochainRendezVous.start !== undefined && prochainRendezVous.end !== undefined}
+    <!--
+      Un avis, pas une alarme : le même langage que le reste, en français simple, avec
+      de quoi aller voir le détail. Rien n'y dit pourquoi ce rendez-vous a lieu.
+    -->
+    <button type="button" class="avis-rendez-vous" onclick={() => navigate('/rendez-vous')}>
+      <span aria-hidden="true">📅</span>
+      <span>
+        <strong>Votre rendez-vous est fixé.</strong>
+        {formatFullWhen(prochainRendezVous.localDate, prochainRendezVous.start, prochainRendezVous.end)}
+        avec {prochainRendezVous.withWhom ??
+          kindName(store.appointmentKinds, prochainRendezVous.kindId).toLowerCase()}.
+      </span>
     </button>
   {/if}
 
@@ -97,3 +129,29 @@
     />
   {/if}
 </div>
+
+<style>
+  /*
+    Un avis se lit d'abord, se touche ensuite : toute la ligne est un bouton, haute de
+    56 points au moins, avec un contour épais plutôt qu'une simple couleur de fond.
+  */
+  .avis-rendez-vous {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    width: 100%;
+    min-height: 56px;
+    padding: 1rem 1.1rem;
+    border: 3px solid var(--color-brand-500);
+    border-radius: 0.9rem;
+    background: var(--color-brand-100);
+    font-size: 1.125rem;
+    line-height: 1.5;
+    color: var(--color-ink);
+    text-align: start;
+    cursor: pointer;
+  }
+  .avis-rendez-vous:hover {
+    background: var(--color-surface);
+  }
+</style>

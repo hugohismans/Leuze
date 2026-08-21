@@ -126,7 +126,11 @@ function build(now: Date): MockWorld {
   // Une demande en attente, pour que la file du soignant ne soit pas vide, et un
   // rendez-vous déjà fixé, pour que la semaine d'une personne et les plannings imprimés
   // montrent ce qu'ils font d'un rendez-vous.
-  const jeudi = addLocalDays(startOfIsoWeek(today), 3)
+  // Le jeudi de la semaine — celui de la semaine prochaine s'il est déjà passé. Un
+  // rendez-vous de démonstration doit être à venir : c'est ce que la personne voit sur
+  // son écran d'accueil, et un rendez-vous d'hier ne montre rien.
+  const jeudiDeLaSemaine = addLocalDays(startOfIsoWeek(today), 3)
+  const jeudi = jeudiDeLaSemaine >= today ? jeudiDeLaSemaine : addLocalDays(jeudiDeLaSemaine, 7)
   const appointments: Appointment[] = [
     {
       id: 'rdv-demo-1',

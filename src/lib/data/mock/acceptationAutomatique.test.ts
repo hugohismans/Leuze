@@ -30,6 +30,9 @@ describe('demander un rendez-vous à quelqu’un qui accepte automatiquement', (
     // Le catalogue vit à côté du monde partagé : un réglage laissé par un cas précédent
     // fausserait le suivant.
     mockCatalog.reset()
+    // La démonstration donne déjà un rendez-vous à venir à cette personne, et l'on ne
+    // demande pas deux fois le même professionnel : on part d'un agenda vide pour elle.
+    world.appointments = world.appointments.filter((a) => a.patientUid !== DEMO_PATIENT_UID)
   })
 
   it('le fixe tout de suite, dans ses plages, et jamais aujourd’hui', async () => {
@@ -116,5 +119,25 @@ describe('demander un rendez-vous à quelqu’un qui accepte automatiquement', (
     expect(mockCatalog.practitioners().find((p) => p.id === 'docteur-lemaire')?.autoAccept).not.toBe(
       true,
     )
+  })
+})
+
+describe('demander deux fois la même chose', () => {
+  beforeEach(() => {
+    resetWorld()
+    mockCatalog.reset()
+  })
+
+  it('est refusé tant que le rendez-vous précédent n’a pas eu lieu', async () => {
+    // La démonstration donne déjà à cette personne un rendez-vous à venir avec le
+    // psychiatre : en redemander un prendrait un second créneau pour rien.
+    const patient = createMockRepository()
+    const resultat = await patient.appointments.request('psychiatre', 'matin')
+
+    expect(resultat.ok).toBe(false)
+    expect(resultat.message).toContain('déjà un rendez-vous prévu')
+    expect(
+      world.appointments.filter((a) => a.patientUid === DEMO_PATIENT_UID && a.kindId === 'psychiatre'),
+    ).toHaveLength(1)
   })
 })
