@@ -11,7 +11,7 @@ import { resetWorld, world } from './state'
  */
 async function ouvrirUneSession(): Promise<ReturnType<typeof createMockStaffApp>> {
   const app = createMockStaffApp()
-  await app.session.signIn('soignant@exemple.test')
+  await app.session.signIn('soignant@exemple.test', 'demonstration')
   return app
 }
 
