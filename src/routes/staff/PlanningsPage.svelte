@@ -88,6 +88,18 @@
 <section class="mx-auto max-w-4xl px-4 py-6">
   <div class="no-print">
     <h1 class="mb-2 text-3xl font-bold text-ink">Les plannings de la semaine</h1>
+    {#if !staffStore.isAdmin}
+      <!--
+        Les rendez-vous individuels ne sont plus lisibles que par la personne qu'ils
+        nomment : les feuilles imprimées ici seraient donc incomplètes. Le dire, plutôt
+        que de laisser quelqu'un distribuer des feuilles où il manque un rendez-vous.
+      -->
+      <p role="status" class="mb-4 rounded-xl bg-surface-soft p-3 text-lg text-ink">
+        <span aria-hidden="true">🔒</span>
+        Seuls vos propres rendez-vous figurent sur ces feuilles : ceux de vos collègues ne
+        vous sont pas lisibles. Pour une pile complète, demandez-la à un administrateur.
+      </p>
+    {/if}
     <p class="mb-4 text-lg text-ink-soft">
       Une feuille par personne du service, à distribuer à la fin de la réunion. Les
       personnes sans inscription en reçoivent une aussi : la grille se remplit à la main.

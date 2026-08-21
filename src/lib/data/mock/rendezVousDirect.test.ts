@@ -4,6 +4,13 @@ import { createMockRepository } from './index'
 import { resetWorld, world, DEMO_PATIENT_UID } from './state'
 import { startOfIsoWeek, todayLocalDate, addLocalDays } from '../../domain/time'
 
+/** Fixer un rendez-vous demande une session ouverte : la démonstration l'exige comme le serveur. */
+const ouvrir = async () => {
+  const app = createMockStaffApp()
+  await app.session.signIn('soignant@exemple.test', 'peu-importe')
+  return app
+}
+
 /**
  * Un rendez-vous fixé sans demande préalable. Beaucoup de patients ne se serviront jamais
  * de l'application : ils en parlent à un soignant, qui note. Le rendez-vous doit ensuite
@@ -17,7 +24,7 @@ describe('fixer un rendez-vous de vive voix', () => {
   const jour = () => addLocalDays(startOfIsoWeek(todayLocalDate()), 2)
 
   it('le crée déjà fixé', async () => {
-    const app = createMockStaffApp()
+    const app = await ouvrir()
 
     const resultat = await app.repository.createAppointment({
       patientUid: DEMO_PATIENT_UID,
@@ -38,7 +45,7 @@ describe('fixer un rendez-vous de vive voix', () => {
   })
 
   it('le patient le voit dans ses rendez-vous, sans avoir rien demandé', async () => {
-    const app = createMockStaffApp()
+    const app = await ouvrir()
     await app.repository.createAppointment({
       patientUid: DEMO_PATIENT_UID,
       kindId: 'psychiatre',

@@ -42,6 +42,21 @@ service cloud.firestore {
       return 'serviceId' in request.auth.token ? request.auth.token.serviceId : '';
     }
 
+    // L'intervenant auquel un compte du personnel est relié. Posé dans le jeton par
+    // `setStaffRole` et `createStaffAccount` : c'est lui qui décide de l'agenda, jamais
+    // un document. Chaîne vide quand le compte n'est relié à personne — et une chaîne
+    // vide ne peut alors être égale à aucun `practitionerId`, qui est toujours renseigné.
+    function myPractitioner() {
+      return 'practitionerId' in request.auth.token ? request.auth.token.practitionerId : '';
+    }
+
+    // Le rendez-vous me concerne : c'est moi qu'on vient voir.
+    function mineAsPractitioner(data) {
+      return myPractitioner() != ''
+        && 'practitionerId' in data
+        && data.practitionerId == myPractitioner();
+    }
+
     // --- catalogue ------------------------------------------------------------
     // Lieux, catégories et services : lisibles par toute personne connectée (les noms
     // des unités sont publics, ils figurent sur le site de l'établissement).
@@ -238,12 +253,28 @@ service cloud.firestore {
         && !('withWhom' in request.resource.data);
     }
 
+    // Un rendez-vous ne dit pas pourquoi — le projet s'y refuse — mais il dit avec qui,
+    // et « avec le psychiatre » en apprend déjà beaucoup sur quelqu'un. La liste entière
+    // n'a donc rien à faire sous les yeux de toute l'équipe.
+    //
+    // Un intervenant lit son agenda et lui seul ; il n'écrit que des rendez-vous où c'est
+    // lui qu'on vient voir. L'administrateur voit tout et répartit — quelqu'un doit
+    // pouvoir le faire, et une demande en attente ne nomme encore personne.
     match /appointments/{appointmentId} {
-      allow get, list: if isStaff()
+      allow get, list: if isAdmin()
+        || (isStaff() && mineAsPractitioner(resource.data))
         || (isPatient() && resource.data.patientUid == request.auth.uid);
       allow create: if (isPatient() && validAppointmentRequest(request.resource.data))
-        || (isStaff() && validStaffAppointment(request.resource.data));
-      allow update: if isStaff()
+        || (isAdmin() && validStaffAppointment(request.resource.data))
+        || (isStaff()
+            && validStaffAppointment(request.resource.data)
+            && mineAsPractitioner(request.resource.data));
+      // Un intervenant ne s'attribue pas le rendez-vous d'un autre, et ne se retire pas
+      // le sien : la personne nommée est la même avant et après.
+      allow update: if isAdmin()
+        || (isStaff()
+            && mineAsPractitioner(resource.data)
+            && mineAsPractitioner(request.resource.data))
         || (isPatient() && patientWithdrawal());
       // Un rendez-vous ne se supprime pas : il s'annule, avec un motif.
       allow delete: if false;

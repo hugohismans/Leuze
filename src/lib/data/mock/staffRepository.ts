@@ -10,6 +10,7 @@ import { activitiesSeed } from '../seed/activities.seed'
 import { attendanceRefusal, canMarkAttendance } from '../../domain/attendance'
 import { planActivityRemoval, planRemoval } from '../../domain/catalog'
 import type { Account } from '../../domain/impersonation'
+import { canScheduleAs, visibleAppointments } from '../../domain/appointmentAccess'
 import { mockCatalog } from './catalog'
 import {
   applyBoard,
@@ -99,6 +100,9 @@ export function createMockStaffApp(): StaffApp {
    * refuser exactement ce que le serveur refuse : sans cela, prendre la place d'un
    * soignant ne montrerait pas ce qu'il voit vraiment.
    */
+  /** Un intervenant ne fixe de rendez-vous que pour lui-même : le dire en toutes lettres. */
+  const refusDAgenda = 'Vous ne pouvez fixer un rendez-vous que pour vous-même.'
+
   const exigeAdministrateur = (): void => {
     if (identity.role !== 'admin') {
       throw new Error("Cette action est réservée à l'administrateur.")
@@ -367,7 +371,11 @@ export function createMockStaffApp(): StaffApp {
       },
 
       async listAppointments(): Promise<Appointment[]> {
-        return [...world.appointments].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+        // Même restriction que les règles Firestore : un intervenant ne lit que son
+        // agenda. La démonstration doit refuser exactement ce que le serveur refuse.
+        return visibleAppointments(identity, [...world.appointments]).sort(
+          (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
+        )
       },
 
       async scheduleAppointment(
@@ -383,6 +391,9 @@ export function createMockStaffApp(): StaffApp {
       ) {
         const demande = world.appointments.find((a) => a.id === appointmentId)
         if (!demande) return { ok: false, message: "Cette demande n'existe plus." }
+        if (!canScheduleAs(identity, rendezVous.practitionerId ?? null)) {
+          return { ok: false, message: refusDAgenda }
+        }
         const start = instantOf(rendezVous.date, rendezVous.time)
         world.appointments = world.appointments.map((a) =>
           a.id === appointmentId
@@ -411,6 +422,9 @@ export function createMockStaffApp(): StaffApp {
         practitionerId?: string
         locationId?: string
       }) {
+        if (!canScheduleAs(identity, rendezVous.practitionerId ?? null)) {
+          return { ok: false, message: refusDAgenda }
+        }
         const start = instantOf(rendezVous.date, rendezVous.time)
         world.appointments = [
           ...world.appointments,

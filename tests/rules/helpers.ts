@@ -28,6 +28,18 @@ export const asPatient = (env: RulesTestEnvironment, uid: string, serviceId: str
 export const asStaff = (env: RulesTestEnvironment, uid = 'soignant-1'): Firestore =>
   env.authenticatedContext(uid, { role: 'staff' }).firestore() as unknown as Firestore
 
+/**
+ * Un soignant relié à un intervenant : c'est ce lien, porté par le jeton, qui ouvre son
+ * agenda et l'appel de ses activités. Sans lui, un compte du personnel n'a ni l'un ni
+ * l'autre.
+ */
+export const asPractitioner = (
+  env: RulesTestEnvironment,
+  practitionerId: string,
+  uid = `soignant-${practitionerId}`,
+): Firestore =>
+  env.authenticatedContext(uid, { role: 'staff', practitionerId }).firestore() as unknown as Firestore
+
 export const asAdmin = (env: RulesTestEnvironment, uid = 'admin-1'): Firestore =>
   env.authenticatedContext(uid, { role: 'admin' }).firestore() as unknown as Firestore
 

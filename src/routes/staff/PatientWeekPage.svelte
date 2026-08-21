@@ -94,6 +94,18 @@
       <p class="card p-5 text-lg text-ink-soft">Cette personne n'a pas été trouvée.</p>
     {:else}
       <h1 class="mb-1 text-3xl font-bold text-ink">La semaine de {planning.firstName}</h1>
+      {#if !staffStore.isAdmin}
+        <!--
+        Les rendez-vous individuels ne sont plus lisibles que par la personne qu'ils
+        nomment : les feuilles imprimées ici seraient donc incomplètes. Le dire, plutôt
+        que de laisser quelqu'un distribuer des feuilles où il manque un rendez-vous.
+        -->
+        <p role="status" class="mb-4 rounded-xl bg-surface-soft p-3 text-lg text-ink">
+        <span aria-hidden="true">🔒</span>
+        Seuls vos propres rendez-vous figurent sur ces feuilles : ceux de vos collègues ne
+        vous sont pas lisibles. Pour une pile complète, demandez-la à un administrateur.
+        </p>
+      {/if}
       <p class="mb-4 text-lg text-ink-soft">
         Du {formatDayLabel(staffStore.week[0]!)} au {formatDayLabel(staffStore.week[6]!)}
         {#if nomDuService}· {nomDuService}{/if}

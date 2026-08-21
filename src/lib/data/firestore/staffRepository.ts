@@ -405,7 +405,18 @@ export function createFirestoreStaffApp(): StaffApp {
        * à défendre, donc pas de fonction appelable — cela fonctionne sur le plan gratuit.
        */
       async listAppointments(): Promise<Appointment[]> {
-        const snapshot = await getDocs(collection(db, 'appointments'))
+        // Un intervenant n'a le droit de lire que son agenda : la requête doit porter la
+        // contrainte, sinon les règles la rejettent en bloc plutôt que de la restreindre.
+        // Un compte relié à personne n'a pas d'agenda du tout, et ne demande donc rien.
+        const lien = identity.practitionerId
+        const requete =
+          identity.role === 'admin'
+            ? collection(db, 'appointments')
+            : lien === null || lien === ''
+              ? null
+              : query(collection(db, 'appointments'), where('practitionerId', '==', lien))
+        if (requete === null) return []
+        const snapshot = await getDocs(requete)
         return snapshot.docs
           .map((d) => {
             const data = d.data() as Record<string, unknown>

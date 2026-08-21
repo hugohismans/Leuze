@@ -1,11 +1,21 @@
 import { assertFails, assertSucceeds, type RulesTestEnvironment } from '@firebase/rules-unit-testing'
 import { collection, doc, getDoc, getDocs, query, setDoc, updateDoc, where } from 'firebase/firestore'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
-import { MAZUREL, asAdmin, asPatient, asStaff, asVisitor, createEnvironment } from './helpers'
+import {
+  MAZUREL,
+  asAdmin,
+  asPatient,
+  asPractitioner,
+  asStaff,
+  asVisitor,
+  createEnvironment,
+} from './helpers'
 
 /**
- * Rendez-vous individuels. Deux garanties : un patient ne voit que les siens, et il ne
- * peut ni fixer un rendez-vous, ni en créer un pour quelqu'un d'autre.
+ * Rendez-vous individuels. Trois garanties : un patient ne voit que les siens et ne peut
+ * ni fixer un rendez-vous ni en créer un pour quelqu'un d'autre ; un intervenant ne voit
+ * que son agenda et n'y écrit que des rendez-vous à son nom ; l'administrateur voit tout,
+ * parce que quelqu'un doit répartir les demandes.
  */
 
 let env: RulesTestEnvironment
@@ -17,6 +27,20 @@ const demande = (patientUid: string, overrides: Record<string, unknown> = {}) =>
   status: 'requested',
   createdAt: new Date('2026-08-17T09:00:00Z'),
   ...overrides,
+})
+
+/** Un rendez-vous déjà fixé, au nom d'un intervenant précis. */
+const fixe = (patientUid: string, practitionerId: string) => ({
+  patientUid,
+  kindId: 'psychiatre',
+  preference: 'peu-importe',
+  status: 'scheduled',
+  createdAt: new Date('2026-08-17T09:00:00Z'),
+  localDate: '2026-08-25',
+  start: new Date('2026-08-25T12:00:00Z'),
+  end: new Date('2026-08-25T12:30:00Z'),
+  withWhom: 'Peu importe',
+  practitionerId,
 })
 
 beforeAll(async () => {
@@ -38,6 +62,9 @@ beforeEach(async () => {
     })
     await setDoc(doc(database, 'appointments', 'rdv-camille'), demande('p_camille'))
     await setDoc(doc(database, 'appointments', 'rdv-lucien'), demande('p_lucien'))
+    // Deux rendez-vous déjà fixés, chacun à un professionnel différent.
+    await setDoc(doc(database, 'appointments', 'rdv-chez-lemaire'), fixe('p_camille', 'docteur-lemaire'))
+    await setDoc(doc(database, 'appointments', 'rdv-chez-claire'), fixe('p_lucien', 'claire'))
   })
 })
 
@@ -98,18 +125,57 @@ describe('lecture des rendez-vous', () => {
     const snapshot = await assertSucceeds(
       getDocs(query(collection(database, 'appointments'), where('patientUid', '==', 'p_camille'))),
     )
-    expect(snapshot.size).toBe(1)
+    // Sa demande, et le rendez-vous qu'on lui a fixé. Ceux de Lucien, jamais.
+    expect(snapshot.size).toBe(2)
   })
 
-  it('laisse le personnel voir toute la file', async () => {
-    const snapshot = await assertSucceeds(getDocs(collection(asStaff(env), 'appointments')))
-    expect(snapshot.size).toBe(2)
+  it('laisse l’administrateur voir toute la file : c’est lui qui répartit', async () => {
+    const snapshot = await assertSucceeds(getDocs(collection(asAdmin(env), 'appointments')))
+    expect(snapshot.size).toBe(4)
+  })
+
+  it('refuse toute la file à un soignant : « avec le psychiatre » en dit déjà trop', async () => {
+    await assertFails(getDocs(collection(asStaff(env), 'appointments')))
+    await assertFails(getDocs(collection(asPractitioner(env, 'docteur-lemaire'), 'appointments')))
+  })
+
+  it('laisse un intervenant lire son agenda, filtré sur son nom', async () => {
+    const database = asPractitioner(env, 'docteur-lemaire')
+    const snapshot = await assertSucceeds(
+      getDocs(
+        query(collection(database, 'appointments'), where('practitionerId', '==', 'docteur-lemaire')),
+      ),
+    )
+    expect(snapshot.size).toBe(1)
+    await assertSucceeds(getDoc(doc(database, 'appointments', 'rdv-chez-lemaire')))
+  })
+
+  it('refuse à un intervenant l’agenda d’un collègue', async () => {
+    const database = asPractitioner(env, 'docteur-lemaire')
+    await assertFails(getDoc(doc(database, 'appointments', 'rdv-chez-claire')))
+    await assertFails(
+      getDocs(query(collection(database, 'appointments'), where('practitionerId', '==', 'claire'))),
+    )
+  })
+
+  it('refuse à un intervenant les demandes que personne n’a encore prises', async () => {
+    const database = asPractitioner(env, 'docteur-lemaire')
+    await assertFails(getDoc(doc(database, 'appointments', 'rdv-camille')))
+  })
+
+  it('refuse tout à un compte du personnel relié à personne', async () => {
+    // Une chaîne vide ne doit jamais être égale à un identifiant d'intervenant.
+    const database = asStaff(env)
+    await assertFails(getDoc(doc(database, 'appointments', 'rdv-chez-lemaire')))
+    await assertFails(
+      getDocs(query(collection(database, 'appointments'), where('practitionerId', '==', ''))),
+    )
   })
 })
 
 describe('fixer et retirer', () => {
-  it('laisse un soignant fixer la date', async () => {
-    const database = asStaff(env)
+  it('laisse l’administrateur fixer la date et nommer qui il veut', async () => {
+    const database = asAdmin(env)
     await assertSucceeds(
       updateDoc(doc(database, 'appointments', 'rdv-camille'), {
         status: 'scheduled',
@@ -117,7 +183,52 @@ describe('fixer et retirer', () => {
         start: new Date('2026-08-25T12:00:00Z'),
         end: new Date('2026-08-25T12:30:00Z'),
         withWhom: 'Docteur Lemaire',
+        practitionerId: 'docteur-lemaire',
       }),
+    )
+  })
+
+  it('refuse à un intervenant de s’attribuer une demande en attente', async () => {
+    // Il ne peut pas la lire : il ne peut pas davantage se la donner.
+    const database = asPractitioner(env, 'docteur-lemaire')
+    await assertFails(
+      updateDoc(doc(database, 'appointments', 'rdv-camille'), {
+        status: 'scheduled',
+        localDate: '2026-08-25',
+        start: new Date('2026-08-25T12:00:00Z'),
+        end: new Date('2026-08-25T12:30:00Z'),
+        withWhom: 'Docteur Lemaire',
+        practitionerId: 'docteur-lemaire',
+      }),
+    )
+  })
+
+  it('laisse un intervenant créer un rendez-vous à son nom', async () => {
+    const database = asPractitioner(env, 'docteur-lemaire')
+    await assertSucceeds(
+      setDoc(doc(database, 'appointments', 'rdv-neuf-lemaire'), fixe('p_camille', 'docteur-lemaire')),
+    )
+  })
+
+  it('refuse à un intervenant d’en créer un au nom d’un collègue', async () => {
+    const database = asPractitioner(env, 'docteur-lemaire')
+    await assertFails(
+      setDoc(doc(database, 'appointments', 'rdv-usurpe-claire'), fixe('p_camille', 'claire')),
+    )
+  })
+
+  it('refuse un rendez-vous qui ne nomme personne, sauf à l’administrateur', async () => {
+    const { practitionerId: _sansNom, ...anonyme } = fixe('p_camille', 'docteur-lemaire')
+    await assertFails(
+      setDoc(doc(asPractitioner(env, 'docteur-lemaire'), 'appointments', 'rdv-anonyme-1'), anonyme),
+    )
+    await assertSucceeds(setDoc(doc(asAdmin(env), 'appointments', 'rdv-anonyme-2'), anonyme))
+  })
+
+  it('refuse à un intervenant de se retirer d’un rendez-vous en le donnant à un autre', async () => {
+    const database = asPractitioner(env, 'docteur-lemaire')
+    await assertFails(
+      updateDoc(doc(database, 'appointments', 'rdv-chez-lemaire'), { practitionerId: 'claire' }),
     )
   })
 
@@ -166,29 +277,38 @@ describe('fixer un rendez-vous sans demande', () => {
     ...overrides,
   })
 
-  it('laisse le soignant le créer déjà fixé', async () => {
-    await assertSucceeds(setDoc(doc(asStaff(env), 'appointments', 'rdv-direct'), fixe()))
+  it('laisse l’administrateur le créer déjà fixé', async () => {
+    await assertSucceeds(setDoc(doc(asAdmin(env), 'appointments', 'rdv-direct'), fixe()))
+  })
+
+  it('laisse un intervenant le créer, à son nom', async () => {
+    await assertSucceeds(
+      setDoc(
+        doc(asPractitioner(env, 'docteur-lemaire'), 'appointments', 'rdv-direct-lemaire'),
+        fixe({ practitionerId: 'docteur-lemaire' }),
+      ),
+    )
   })
 
   it('accepte un lieu', async () => {
     await assertSucceeds(
-      setDoc(doc(asStaff(env), 'appointments', 'rdv-lieu'), fixe({ locationId: 'salon-daccueil' })),
+      setDoc(doc(asAdmin(env), 'appointments', 'rdv-lieu'), fixe({ locationId: 'salon-daccueil' })),
     )
   })
 
   it('refuse un rendez-vous sans date', async () => {
     const sansDate = fixe()
     delete (sansDate as Record<string, unknown>).start
-    await assertFails(setDoc(doc(asStaff(env), 'appointments', 'rdv-flou'), sansDate))
+    await assertFails(setDoc(doc(asAdmin(env), 'appointments', 'rdv-flou'), sansDate))
   })
 
   it('refuse un rendez-vous sans professionnel nommé', async () => {
-    await assertFails(setDoc(doc(asStaff(env), 'appointments', 'rdv-anonyme'), fixe({ withWhom: '' })))
+    await assertFails(setDoc(doc(asAdmin(env), 'appointments', 'rdv-anonyme'), fixe({ withWhom: '' })))
   })
 
   it('refuse tout champ imprévu — c’est ce qui tient le texte libre à distance', async () => {
     await assertFails(
-      setDoc(doc(asStaff(env), 'appointments', 'rdv-note'), fixe({ motif: 'angoisses' })),
+      setDoc(doc(asAdmin(env), 'appointments', 'rdv-note'), fixe({ motif: 'angoisses' })),
     )
   })
 

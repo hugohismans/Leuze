@@ -10,6 +10,10 @@
     waitingDays,
     waitingLabel,
   } from '../../lib/domain/appointments'
+  import {
+    appointmentAccessNotice,
+    seesEveryAppointment,
+  } from '../../lib/domain/appointmentAccess'
   import { formatFullWhen, todayLocalDate } from '../../lib/domain/time'
   import type { LocalDate, LocalTime } from '../../lib/domain/types'
 
@@ -20,6 +24,21 @@
    * voie : les demandes les plus anciennes sont en tête, et leur ancienneté est écrite
    * en toutes lettres. Une demande qui traîne doit sauter aux yeux.
    */
+  /**
+   * Qui regarde. Un intervenant ne voit que son agenda et ne fixe que pour lui-même ;
+   * l'administrateur voit tout et répartit les demandes. La règle vit dans le domaine,
+   * et les règles Firestore appliquent la même chose sur le jeton — ceci n'accorde que
+   * l'interface.
+   */
+  const moi = $derived({
+    role: staffStore.identity.role,
+    practitionerId: staffStore.identity.practitionerId,
+  })
+  const toutVoir = $derived(seesEveryAppointment(moi))
+  const avis = $derived(appointmentAccessNotice(moi))
+  const monIntervenant = $derived(store.practitionerOf(staffStore.identity.practitionerId ?? ''))
+  const sansAgenda = $derived(!toutVoir && staffStore.identity.practitionerId === null)
+
   const kinds = $derived(store.appointmentKinds)
   const enAttente = $derived(pendingFirst(staffStore.appointments))
   const fixes = $derived(
@@ -87,6 +106,12 @@
 
   // Changer de motif propose l'intervenant correspondant, tant qu'on n'en a pas choisi un.
   $effect(() => {
+    // Un intervenant ne choisit pas : le rendez-vous est le sien, forcément.
+    if (!toutVoir) {
+      intervenantDirect = staffStore.identity.practitionerId ?? ''
+      avecQuiDirecte = monIntervenant?.name ?? ''
+      return
+    }
     const attitre = store.practitioners.find((i) => i.kindId === quelKind && i.isActive)
     if (intervenantDirect === '' && attitre !== undefined) {
       intervenantDirect = attitre.id
@@ -145,11 +170,20 @@
 </script>
 
 <section class="mx-auto max-w-4xl px-4 py-6">
-  <h1 class="mb-2 text-3xl font-bold text-ink">Demandes de rendez-vous</h1>
-  <p class="mb-5 text-lg text-ink-soft">
-    Les demandes les plus anciennes sont en tête. Consultez l'agenda, fixez la date, puis
-    dites-le au patient : il le verra aussi dans son application.
+  <h1 class="mb-2 text-3xl font-bold text-ink">
+    {toutVoir ? 'Demandes de rendez-vous' : 'Mes rendez-vous'}
+  </h1>
+  <p class="mb-4 text-lg text-ink-soft">
+    {toutVoir
+      ? 'Les demandes les plus anciennes sont en tête. Consultez l’agenda, fixez la date, puis dites-le au patient : il le verra aussi dans son application.'
+      : 'Vous fixez la date, puis vous le dites au patient : il le verra aussi dans son application.'}
   </p>
+
+  {#if avis !== null}
+    <p role="status" class="mb-5 rounded-xl bg-surface-soft p-3 text-lg text-ink">
+      <span aria-hidden="true">🔒</span> {avis}
+    </p>
+  {/if}
 
   {#if staffStore.message !== null}
     <p role="status" class="mb-4 rounded-xl bg-brand-100 p-3 text-lg font-semibold text-brand-900">
@@ -161,7 +195,9 @@
     Avant la file : c'est le geste le plus courant. La plupart des rendez-vous seront
     demandés de vive voix, pas par l'application.
   -->
-  {#if !formulaireOuvert}
+  {#if sansAgenda}
+    <!-- Sans lien vers une personne du personnel, il n'y a ni agenda ni rendez-vous à fixer. -->
+  {:else if !formulaireOuvert}
     <button type="button" class="btn btn-primary mb-6" onclick={() => (formulaireOuvert = true)}>
       <span aria-hidden="true">＋</span> Fixer un rendez-vous
     </button>
@@ -191,7 +227,9 @@
         {/each}
       </select>
 
-      <label for="motif" class="mt-4 mb-2 block text-lg font-semibold text-ink">Avec quel professionnel</label>
+      <label for="motif" class="mt-4 mb-2 block text-lg font-semibold text-ink">
+        {toutVoir ? 'Avec quel professionnel' : 'À quel titre'}
+      </label>
       <select id="motif" bind:value={quelKind} class={champ} style="min-height: 56px;">
         {#each kinds as genre (genre.id)}
           <option value={genre.id}>{genre.icon} {genre.name}</option>
@@ -217,25 +255,34 @@
         </div>
       </div>
 
-      <label for="nom" class="mt-4 mb-2 block text-lg font-semibold text-ink">
-        Quel intervenant — le patient lira son nom
-      </label>
-      <select
-        id="nom"
-        class={champ}
-        style="min-height: 56px;"
-        value={intervenantDirect}
-        onchange={(event) => {
-          intervenantDirect = event.currentTarget.value
-          avecQuiDirecte =
-            store.practitionerOf(intervenantDirect)?.name ?? kindName(kinds, quelKind)
-        }}
-      >
-        <option value="">{kindName(kinds, quelKind)} — sans préciser qui</option>
-        {#each intervenantsProposes as intervenant (intervenant.id)}
-          <option value={intervenant.id}>{intervenant.name} — {intervenant.role}</option>
-        {/each}
-      </select>
+      {#if toutVoir}
+        <label for="nom" class="mt-4 mb-2 block text-lg font-semibold text-ink">
+          Quel intervenant — le patient lira son nom
+        </label>
+        <select
+          id="nom"
+          class={champ}
+          style="min-height: 56px;"
+          value={intervenantDirect}
+          onchange={(event) => {
+            intervenantDirect = event.currentTarget.value
+            avecQuiDirecte =
+              store.practitionerOf(intervenantDirect)?.name ?? kindName(kinds, quelKind)
+          }}
+        >
+          <option value="">{kindName(kinds, quelKind)} — sans préciser qui</option>
+          {#each intervenantsProposes as intervenant (intervenant.id)}
+            <option value={intervenant.id}>{intervenant.name} — {intervenant.role}</option>
+          {/each}
+        </select>
+      {:else}
+        <!-- Pas de menu : le rendez-vous est le vôtre. On le dit, on ne le fait pas deviner. -->
+        <p class="mt-4 rounded-xl bg-surface-soft p-3 text-lg text-ink">
+          <span aria-hidden="true">👤</span>
+          Ce rendez-vous sera à votre nom : <strong>{monIntervenant?.name ?? 'vous'}</strong>.
+          C'est ce que le patient lira.
+        </p>
+      {/if}
 
       <label for="ou" class="mt-4 mb-2 block text-lg font-semibold text-ink">Où — facultatif</label>
       <select id="ou" bind:value={lieuDirecte} class={champ} style="min-height: 56px;">
@@ -260,6 +307,7 @@
     </form>
   {/if}
 
+  {#if toutVoir}
   <h2 class="mb-3 text-2xl font-bold text-ink">
     En attente {enAttente.length > 0 ? `(${enAttente.length})` : ''}
   </h2>
@@ -347,10 +395,17 @@
       {/each}
     </ul>
   {/if}
+  {/if}
 
-  <h2 class="mt-8 mb-3 text-2xl font-bold text-ink">Rendez-vous fixés</h2>
+  <h2 class="mt-8 mb-3 text-2xl font-bold text-ink">
+    {toutVoir ? 'Rendez-vous fixés' : 'Mes rendez-vous'}
+  </h2>
   {#if fixes.length === 0}
-    <p class="card p-5 text-lg text-ink-soft">Aucun rendez-vous fixé pour le moment.</p>
+    <p class="card p-5 text-lg text-ink-soft">
+      {toutVoir
+        ? 'Aucun rendez-vous fixé pour le moment.'
+        : 'Aucun rendez-vous à votre nom pour le moment.'}
+    </p>
   {:else}
     <ul class="grid gap-3">
       {#each fixes as rendezVous (rendezVous.id)}
