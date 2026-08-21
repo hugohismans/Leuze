@@ -57,6 +57,25 @@ export type EditScope = 'occurrence' | 'following' | 'series'
 /** Ce qui occupe déjà quelqu'un au moment visé, tel que le serveur le rapporte. */
 export type TimeConflict = { label: string; kind: 'activity' | 'appointment'; start: Date; end: Date }
 
+/**
+ * De quoi poser un rendez-vous sans rien deviner : la semaine croisée de l'intervenant
+ * et du patient, et un créneau proposé.
+ *
+ * Le croisement est fait par le serveur : le navigateur n'a pas à recevoir l'agenda d'un
+ * collègue pour trouver un trou. Les libellés sont rendus à qui a le droit de les lire —
+ * ailleurs, c'est « Occupé ».
+ */
+export type AppointmentPlanning = {
+  availability: AvailabilityWindow[]
+  week: {
+    localDate: LocalDate
+    windows: AvailabilityWindow[]
+    free: { from: LocalTime; to: LocalTime }[]
+    taken: TimeConflict[]
+  }[]
+  suggestion: { localDate: LocalDate; time: LocalTime; matchesPreference: boolean } | null
+}
+
 /** Un patient, tel que le personnel le voit : un prénom, un service. Rien d'autre. */
 export type StaffPatient = {
   uid: string
@@ -230,6 +249,18 @@ export interface StaffRepository {
   }): Promise<{ ok: boolean; message: string }>
 
   cancelAppointment(appointmentId: string, reason: string): Promise<{ ok: boolean; message: string }>
+
+  /**
+   * La semaine croisée d'un intervenant et d'un patient, avec un créneau proposé.
+   * `patientUid` est facultatif : sans lui, on ne regarde que l'agenda de l'intervenant.
+   */
+  appointmentPlanning(query: {
+    practitionerId: string
+    patientUid?: string
+    preference?: 'matin' | 'apres-midi' | 'peu-importe'
+    durationMin?: number
+    from?: LocalDate
+  }): Promise<AppointmentPlanning>
 }
 
 /** Réservé à l'administrateur : ajouter un lieu, un service, une catégorie. */

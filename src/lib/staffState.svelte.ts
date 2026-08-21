@@ -9,6 +9,7 @@ import type {
   RosterLine,
   StaffApp,
   StaffIdentity,
+  AppointmentPlanning,
   StaffPatient,
   TimeConflict,
 } from './data/staffPorts'
@@ -206,6 +207,26 @@ class StaffStore {
     await this.loadAppointments()
     this.message = resultat.message
     return resultat.ok
+  }
+
+  /**
+   * La semaine croisée d'un intervenant et d'un patient, avec un créneau proposé.
+   * C'est le serveur qui croise : l'écran ne reçoit que des heures et un état.
+   */
+  async appointmentPlanning(query: {
+    practitionerId: string
+    patientUid?: string
+    preference?: 'matin' | 'apres-midi' | 'peu-importe'
+    durationMin?: number
+    from?: LocalDate
+  }): Promise<AppointmentPlanning | null> {
+    try {
+      return await (await this.app$()).repository.appointmentPlanning(query)
+    } catch {
+      // Un agenda qu'on ne peut pas lire ne doit pas empêcher de fixer un rendez-vous :
+      // l'écran continue sans la suggestion, et le soignant choisit son heure.
+      return null
+    }
   }
 
   async cancelAppointment(appointmentId: string, reason: string): Promise<void> {

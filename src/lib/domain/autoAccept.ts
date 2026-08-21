@@ -23,8 +23,9 @@
  * **Rien n'est verrouillé.** Le rendez-vous fixé automatiquement est un rendez-vous
  * ordinaire : il se déplace, il s'annule avec un motif, comme tous les autres.
  */
-import { normalizeAvailability, minutesOf, windowsOn } from './availability'
-import { addLocalDays, isoWeekdayOf } from './time'
+import { suggestSlot, type Suggestion } from './agenda'
+import { instantOf } from './time'
+import type { BusyEntry } from './conflicts'
 import type { AppointmentPreference, AvailabilityWindow, LocalDate, LocalTime } from './types'
 
 /** Un créneau déjà pris dans l'agenda de la personne. */
@@ -43,12 +44,7 @@ export type SlotSearch = {
   stepMin?: number
 }
 
-export type FoundSlot = {
-  localDate: LocalDate
-  time: LocalTime
-  /** Faux quand le moment de la journée souhaité n'était pas disponible. */
-  matchesPreference: boolean
-}
+export type FoundSlot = Suggestion
 
 /** La durée d'un rendez-vous placé automatiquement. Elle se modifie ensuite à la main. */
 export const AUTO_DURATION_MIN = 30
@@ -56,70 +52,43 @@ export const AUTO_DURATION_MIN = 30
 /** L'horizon de recherche : trois semaines. Au-delà, la place n'est plus une réponse. */
 export const AUTO_HORIZON_DAYS = 21
 
-const MIDI = 12 * 60
-
-function toTime(minutes: number): LocalTime {
-  const h = Math.floor(minutes / 60)
-  const m = minutes % 60
-  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
-}
-
-/** Le moment de la journée convient-il à ce qui a été demandé ? */
-function suitPreference(debut: number, fin: number, preference: AppointmentPreference): boolean {
-  if (preference === 'matin') return fin <= MIDI
-  if (preference === 'apres-midi') return debut >= MIDI
-  return true
-}
-
-function chevauche(debut: number, fin: number, occupes: BusySlot[]): boolean {
-  return occupes.some((pris) => {
-    const d = minutesOf(pris.from)
-    const f = minutesOf(pris.to)
-    // Un créneau mal formé ne peut rien libérer : on le tient pour occupé toute la journée.
-    if (d === null || f === null) return true
-    return debut < f && d < fin
-  })
+/**
+ * Un créneau pris, tel que l'agenda le comprend.
+ *
+ * Une heure illisible ne peut rien libérer : la journée entière est alors tenue pour
+ * occupée. Mieux vaut ne pas proposer de rendez-vous que d'en poser un par-dessus une
+ * donnée qu'on ne sait pas lire.
+ */
+function enIntervalle(pris: BusySlot): BusyEntry {
+  const debut = instantOf(pris.localDate, pris.from)
+  const fin = instantOf(pris.localDate, pris.to)
+  const lisible = !Number.isNaN(debut.getTime()) && !Number.isNaN(fin.getTime()) && debut < fin
+  return {
+    start: lisible ? debut : instantOf(pris.localDate, '00:00'),
+    end: lisible ? fin : instantOf(pris.localDate, '23:59'),
+    label: 'Occupé',
+    kind: 'appointment',
+  }
 }
 
 /**
- * La première place libre, ou `null` s'il n'y en a aucune dans l'horizon. La préférence
- * est tentée d'abord ; à défaut, on repasse sans elle.
+ * La première place libre, ou `null` s'il n'y en a aucune dans l'horizon.
+ *
+ * La recherche elle-même vit dans `agenda.ts`, où elle sert aussi à proposer un créneau
+ * au soignant : deux façons de chercher une place donneraient deux réponses différentes
+ * à la même question.
  */
 export function findFirstSlot(search: SlotSearch): FoundSlot | null {
-  const plages = normalizeAvailability(search.windows)
-  if (plages.length === 0 || search.durationMin <= 0) return null
-
-  const strict = chercher(search, plages, true)
-  if (strict !== null) return strict
-  if (search.preference === 'peu-importe') return null
-  return chercher(search, plages, false)
-}
-
-function chercher(
-  search: SlotSearch,
-  plages: AvailabilityWindow[],
-  respecterLaPreference: boolean,
-): FoundSlot | null {
-  const pas = search.stepMin ?? 15
-  for (let jour = 0; jour < search.horizonDays; jour += 1) {
-    const date = addLocalDays(search.from, jour)
-    const duJour = windowsOn(plages, isoWeekdayOf(date))
-    if (duJour.length === 0) continue
-    const occupes = search.busy.filter((pris) => pris.localDate === date)
-
-    for (const plage of duJour) {
-      // `minutesOf` a déjà été validé par `normalizeAvailability` : les bornes sont lisibles.
-      const ouverture = minutesOf(plage.from)!
-      const fermeture = minutesOf(plage.to)!
-      for (let debut = ouverture; debut + search.durationMin <= fermeture; debut += pas) {
-        const fin = debut + search.durationMin
-        if (respecterLaPreference && !suitPreference(debut, fin, search.preference)) continue
-        if (chevauche(debut, fin, occupes)) continue
-        return { localDate: date, time: toTime(debut), matchesPreference: respecterLaPreference }
-      }
-    }
-  }
-  return null
+  return suggestSlot({
+    windows: search.windows,
+    practitionerBusy: search.busy.map(enIntervalle),
+    patientBusy: [],
+    preference: search.preference,
+    from: search.from,
+    horizonDays: search.horizonDays,
+    durationMin: search.durationMin,
+    ...(search.stepMin === undefined ? {} : { stepMin: search.stepMin }),
+  })
 }
 
 /**

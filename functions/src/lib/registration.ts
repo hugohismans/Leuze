@@ -136,6 +136,78 @@ export async function busyOn(
 }
 
 /**
+ * Ce qui occupe une personne sur une période, en trois lectures.
+ *
+ * `busyOn` répond pour un jour ; l'appeler vingt-deux fois d'affilée ferait quarante-quatre
+ * requêtes pour une seule question. Ici, les inscriptions et les rendez-vous sont lus une
+ * fois, puis répartis.
+ */
+export async function busyBetween(
+  database: Firestore,
+  patientUid: string,
+  from: string,
+  to: string,
+): Promise<BusyEntry[]> {
+  const [inscriptions, rendezVous] = await Promise.all([
+    database.collection(COLLECTIONS.registrations).where('patientUid', '==', patientUid).get(),
+    database
+      .collection(COLLECTIONS.appointments)
+      .where('patientUid', '==', patientUid)
+      .where('localDate', '>=', from)
+      .where('localDate', '<=', to)
+      .get(),
+  ])
+
+  const dansLaPeriode = inscriptions.docs
+    .map(docToRegistration)
+    .filter((r) => r.status !== 'cancelled')
+    .filter((r) => {
+      const jour = localDateOfOccurrenceId(r.occurrenceId)
+      return jour !== null && jour >= from && jour <= to
+    })
+
+  const seances =
+    dansLaPeriode.length === 0
+      ? []
+      : await database.getAll(
+          ...dansLaPeriode.map((r) => database.collection(COLLECTIONS.occurrences).doc(r.occurrenceId)),
+        )
+
+  const occupe: BusyEntry[] = []
+  for (const document of seances) {
+    if (!document.exists) continue
+    const occurrence = docToOccurrence(document)
+    if (occurrence.status === 'cancelled') continue
+    occupe.push({ start: occurrence.start, end: occurrence.end, label: occurrence.title, kind: 'activity' })
+  }
+
+  const motifs = rendezVous.empty
+    ? []
+    : (await database.collection(COLLECTIONS.appointmentKinds).get()).docs.map((d) => ({
+        id: d.id,
+        name: (d.data()['name'] as string) ?? '',
+        icon: '',
+        isActive: true,
+      }))
+
+  for (const document of rendezVous.docs) {
+    const data = document.data()
+    if (data['status'] !== 'scheduled') continue
+    const debut = data['start'] as FirebaseFirestore.Timestamp | undefined
+    const fin = data['end'] as FirebaseFirestore.Timestamp | undefined
+    if (debut === undefined || fin === undefined) continue
+    const qui = (data['withWhom'] as string | undefined) ?? kindName(motifs, data['kindId'] as string)
+    occupe.push({
+      start: debut.toDate(),
+      end: fin.toDate(),
+      label: `Rendez-vous avec ${qui}`,
+      kind: 'appointment',
+    })
+  }
+  return occupe
+}
+
+/**
  * Ce qui tombe en même temps qu'une séance, pour la personne visée. Liste vide quand la
  * séance est introuvable : c'est la transaction qui le dira, pas ce contrôle-ci.
  */
