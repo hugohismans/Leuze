@@ -18,11 +18,16 @@ Lire `PLAN.md` avant toute modification d'architecture.
    laisserait fuiter les titres.
 4. **`src/lib/domain/**` n'importe jamais Firebase**, ni `window`, ni Svelte. Fonctions pures,
    testées. C'est la seule partie du code où un bug est cher.
-5. **Ne jamais supprimer physiquement** une activité ou une occurrence portant des inscriptions.
+5. **On s'inscrit à une séance, jamais à une série.** La récurrence sert uniquement à
+   *créer* des séances côté soignant. Aucune inscription ne raisonne en `seriesId` :
+   ni bouton « toutes les séances », ni report automatique d'une semaine sur l'autre.
+   Une personne qui ne vient plus doit simplement cesser de s'inscrire, sans avoir à
+   défaire quoi que ce soit.
+6. **Ne jamais supprimer physiquement** une activité ou une occurrence portant des inscriptions.
    `isActive: false` / `status: 'cancelled'` avec motif.
-6. **Le rôle qui fait autorité est le « custom claim »**, pas le document `staff/`.
+7. **Le rôle qui fait autorité est le « custom claim »**, pas le document `staff/`.
    Un document Firestore ne décide jamais d'un droit : les règles lisent le jeton.
-7. **Pas de librairie de calendrier générique** (FullCalendar & co). Vues construites à la main
+8. **Pas de librairie de calendrier générique** (FullCalendar & co). Vues construites à la main
    avec `date-fns` (locale `fr`, `weekStartsOn: 1`, fuseau `Europe/Brussels`).
 
 ---

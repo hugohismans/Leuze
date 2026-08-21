@@ -153,3 +153,43 @@ describe('liste d’attente', () => {
     expect(board.occurrence.waitlistCount).toBe(1)
   })
 })
+
+describe('une inscription ne vaut que pour une séance', () => {
+  /**
+   * Règle de fond du projet : la récurrence sert à créer des séances, jamais à s'y
+   * inscrire d'avance. Ce test garde la propriété — si un jour quelqu'un ajoute une
+   * inscription « pour toute la série », il échouera.
+   */
+  it('n’atteint aucune autre occurrence de la même série', () => {
+    const mardiUn = makeOccurrence({
+      id: 'yoga_20260901T1400',
+      localDate: '2026-09-01',
+      seriesId: 'serie-yoga',
+      capacity: 5,
+    })
+    const mardiDeux = makeOccurrence({
+      id: 'yoga_20260908T1400',
+      localDate: '2026-09-08',
+      seriesId: 'serie-yoga',
+      capacity: 5,
+    })
+
+    const board = { occurrence: mardiUn, registrations: [] }
+    const resultat = register(board, 'p_camille', {
+      now: new Date('2026-08-25T09:00:00Z'),
+      registrationId: 'insc-1',
+      by: 'patient',
+    })
+
+    expect(resultat.ok).toBe(true)
+    if (!resultat.ok) return
+    // La séance visée compte une inscription…
+    expect(resultat.board.occurrence.id).toBe(mardiUn.id)
+    expect(resultat.board.occurrence.confirmedCount).toBe(1)
+    expect(resultat.board.registrations).toHaveLength(1)
+    expect(resultat.board.registrations[0]?.occurrenceId).toBe(mardiUn.id)
+    // …et la suivante, de la même série, n'a pas bougé.
+    expect(mardiDeux.confirmedCount).toBe(0)
+    expect(resultat.board.registrations.some((r) => r.occurrenceId === mardiDeux.id)).toBe(false)
+  })
+})

@@ -151,6 +151,12 @@
             <p class="mt-1">
               {formatFullWhen(occurrence.localDate, occurrence.start, occurrence.end)}, {location?.name ?? ''}
             </p>
+            <!--
+              C'est ici que la confusion coûterait le plus cher : « je suis inscrit au
+              yoga » n'est pas « je suis inscrit au yoga de ce mardi ». Une activité qui
+              revient chaque semaine demande une inscription à chaque fois.
+            -->
+            <p class="mt-1 text-lg">Cette inscription vaut pour cette séance uniquement.</p>
           {:else}
             <p><strong>Vous êtes sur la liste d'attente</strong></p>
             <p class="mt-1">
@@ -171,6 +177,12 @@
             Cette activité est complète. En vous inscrivant, vous êtes placé sur la liste d'attente.
           </p>
         {/if}
+        <!--
+          Une activité peut revenir chaque semaine ; l'inscription, elle, ne vaut que
+          pour la séance affichée. Le dire évite qu'une personne croie être inscrite
+          pour toutes les fois suivantes et ne revienne pas.
+        -->
+        <p class="text-lg text-ink-soft">Vous vous inscrivez pour cette séance seulement.</p>
       {:else if block === 'full-no-waitlist' || block === 'cancelled' || block === 'past'}
         <p class="card p-5 text-xl">{registrationBlockMessage(block)}</p>
       {:else}

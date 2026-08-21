@@ -203,6 +203,20 @@ L'exception *est* le document d'occurrence, marqué `overridden: true`.
 - Changement d'heure d'été : la récurrence raisonne en **heure murale locale**. « Mardi 14h » reste
   14h le mardi qui suit le passage à l'heure d'hiver. C'est un des cas de test obligatoires.
 
+### 4.1 bis La récurrence ne concerne que la création
+
+La récurrence sert à **poser des séances**, jamais à s'y inscrire d'avance. Une inscription
+porte toujours sur une occurrence précise, et une seule.
+
+C'est un choix de fond, pas une limite technique. Dans une unité de soins, la
+participation se décide semaine par semaine, selon l'état du jour ; une inscription
+reconduite d'office produirait des places réservées pour des personnes qui ne viendront
+pas, et obligerait à se **désinscrire** — un geste que personne ne fera. La fiche le dit
+au patient en toutes lettres : « Vous vous inscrivez pour cette séance seulement. »
+
+Un test du domaine garde cette propriété : inscrire quelqu'un sur une occurrence ne
+touche aucune des autres occurrences de la même série.
+
 ### 4.2 Modifier une activité récurrente
 
 Trois choix proposés systématiquement, comme un calendrier classique :
