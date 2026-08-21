@@ -24,7 +24,7 @@
  */
 import { randomBytes } from 'node:crypto'
 import { initializeApp, applicationDefault } from 'firebase-admin/app'
-import { getAuth } from 'firebase-admin/auth'
+import { getAuth, type UserRecord } from 'firebase-admin/auth'
 import { getFirestore, Timestamp, type Firestore } from 'firebase-admin/firestore'
 import { config } from '../src/lib/config'
 import { firebaseOptions } from '../src/lib/data/firestore/options'
@@ -51,7 +51,7 @@ const valeur = (nom: string): string | null =>
   args.find((a) => a.startsWith(`--${nom}=`))?.split('=').slice(1).join('=') ?? null
 
 const PROJET = valeur('projet') ?? process.env.GCLOUD_PROJECT ?? firebaseOptions.projectId
-const ADMIN_EMAIL = process.env.ADMIN_EMAIL ?? 'hugo.hismans@gmail.com'
+const ADMIN_EMAIL = valeur('admin') ?? process.env.ADMIN_EMAIL ?? 'hugo.hismans@gmail.com'
 
 /*
   Le même geste peut se répéter sur l'émulateur avant d'être fait pour de bon : c'est
@@ -136,25 +136,62 @@ async function effacerCollection(database: Firestore, nom: string): Promise<numb
   return total
 }
 
-async function effacerLesComptes(): Promise<{ supprimes: number; garde: string | null }> {
-  const administrateur = await auth.getUserByEmail(ADMIN_EMAIL).catch(() => null)
-  if (administrateur === null && !surEmulateur) {
-    throw new Error(
-      `Le compte ${ADMIN_EMAIL} n’existe pas dans ce projet. ` +
-        'Refus d’effacer : on ne se coupe pas la seule porte d’entrée.',
-    )
-  }
-
-  const aSupprimer: string[] = []
+/** Tous les comptes du projet, en une fois. Il y en a quelques dizaines, pas des milliers. */
+async function tousLesComptes(): Promise<UserRecord[]> {
+  const comptes: UserRecord[] = []
   let page = await auth.listUsers(1000)
   for (;;) {
-    for (const utilisateur of page.users) {
-      if (utilisateur.uid !== administrateur?.uid) aSupprimer.push(utilisateur.uid)
-    }
+    comptes.push(...page.users)
     if (page.pageToken === undefined) break
     page = await auth.listUsers(1000, page.pageToken)
   }
+  return comptes
+}
 
+/**
+ * Retrouver l'administrateur, sans se fier à une seule façon de l'écrire.
+ *
+ * Une adresse peut être portée par le compte lui-même ou seulement par le fournisseur
+ * d'identité — une connexion Google, par exemple —, et la casse ne veut rien dire.
+ * On accepte donc aussi un identifiant technique, passé avec `--admin=`.
+ */
+function trouverAdministrateur(comptes: UserRecord[], recherche: string): UserRecord | null {
+  const cible = recherche.trim().toLowerCase()
+  return (
+    comptes.find((u) => u.uid === recherche) ??
+    comptes.find((u) => (u.email ?? '').toLowerCase() === cible) ??
+    comptes.find((u) => u.providerData.some((p) => (p.email ?? '').toLowerCase() === cible)) ??
+    null
+  )
+}
+
+/** Ce qu'on affiche quand le compte cherché reste introuvable : de quoi choisir. */
+function decrire(compte: UserRecord): string {
+  const roles = compte.customClaims?.['role']
+  const fournisseurs = compte.providerData.map((p) => p.providerId).join(', ') || 'aucun fournisseur'
+  return (
+    `  ${(compte.email ?? '(sans adresse)').padEnd(34)} ${String(roles ?? '—').padEnd(6)} ` +
+    `${fournisseurs.padEnd(20)} ${compte.uid}`
+  )
+}
+
+async function effacerLesComptes(): Promise<{ supprimes: number; garde: string | null }> {
+  const comptes = await tousLesComptes()
+  const administrateur = trouverAdministrateur(comptes, ADMIN_EMAIL)
+
+  if (administrateur === null && !surEmulateur) {
+    throw new Error(
+      `Aucun compte ne correspond à « ${ADMIN_EMAIL} » dans le projet ${PROJET}.\n` +
+        'Refus d’effacer les comptes : on ne se coupe pas la seule porte d’entrée.\n\n' +
+        `Comptes présents (${comptes.length}) — adresse, rôle, fournisseur, identifiant :\n` +
+        comptes.map(decrire).join('\n') +
+        '\n\nRelancez en désignant le bon, par son adresse ou son identifiant :\n' +
+        '  ADMIN_EMAIL="l’adresse exacte" npm run demo:reset -- --je-confirme\n' +
+        '  ou : npm run demo:reset -- --je-confirme --admin=IDENTIFIANT',
+    )
+  }
+
+  const aSupprimer = comptes.filter((u) => u.uid !== administrateur?.uid).map((u) => u.uid)
   for (let i = 0; i < aSupprimer.length; i += 900) {
     await auth.deleteUsers(aSupprimer.slice(i, i + 900))
   }
@@ -265,7 +302,7 @@ async function ecrireComptes(): Promise<{ email: string; motDePasse: string }[]>
     l'espace soignant ne sait plus comment il s'appelle. Son rôle, lui, vit dans le
     jeton et n'a pas été touché.
   */
-  const administrateur = await auth.getUserByEmail(ADMIN_EMAIL).catch(() => null)
+  const administrateur = trouverAdministrateur(await tousLesComptes(), ADMIN_EMAIL)
   if (administrateur !== null) {
     await db.collection('staff').doc(administrateur.uid).set({
       firstName: administrateur.displayName ?? 'Administrateur',
