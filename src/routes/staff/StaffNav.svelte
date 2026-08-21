@@ -26,6 +26,7 @@
 
   const occasionnels = [
     { chemin: '/soignant/patients', libelle: 'Les patients' },
+    { chemin: '/soignant/personnel', libelle: 'Le personnel' },
     { chemin: '/soignant/activites', libelle: 'Les activités' },
     { chemin: '/soignant/catalogue', libelle: 'Le catalogue' },
   ]

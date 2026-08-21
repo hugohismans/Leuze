@@ -68,8 +68,8 @@
 
 <section class="mx-auto max-w-3xl px-4 py-6">
   <div class="no-print">
-    <button type="button" class="btn btn-secondary mb-4" onclick={() => navigate('/soignant/catalogue')}>
-      <span aria-hidden="true">←</span> Retour au catalogue
+    <button type="button" class="btn btn-secondary mb-4" onclick={() => navigate('/soignant/personnel')}>
+      <span aria-hidden="true">←</span> Retour au personnel
     </button>
 
     {#if intervenant === null}
