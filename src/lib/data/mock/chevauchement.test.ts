@@ -161,4 +161,22 @@ describe('le soignant qui inscrit quelqu’un de déjà pris', () => {
       true,
     )
   })
+
+  it('n’est pas arrêté par une autre activité — on ne demande que pour un rendez-vous', async () => {
+    /*
+      Un programme chargé fait se recouvrir des activités tout le temps. Poser la question
+      à chaque prénom, c'était une réunion qui n'avance plus — et l'on finissait par
+      cliquer « oui » sans lire. On inscrit ; ce qui se chevauche se voit sur la feuille.
+    */
+    const app = await ouvrirSoignant()
+    const seance = seanceAVenir()
+    const copie = { ...seance, id: `${seance.id}-bis`, title: 'Séance qui recouvre' }
+    world.occurrences.set(copie.id, copie)
+
+    await app.repository.registerPatient(seance.id, DEMO_PATIENT_UID)
+    const seconde = await app.repository.registerPatient(copie.id, DEMO_PATIENT_UID)
+
+    expect(seconde.ok).toBe(true)
+    expect(seconde.conflicts).toBeUndefined()
+  })
 })

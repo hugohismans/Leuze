@@ -54,6 +54,15 @@ export function blockingConflict(conflicts: BusyEntry[]): BusyEntry | null {
   return conflicts.find((entry) => entry.kind === 'appointment') ?? null
 }
 
+/**
+ * Tous les rendez-vous heurtés — c'est-à-dire tout ce qui justifie de s'arrêter et de
+ * demander. Les activités qui tombent en même temps n'y figurent pas : elles se disent,
+ * elles n'arrêtent rien. Une liste vide veut donc dire « on peut inscrire ».
+ */
+export function blockingConflicts(conflicts: BusyEntry[]): BusyEntry[] {
+  return conflicts.filter((entry) => entry.kind === 'appointment')
+}
+
 /** « Rendez-vous avec le psychiatre, de 10h00 à 10h30 ». */
 export function describeConflict(entry: BusyEntry): string {
   return `${entry.label}, de ${formatTime(entry.start)} à ${formatTime(entry.end)}`

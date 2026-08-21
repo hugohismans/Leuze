@@ -4,7 +4,7 @@
  */
 import { addLocalDays, addMinutes, instantOf, todayLocalDate } from '../../domain/time'
 import { agendaWeek, suggestSlot } from '../../domain/agenda'
-import type { BusyEntry } from '../../domain/conflicts'
+import { blockingConflicts, type BusyEntry } from '../../domain/conflicts'
 import type { Activity, Appointment, LocalDate, LocalTime, Occurrence } from '../../domain/types'
 import { generationWindow, planGeneration } from '../generation'
 import { activitiesSeed } from '../seed/activities.seed'
@@ -415,9 +415,14 @@ export function createMockStaffApp(): StaffApp {
         const board = boardOf(occurrenceId)
         if (board === null) return { ok: false, message: "Cette activité n'a pas été trouvée." }
 
-        // Rien n'est interdit au soignant, mais il doit le savoir avant d'inscrire.
+        /*
+          Rien n'est interdit au soignant, mais il doit le savoir avant d'inscrire — et
+          seuls les rendez-vous valent qu'on s'arrête. Deux activités qui se recouvrent
+          sont le lot d'un programme chargé : demander confirmation à chaque prénom
+          rendait la réunion impraticable. Même règle que le serveur, au mot près.
+        */
         if (options.overrideConflict !== true) {
-          const conflits = conflictsFor(patientUid, occurrenceId)
+          const conflits = blockingConflicts(conflictsFor(patientUid, occurrenceId))
           if (conflits.length > 0) {
             return {
               ok: false,

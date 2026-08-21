@@ -12,6 +12,7 @@ import { auth, COLLECTIONS, db, docToOccurrence } from './lib/firestore'
 import { generationWindow, regenerateActivity, regenerateAll } from './lib/occurrences'
 import { assertNotRateLimited, clearFailures, recordFailure } from './lib/rateLimit'
 import {
+  appointmentConflictsFor,
   busyBetween,
   conflictsFor,
   myRegistrationsFor,
@@ -195,9 +196,15 @@ export const staffRegister = onCall(async (request: CallableRequest) => {
     Rien n'est interdit au soignant : il connaît la situation, il peut déplacer le
     rendez-vous. Mais il doit le savoir avant d'inscrire, pas le découvrir le jour même.
     L'écran le lui demande, puis renvoie la même demande avec `overrideConflict`.
+
+    Seuls les rendez-vous arrêtent le geste. On avait d'abord fait s'arrêter l'application
+    sur n'importe quel chevauchement — y compris deux activités qui se recouvrent d'un
+    quart d'heure, ce qui est le cas courant d'un programme chargé. En réunion, cela
+    donnait une question à chaque prénom, et une réunion qui n'avance plus. Deux activités
+    en même temps, on le voit sur la feuille et l'on s'arrange ; un rendez-vous, non.
   */
   if (!overrideConflict) {
-    const conflits = await conflictsFor(db(), patientUid, occurrenceId)
+    const conflits = await appointmentConflictsFor(db(), patientUid, occurrenceId)
     if (conflits.length > 0) {
       return {
         ok: false,

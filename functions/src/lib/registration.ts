@@ -224,6 +224,86 @@ export async function conflictsFor(
   return conflictsWith({ start: occurrence.start, end: occurrence.end }, occupe)
 }
 
+/**
+ * Les seuls chevauchements qui arrêtent une inscription prise en réunion : les rendez-vous.
+ *
+ * Deux lectures, menées de front, et pas une de plus. C'est la question posée à chaque
+ * prénom cliqué pendant la réunion du lundi — dix fois de suite, sur une tablette, en
+ * salle commune. Elle doit coûter le moins possible : le jour de la séance se lit dans
+ * son identifiant, qui est déterministe, donc la requête sur les rendez-vous part sans
+ * attendre la séance elle-même.
+ *
+ * Les autres activités ne sont pas regardées. Deux activités qui se chevauchent, on le
+ * dit sans l'interdire (voir `domain/conflicts.ts`) : les chercher revenait à lire toutes
+ * les inscriptions de la personne, puis toutes les séances correspondantes, avant chaque
+ * clic — trois allers-retours pour une information qui n'empêchait rien.
+ *
+ * Le motif du rendez-vous n'est lu que si l'on s'apprête à refuser : nommer ce qui bloque
+ * vaut une lecture, l'immense majorité des clics n'a pas à la payer.
+ */
+export async function appointmentConflictsFor(
+  database: Firestore,
+  patientUid: string,
+  occurrenceId: string,
+): Promise<BusyEntry[]> {
+  const jour = localDateOfOccurrenceId(occurrenceId)
+  // Forme d'identifiant inattendue : on ne sait pas quel jour regarder. On n'invente pas
+  // un refus, la transaction fera foi.
+  if (jour === null) return []
+
+  const [snapshot, rendezVous] = await Promise.all([
+    database.collection(COLLECTIONS.occurrences).doc(occurrenceId).get(),
+    database
+      .collection(COLLECTIONS.appointments)
+      .where('patientUid', '==', patientUid)
+      .where('localDate', '==', jour)
+      .get(),
+  ])
+  if (!snapshot.exists || rendezVous.empty) return []
+  const occurrence = docToOccurrence(snapshot)
+
+  const poses: Array<{ entry: BusyEntry; kindId: string }> = []
+  for (const document of rendezVous.docs) {
+    const data = document.data()
+    if (data['status'] !== 'scheduled') continue
+    const debut = data['start'] as FirebaseFirestore.Timestamp | undefined
+    const fin = data['end'] as FirebaseFirestore.Timestamp | undefined
+    if (debut === undefined || fin === undefined) continue
+    poses.push({
+      entry: {
+        start: debut.toDate(),
+        end: fin.toDate(),
+        label: (data['withWhom'] as string | undefined) ?? '',
+        kind: 'appointment',
+      },
+      kindId: (data['kindId'] as string | undefined) ?? '',
+    })
+  }
+
+  const heurtes = poses.filter(({ entry }) =>
+    conflictsWith({ start: occurrence.start, end: occurrence.end }, [entry]).length > 0,
+  )
+  if (heurtes.length === 0) return []
+
+  // Un rendez-vous fixé porte le nom de la personne ; s'il ne l'a pas, on va chercher son
+  // motif — mais seulement maintenant, et seulement s'il en manque un.
+  const motifs = heurtes.every(({ entry }) => entry.label !== '')
+    ? []
+    : (await database.collection(COLLECTIONS.appointmentKinds).get()).docs.map((d) => ({
+        id: d.id,
+        name: (d.data()['name'] as string) ?? '',
+        icon: '',
+        isActive: true,
+      }))
+
+  return heurtes
+    .map(({ entry, kindId }) => ({
+      ...entry,
+      label: `Rendez-vous avec ${entry.label === '' ? kindName(motifs, kindId) : entry.label}`,
+    }))
+    .sort((a, b) => a.start.getTime() - b.start.getTime())
+}
+
 export async function registerTx(
   database: Firestore,
   options: {
