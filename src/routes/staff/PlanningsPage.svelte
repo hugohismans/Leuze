@@ -164,9 +164,18 @@
         Aucune personne enregistrée dans ce service. Créez-les depuis « Les patients ».
       </p>
     {:else}
-      <button type="button" class="btn btn-primary btn-huge mb-4" onclick={() => window.print()}>
+      <!--
+        Désactivé pendant une relecture : imprimer au milieu d'un rafraîchissement sortait
+        des feuilles à moitié construites, sans qu'on sache pourquoi.
+      -->
+      <button
+        type="button"
+        class="btn btn-primary btn-huge mb-4"
+        disabled={chargement}
+        onclick={() => window.print()}
+      >
         <span aria-hidden="true">🖨️</span>
-        Imprimer les {plannings.length} plannings
+        {chargement ? 'Lecture des inscriptions…' : `Imprimer les ${plannings.length} plannings`}
       </button>
 
       <ul class="grid gap-2">
@@ -190,6 +199,18 @@
 
   <!-- Les feuilles : invisibles à l'écran, une page chacune à l'impression. -->
   <div class="pile">
+    {#if plannings.length === 0}
+      <!--
+        Une feuille blanche ne dit rien : on ne sait pas si l'impression a échoué, si le
+        service est vide, ou si la page n'avait pas fini de charger. Cette phrase-là le
+        dit. Elle ne devrait jamais sortir de l'imprimante — si elle en sort, elle nomme
+        le problème au lieu de le laisser deviner.
+      -->
+      <p class="rien">
+        Aucun planning n'était prêt au moment de l'impression. Retournez sur « Les
+        plannings », attendez que la liste des prénoms s'affiche, puis réimprimez.
+      </p>
+    {/if}
     {#each plannings as planning (planning.patientUid)}
       <WeekSheet
         titre={`Ma semaine — ${planning.firstName}`}
@@ -205,6 +226,10 @@
   /* La pile n'a de sens que sur le papier : à l'écran, elle ferait défiler pour rien. */
   .pile {
     display: none;
+  }
+  .rien {
+    font-size: 14pt;
+    font-weight: 700;
   }
   @media print {
     .pile {

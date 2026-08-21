@@ -265,7 +265,17 @@ body {
   .feuille-semaine {
     display: flex;
     flex-direction: column;
-    height: 194mm;
+    /*
+      A4 paysage moins les marges de 8 mm laisse exactement 194 mm. Les prendre tous
+      revenait à jouer la feuille au millimètre près : il suffit qu'un pilote d'imprimante
+      impose une marge un peu plus grande, ou qu'une échelle ne soit pas à 100 %, pour que
+      chaque feuille déborde d'un cheveu sur la page suivante — et l'on obtient une page
+      blanche entre chaque planning. Quatre millimètres de jeu ne se voient pas et
+      suppriment le risque.
+    */
+    height: 190mm;
+    /* Et si malgré tout elle débordait, elle se déplace entière plutôt que de se couper. */
+    break-inside: avoid;
   }
 
   /* Une journée ne se coupe pas au milieu d'une page. */
