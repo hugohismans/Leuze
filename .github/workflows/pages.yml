@@ -15,9 +15,14 @@ permissions:
   pages: write
   id-token: write
 
-# Un seul déploiement à la fois ; les envois rapprochés ne se marchent pas dessus.
+# Un seul déploiement à la fois **par branche** ; les envois rapprochés sur une même
+# branche ne se marchent pas dessus.
+#
+# La branche comptait, et elle manquait. Un envoi sur la branche de travail annulait la
+# publication partie de « main » quelques secondes plus tôt : le site public restait alors
+# sur la version d'avant, sans que rien ne signale l'annulation — c'est arrivé.
 concurrency:
-  group: pages
+  group: pages-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -68,7 +73,12 @@ jobs:
         with:
           path: dist
 
+  # La branche de travail construit et vérifie, mais ne publie pas : GitHub Pages
+  # n'accepte de déploiement que depuis « main », et la tentative échouait à chaque envoi.
+  # Une croix rouge qui ne veut rien dire finit par masquer celles qui veulent dire
+  # quelque chose.
   publier:
+    if: github.ref == 'refs/heads/main'
     needs: construire
     runs-on: ubuntu-latest
     environment:
