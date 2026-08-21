@@ -77,7 +77,12 @@
                   {/if}
                 {/snippet}
 
-                {@const bordure = `border-color: var(--color-cat-${categorie?.colorToken ?? 'defaut'}, var(--color-line));`}
+                <!-- Même langage visuel que la semaine du patient : bande de couleur à
+                     gauche, fond teinté, icône devant le titre. Une feuille au mur et une
+                     feuille en poche doivent se reconnaître comme venant du même endroit. -->
+                {@const teinte = categorie?.colorToken ?? 'defaut'}
+                {@const bordure =
+                  `--teinte-fond: var(--cat-${teinte}-bg, #fff); --teinte-trait: var(--cat-${teinte}-fg, var(--color-line));`}
                 {#if onOuvrir}
                   <button
                     type="button"
@@ -138,11 +143,27 @@
     border-top: 1px solid var(--color-line);
     padding-top: 0.5rem;
   }
+  .activite {
+    background: var(--teinte-fond, #fff);
+    border-color: var(--teinte-trait, var(--color-line));
+    border-left-width: 5px;
+  }
+  .activite .titre {
+    color: var(--teinte-trait, var(--color-ink));
+  }
   .activite.annulee {
     background: var(--color-surface-soft);
   }
-  /* Sur écran étroit, les sept colonnes deviennent une liste : pas de scroll horizontal. */
-  @media (max-width: 1100px) {
+  .activite.annulee .titre {
+    color: var(--color-ink);
+  }
+  /*
+    Sur écran étroit, les sept colonnes deviennent une liste : pas de défilement
+    horizontal. « screen » n'est pas décoratif : une page A4 en paysage fait environ
+    1047 points de large, donc moins de 1100 — sans cette précision, la feuille imprimée
+    se dépliait en une seule colonne sur trois pages, à l'inverse de ce qu'elle vise.
+  */
+  @media screen and (max-width: 1100px) {
     .programme {
       grid-template-columns: minmax(0, 1fr) !important;
     }
@@ -164,27 +185,36 @@
       border-color: var(--color-line);
     }
     .en-tete-jour {
-      font-size: 11pt;
+      font-size: 12pt;
       padding: 1mm 2mm;
       border-bottom-width: 1px;
+      background: var(--color-surface-soft);
     }
     .creneau + .creneau {
       padding-top: 1.5mm;
     }
     .heure {
-      font-size: 10pt;
+      font-size: 11pt;
     }
     .titre {
-      font-size: 10pt;
+      font-size: 11pt;
       line-height: 1.15;
     }
     .detail {
-      font-size: 8.5pt;
-      line-height: 1.2;
+      font-size: 9pt;
+      line-height: 1.25;
     }
     .activite {
       border-width: 1px;
+      border-left-width: 1.5mm;
       padding: 1.5mm;
+    }
+    /* Les aplats doivent sortir sur le papier, sans quoi la couleur de catégorie
+       disparaît et l'icône reste seule à distinguer les activités. */
+    .activite,
+    .en-tete-jour {
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
     }
   }
 </style>

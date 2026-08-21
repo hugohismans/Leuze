@@ -1,5 +1,6 @@
 <script lang="ts">
   import { store } from '../lib/appState.svelte'
+  import logo from '../lib/brand/acis-logo-bleu.svg'
   import { kindIcon, kindName } from '../lib/domain/appointments'
   import { myWeek, weekEntryCount } from '../lib/domain/myWeek'
   import {
@@ -57,13 +58,18 @@
   </div>
 
   <article class="feuille ma-semaine card p-5">
-    <header class="mb-4 border-b-2 border-line pb-3">
-      <h1 class="text-3xl font-bold text-ink">
-        Ma semaine{store.firstName ? ` — ${store.firstName}` : ''}
-      </h1>
-      <p class="text-lg text-ink">
-        Du {formatDayLabel(jours[0]!)} au {formatDayLabel(jours[6]!)}
-      </p>
+    <!-- Même en-tête que le programme affiché dans l'unité : les deux feuilles se
+         ressemblent, on les reconnaît de loin comme venant du même endroit. -->
+    <header class="mb-4 flex flex-wrap items-end justify-between gap-3 border-b-2 border-line pb-3">
+      <div>
+        <h1 class="text-3xl font-bold text-ink">
+          Ma semaine{store.firstName ? ` — ${store.firstName}` : ''}
+        </h1>
+        <p class="text-lg text-ink">
+          Du {formatDayLabel(jours[0]!)} au {formatDayLabel(jours[6]!)}
+        </p>
+      </div>
+      <img src={logo} alt="ACIS" class="h-10 w-auto" />
     </header>
 
     <!--
@@ -159,8 +165,26 @@
     display: none;
   }
   @media print {
+    /*
+      La feuille occupe exactement la page, et la grille prend ce qui reste une fois
+      l'en-tête et la légende posés. Sans cela, une semaine à cinq catégories faisait
+      passer la légende sur une seconde ligne et la feuille sur une seconde page.
+    */
+    .ma-semaine {
+      display: flex;
+      flex-direction: column;
+      /*
+        A4 en paysage, moins les marges de 8 mm déclarées dans `@page` : 210 − 16.
+        Une hauteur en pourcentage ne se résoudrait pas — aucun des conteneurs
+        intermédiaires n'a de hauteur — et la grille se contenterait du minimum.
+      */
+      height: 194mm;
+    }
     .grille-papier {
-      display: block;
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      min-height: 0;
     }
     .liste-ecran {
       display: none;

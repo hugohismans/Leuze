@@ -232,10 +232,14 @@ body {
   body:has(.feuille) *:has(.feuille) {
     margin: 0 !important;
     padding: 0 !important;
+    /* Les largeurs maximales servent le confort de lecture à l'écran. Sur le papier,
+       elles laissaient un tiers de la page en blanc. */
+    max-width: none !important;
   }
 
   .feuille {
     width: 100%;
+    max-width: none !important;
     margin: 0 !important;
     border: 0 !important;
     padding: 0 !important;
@@ -251,6 +255,12 @@ body {
     break-inside: avoid;
   }
 
+  /* Le titre de la feuille : lisible, mais il ne doit pas manger la place du contenu. */
+  .feuille h1 {
+    font-size: 16pt;
+    line-height: 1.15;
+  }
+
   .feuille h2 {
     font-size: 16pt;
   }
@@ -261,8 +271,8 @@ body {
   }
 
   .feuille header {
-    margin-bottom: 3mm;
-    padding-bottom: 2mm;
+    margin-bottom: 2.5mm;
+    padding-bottom: 1.5mm;
     border-bottom-width: 1px;
   }
 
@@ -273,7 +283,7 @@ body {
   }
 
   .feuille header img {
-    height: 8mm;
+    height: 7mm;
   }
 
   /* Les repères de couleur doivent sortir, y compris sur une imprimante noir et blanc. */

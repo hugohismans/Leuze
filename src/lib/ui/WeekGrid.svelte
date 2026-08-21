@@ -1,7 +1,8 @@
 <script lang="ts">
   import { store } from '../appState.svelte'
-  import { kindName } from '../domain/appointments'
+  import { kindIcon, kindName } from '../domain/appointments'
   import { formatDayNumber, formatTime, formatWeekdayLabel } from '../domain/time'
+  import { isoWeekdayOf } from '../domain/time'
   import { weekGrid, type WeekGrid } from '../domain/weekGrid'
   import type { WeekDay } from '../domain/myWeek'
 
@@ -22,6 +23,28 @@
    * En dessous de 5 mm on n'écrit plus rien à la main : c'est le plancher.
    */
   const hauteurCreneau = $derived(totalCreneaux <= 20 ? 9 : totalCreneaux <= 26 ? 7 : totalCreneaux <= 32 ? 6 : 5)
+
+  /**
+   * La catégorie donne l'icône et la couleur. L'icône n'est pas décorative : sur une
+   * imprimante en noir et blanc, c'est elle qui distingue le sport de la relaxation,
+   * la couleur ne portant jamais seule une information.
+   */
+  const categorieDe = (categoryId: string) => store.categoryOf(categoryId)
+
+  /** Les catégories réellement présentes cette semaine, pour la légende du bas. */
+  const legende = $derived.by(() => {
+    const vues = new Map<string, { icon: string; name: string; token: string }>()
+    for (const jour of grille.days) {
+      for (const place of jour.placed) {
+        if (place.entry.kind !== 'activity') continue
+        const categorie = categorieDe(place.entry.categoryId)
+        if (categorie && !vues.has(categorie.id)) {
+          vues.set(categorie.id, { icon: categorie.icon, name: categorie.name, token: categorie.colorToken })
+        }
+      }
+    }
+    return [...vues.values()]
+  })
 </script>
 
 <div
@@ -31,7 +54,7 @@
   <!-- En-tête : une case vide au-dessus des heures, puis les sept jours. -->
   <div class="coin" aria-hidden="true"></div>
   {#each grille.days as jour (jour.date)}
-    <div class="entete">
+    <div class="entete" class:fin-de-semaine={isoWeekdayOf(jour.date) >= 6}>
       <span class="jour-nom">{formatWeekdayLabel(jour.date)}</span>
       <span class="jour-num">{formatDayNumber(jour.date)}</span>
     </div>
@@ -50,6 +73,7 @@
       <div
         class="case"
         class:heure-pleine={creneau % grille.slotsPerHour === 0}
+        class:fin-de-semaine={isoWeekdayOf(jour.date) >= 6}
         style={`grid-column: ${2 + colonne}; grid-row: ${2 + creneau};`}
         aria-hidden="true"
       ></div>
@@ -60,14 +84,23 @@
   {#each grille.days as jour, colonne (jour.date)}
     {#each jour.placed as place (place.entry.start.getTime() + place.entry.kind)}
       {@const largeur = 100 / place.lanes}
+      {@const categorie = place.entry.kind === 'activity' ? categorieDe(place.entry.categoryId) : null}
+      {@const teinte = categorie?.colorToken ?? 'defaut'}
+      {@const icone =
+        place.entry.kind === 'activity'
+          ? (categorie?.icon ?? '•')
+          : kindIcon(store.appointmentKinds, place.entry.kindId)}
       <div
         class="bloc"
         class:annule={place.entry.kind === 'activity' && place.entry.cancelled}
         class:rendez-vous={place.entry.kind === 'appointment'}
         style={`grid-column: ${2 + colonne}; grid-row: ${2 + place.fromSlot} / ${2 + place.toSlot};
-                width: ${largeur}%; margin-left: ${largeur * place.lane}%;`}
+                width: ${largeur}%; margin-left: ${largeur * place.lane}%;
+                --teinte-fond: var(--cat-${teinte}-bg, var(--color-surface-soft));
+                --teinte-trait: var(--cat-${teinte}-fg, var(--color-ink));`}
       >
         <p class="titre">
+          <span class="icone" aria-hidden="true">{icone}</span>
           {#if place.entry.kind === 'activity'}
             {place.entry.title}
           {:else}
@@ -90,6 +123,21 @@
   {/each}
 </div>
 
+<!--
+  La légende ne répète pas la couleur : elle donne le sens des icônes. C'est ce qui
+  reste lisible sur une imprimante en noir et blanc, où les teintes se valent toutes.
+-->
+{#if legende.length > 0}
+  <ul class="legende">
+    {#each legende as entree (entree.name)}
+      <li style={`--teinte-fond: var(--cat-${entree.token}-bg, var(--color-surface-soft));`}>
+        <span aria-hidden="true">{entree.icon}</span>
+        {entree.name}
+      </li>
+    {/each}
+  </ul>
+{/if}
+
 <style>
   .grille {
     display: grid;
@@ -110,14 +158,21 @@
     border-left: 1px solid var(--color-ink);
     padding: 1mm 1.5mm;
     text-align: center;
-    line-height: 1.1;
+    line-height: 1.15;
+    background: var(--color-surface-soft);
+  }
+  .entete.fin-de-semaine {
+    background: var(--color-line);
   }
   .jour-nom {
     display: block;
     font-weight: 700;
+    letter-spacing: 0.02em;
   }
   .jour-num {
     display: block;
+    font-weight: 700;
+    font-size: 1.15em;
   }
 
   .heure {
@@ -136,28 +191,65 @@
     min-height: var(--hauteur);
   }
   .case.heure-pleine {
-    border-top: 1px solid var(--color-line);
+    border-top: 1px solid var(--color-ink-soft);
+  }
+  /* Samedi et dimanche à peine teintés : on les trouve sans les chercher. */
+  .case.fin-de-semaine {
+    background: color-mix(in srgb, var(--color-surface-soft) 55%, #fff);
   }
 
   .bloc {
     /* Posé par-dessus le quadrillage, dans la même case de grille. */
     z-index: 1;
     overflow: hidden;
-    padding: 0.5mm 1mm;
-    border: 1.5px solid var(--color-ink);
+    padding: 0.5mm 1mm 0.5mm 1.5mm;
+    border: 1px solid var(--teinte-trait, var(--color-ink));
+    /* La bande épaisse à gauche donne la catégorie d'un coup d'œil, de loin. */
+    border-left: 1.6mm solid var(--teinte-trait, var(--color-ink));
     border-radius: 2px;
-    background: #fff;
+    background: var(--teinte-fond, #fff);
     line-height: 1.15;
   }
   .bloc.rendez-vous {
+    /* Un rendez-vous n'est pas une activité de groupe : le trait double le dit. */
     border-style: double;
-    border-width: 3px;
+    border-left-style: solid;
+    border-width: 2px;
+    border-left-width: 1.6mm;
+    background: #fff;
+  }
+  .bloc.annule {
+    background: #fff;
   }
   .bloc.annule .titre {
     text-decoration: line-through;
   }
   .titre {
     font-weight: 700;
+    color: var(--teinte-trait, var(--color-ink));
+  }
+  .icone {
+    font-style: normal;
+  }
+  .detail {
+    color: var(--color-ink);
+  }
+
+  .legende {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.5mm 3mm;
+    margin-top: 2mm;
+    font-size: 0.85rem;
+  }
+  .legende li {
+    display: flex;
+    align-items: center;
+    gap: 1mm;
+    padding: 0.5mm 2mm;
+    border: 1px solid var(--color-line);
+    border-radius: 999px;
+    background: var(--teinte-fond, #fff);
   }
 
   /* Tailles : lisibles à l'écran, resserrées sur le papier. */
@@ -182,6 +274,40 @@
     }
     .detail {
       font-size: 7.5pt;
+    }
+    .legende {
+      font-size: 8pt;
+      margin-top: 1mm;
+      gap: 0.8mm 2.5mm;
+    }
+    /* L'en-tête des jours se resserre : la place gagnée va aux lignes où l'on écrit. */
+    .entete {
+      padding: 0.5mm 1mm;
+    }
+    /*
+      La grille absorbe la hauteur restante. Les créneaux s'étirent ou se resserrent
+      autour de leur taille voulue, sans jamais descendre sous 4 mm — en dessous, on
+      n'écrit plus rien à la main.
+    */
+    .grille {
+      flex: 1;
+      min-height: 0;
+      grid-template-rows: auto repeat(var(--creneaux), minmax(4mm, 1fr));
+      grid-auto-rows: minmax(4mm, 1fr);
+    }
+    .case {
+      min-height: 4mm;
+    }
+    .legende li {
+      padding: 0 1.5mm;
+    }
+    /* Les aplats doivent sortir : sans cela, la bande de catégorie disparaît. */
+    .bloc,
+    .entete,
+    .case.fin-de-semaine,
+    .legende li {
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
     }
   }
 </style>

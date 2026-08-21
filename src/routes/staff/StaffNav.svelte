@@ -109,7 +109,7 @@
     habituel : on le resserre, et deux rangées suffisent alors au lieu de quatre.
     La hauteur de 56 px — la cible tactile — n'est pas touchée.
   */
-  @media (max-width: 700px) {
+  @media screen and (max-width: 700px) {
     nav :global(.btn) {
       padding-left: 0.75rem;
       padding-right: 0.75rem;
