@@ -107,3 +107,37 @@ export function pendingForViewer<T extends SeenAppointment & { kindId: string }>
   if (monMotif === undefined || monMotif === '') return 0
   return enAttente.filter((a) => a.kindId === monMotif).length
 }
+
+/**
+ * Qui peut ouvrir le planning d'un intervenant.
+ *
+ * Ce planning n'est pas un horaire de travail : il nomme les personnes reçues, leur
+ * service et le motif du rendez-vous. Ouvrir celui du psychiatre, c'est lire qui voit le
+ * psychiatre — l'information la plus sensible que cette application contienne.
+ *
+ * Chacun ouvre donc le sien, et personne d'autre. L'administrateur ouvre ceux de tous :
+ * c'est lui qui répartit les rendez-vous et qui imprime les feuilles, il ne peut pas
+ * faire ce travail à l'aveugle.
+ *
+ * Les règles Firestore disent déjà la même chose — un intervenant ne reçoit que les
+ * rendez-vous qui portent son nom. Cette fonction ne fait qu'éviter de proposer une
+ * porte qui, ouverte, ne montrerait rien : elle n'accorde aucun droit.
+ */
+export function canSeePractitionerPlanning(
+  viewer: AppointmentViewer,
+  practitionerId: string,
+): boolean {
+  if (seesEveryAppointment(viewer)) return true
+  if (viewer.role !== 'staff') return false
+  const lien = viewer.practitionerId
+  if (lien === undefined || lien === null || lien === '') return false
+  return lien === practitionerId
+}
+
+/** Ce que l'écran répond quand on y arrive quand même, par l'adresse. */
+export function practitionerPlanningRefusal(viewer: AppointmentViewer): string {
+  if (viewer.role !== 'staff' && viewer.role !== 'admin') {
+    return 'Cet écran est réservé au personnel soignant.'
+  }
+  return "Le planning d'une autre personne du personnel ne vous regarde pas : il nomme les patients qu'elle reçoit. Vous pouvez consulter le vôtre, et le programme des activités."
+}
