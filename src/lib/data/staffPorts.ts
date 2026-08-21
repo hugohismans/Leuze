@@ -89,6 +89,12 @@ export interface StaffRepository {
   /** Duplique une activité existante, en la laissant inactive tant qu'elle n'est pas relue. */
   duplicateActivity(activityId: string): Promise<string>
 
+  /**
+   * Supprime une activité et ses séances si personne ne s'y est jamais inscrit ; la
+   * retire du programme sinon. C'est le serveur qui tranche, seul à voir les inscriptions.
+   */
+  deleteActivity(activityId: string): Promise<CatalogRemoval>
+
   /** Le calendrier du personnel : tout le programme, sans filtre de service. */
   listOccurrences(from: LocalDate, to: LocalDate): Promise<Occurrence[]>
 

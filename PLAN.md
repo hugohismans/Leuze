@@ -364,6 +364,22 @@ Conséquence sur les listes : une entrée retirée reste **lisible partout** —
 séance perdrait le nom de son lieu — mais n'est plus **proposée** au moment de créer
 (`proposed()` dans `domain/catalog.ts`). Un administrateur peut la remettre.
 
+### 4.8 ter Supprimer une activité
+
+Même raisonnement que pour le catalogue, avec un critère différent. Ce n'est pas
+l'existence de séances qui protège une activité — une activité récurrente en crée des
+dizaines sans que personne ne s'y intéresse — mais l'existence d'une **inscription**.
+
+| Ce qui existe | Ce qui se passe |
+|---|---|
+| aucune inscription, jamais | l'activité et ses séances sont supprimées |
+| au moins une inscription, même annulée | `isActive: false` — rien n'est effacé |
+
+Une inscription annulée compte : sa trace sert à répondre à « qui est venu ? », et
+l'effacer laisserait une inscription orpheline. Le décompte se fait sur les documents
+d'inscription, pas sur les compteurs dénormalisés des séances — ceux-ci retombent à zéro
+après une annulation et laisseraient croire que l'activité n'a jamais servi.
+
 ### 4.9 Le plan du site (lot 5, préparé dès maintenant)
 
 Composant `<SitePlan zoneId?>` isolé, alimenté par `config/app.planZones` (mapping

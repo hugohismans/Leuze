@@ -78,3 +78,30 @@ export function planRemoval(kind: CatalogKind, name: string, usage: CatalogUsage
 export function proposed<T extends { isActive?: boolean }>(entries: T[]): T[] {
   return entries.filter((entry) => entry.isActive !== false)
 }
+
+/**
+ * Supprimer une activité suit la même règle que le catalogue, avec un critère plus
+ * strict : ce n'est pas l'existence de séances qui protège, mais celle d'inscriptions.
+ * Une activité qui n'a jamais réuni personne ne laisse rien derrière elle ; une activité
+ * à laquelle quelqu'un s'est inscrit, même une seule fois, ne peut plus disparaître —
+ * sa trace sert à répondre à « qui est venu ? ».
+ */
+export function planActivityRemoval(
+  title: string,
+  usage: { registrations: number; sessions: number },
+): CatalogRemoval {
+  if (usage.registrations === 0) {
+    const seances = usage.sessions > 0 ? `, avec ${compte(usage.sessions, 'séance', 'séances')}` : ''
+    return {
+      action: 'deleted',
+      message: `L'activité « ${title} » est supprimée${seances}. Personne n'y était inscrit.`,
+    }
+  }
+  return {
+    action: 'deactivated',
+    message:
+      `L'activité « ${title} » est retirée du programme. ` +
+      `${compte(usage.registrations, 'personne s’y est inscrite', 'personnes s’y sont inscrites')} : ` +
+      "rien n'a été effacé.",
+  }
+}

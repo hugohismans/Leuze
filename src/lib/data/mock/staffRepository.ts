@@ -7,7 +7,7 @@ import { instantOf, addMinutes } from '../../domain/time'
 import type { Activity, Appointment, LocalDate, LocalTime, Occurrence } from '../../domain/types'
 import { generationWindow, planGeneration } from '../generation'
 import { activitiesSeed } from '../seed/activities.seed'
-import { planRemoval } from '../../domain/catalog'
+import { planActivityRemoval, planRemoval } from '../../domain/catalog'
 import { mockCatalog } from './catalog'
 import { applyBoard, boardOf, world } from './state'
 import { registrationBlockMessage } from '../../domain/capacity'
@@ -121,6 +121,26 @@ export function createMockStaffApp(): StaffApp {
           isActive: false,
         })
         return nouvelId
+      },
+
+      async deleteActivity(activityId: string) {
+        const activite = activities.get(activityId)
+        if (!activite) throw new Error("Cette activité n'existe plus.")
+        const seances = [...world.occurrences.values()].filter((o) => o.activityId === activityId)
+        const identifiants = new Set(seances.map((o) => o.id))
+        const inscriptions = world.registrations.filter((r) => identifiants.has(r.occurrenceId))
+
+        const plan = planActivityRemoval(activite.title, {
+          registrations: inscriptions.length,
+          sessions: seances.length,
+        })
+        if (plan.action === 'deleted') {
+          for (const seance of seances) world.occurrences.delete(seance.id)
+          activities.delete(activityId)
+        } else {
+          activities.set(activityId, { ...activite, isActive: false })
+        }
+        return plan
       },
 
       async listOccurrences(from: LocalDate, to: LocalDate): Promise<Occurrence[]> {

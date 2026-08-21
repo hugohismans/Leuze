@@ -8,6 +8,25 @@
 
   const JOURS = ['', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche']
 
+  /** La suppression se confirme sur place, comme dans le catalogue. */
+  let aSupprimer = $state<string | null>(null)
+  let busy = $state(false)
+  let erreur = $state<string | null>(null)
+
+  async function supprimer(activityId: string): Promise<void> {
+    if (busy) return
+    busy = true
+    erreur = null
+    try {
+      await staffStore.removeActivity(activityId)
+      aSupprimer = null
+    } catch (error) {
+      erreur = error instanceof Error ? error.message.replace(/^.*?:\s*/, '') : "L'action n'a pas abouti."
+    } finally {
+      busy = false
+    }
+  }
+
   function quand(activity: Activity): string {
     const regle = activity.recurrence
     if (regle === null) {
@@ -25,6 +44,12 @@
       <span aria-hidden="true">＋</span> Nouvelle activité
     </button>
   </div>
+
+  {#if erreur !== null}
+    <p role="alert" class="mb-4 rounded-xl bg-red-50 p-3 text-lg font-semibold text-red-900">
+      <span aria-hidden="true">⚠️</span> {erreur}
+    </p>
+  {/if}
 
   {#if staffStore.message !== null}
     <p role="status" class="mb-4 rounded-xl bg-brand-100 p-3 text-lg font-semibold text-brand-900">
@@ -70,7 +95,28 @@
             <button type="button" class="btn btn-secondary" onclick={() => staffStore.setActive(activity.id, !activity.isActive)}>
               {activity.isActive ? 'Retirer du programme' : 'Mettre au programme'}
             </button>
+            <button type="button" class="btn btn-secondary" onclick={() => (aSupprimer = activity.id)}>
+              Supprimer
+            </button>
           </div>
+
+          {#if aSupprimer === activity.id}
+            <div class="mt-3 rounded-xl border-2 border-line p-4">
+              <p class="text-lg text-ink">
+                Supprimer « {activity.title} » et toutes ses séances ? Si quelqu'un s'y est
+                déjà inscrit, elle sera seulement retirée du programme : les inscriptions
+                sont conservées.
+              </p>
+              <div class="mt-3 flex flex-wrap gap-2">
+                <button type="button" class="btn btn-primary" disabled={busy} onclick={() => supprimer(activity.id)}>
+                  {busy ? 'Un instant…' : 'Oui, supprimer'}
+                </button>
+                <button type="button" class="btn btn-secondary" onclick={() => (aSupprimer = null)}>
+                  Annuler
+                </button>
+              </div>
+            </div>
+          {/if}
         </li>
       {/each}
     </ul>

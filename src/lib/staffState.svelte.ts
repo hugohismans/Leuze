@@ -246,6 +246,13 @@ class StaffStore {
    * listes selon ce qui l'utilise ; on répète sa phrase telle quelle, elle explique ce
    * qui vient de se passer.
    */
+  /** Supprime l'activité, ou la retire du programme si quelqu'un s'y est déjà inscrit. */
+  async removeActivity(activityId: string): Promise<void> {
+    const plan = await (await this.app$()).repository.deleteActivity(activityId)
+    await this.refresh()
+    this.message = plan.message
+  }
+
   async removeCatalogEntry(kind: CatalogKind, id: string): Promise<string[]> {
     const plan = await (await this.app$()).catalogAdmin.removeEntry(kind, id)
     await store.loadCatalog(true)

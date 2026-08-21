@@ -12,7 +12,7 @@ import { auth, COLLECTIONS, db } from './lib/firestore'
 import { generationWindow, regenerateActivity, regenerateAll } from './lib/occurrences'
 import { assertNotRateLimited, clearFailures, recordFailure } from './lib/rateLimit'
 import { myRegistrationsFor, promoteTx, registerTx, rosterFor, unregisterTx } from './lib/registration'
-import { planRemoval, type CatalogKind } from './domain/catalog'
+import { planActivityRemoval, planRemoval, type CatalogKind } from './domain/catalog'
 import type { LocalDate } from './domain/types'
 
 /**
@@ -317,6 +317,58 @@ export const exchangeCode = onCall({ secrets: [CODE_PEPPER] }, async (request: C
     serviceId: patient.serviceId,
   })
   return { token, firstName: patient.firstName, serviceId: patient.serviceId }
+})
+
+/**
+ * Supprime une activité, ses séances comprises — mais seulement si personne ne s'y est
+ * jamais inscrit. Dès qu'une inscription existe, fût-elle annulée, l'activité est
+ * seulement retirée du programme : la trace sert à répondre à « qui est venu ? », et une
+ * inscription orpheline ne se rattacherait plus à rien.
+ */
+export const deleteActivity = onCall(async (request: CallableRequest) => {
+  requireStaff(request)
+  const activityId = requireString(request.data?.activityId, 'activityId', 200)
+
+  const reference = db().collection(COLLECTIONS.activities).doc(activityId)
+  const snapshot = await reference.get()
+  if (!snapshot.exists) throw new HttpsError('not-found', "Cette activité n'existe plus.")
+  const title = (snapshot.data()?.['title'] as string | undefined) ?? activityId
+
+  const occurrences = await db()
+    .collection(COLLECTIONS.occurrences)
+    .where('activityId', '==', activityId)
+    .get()
+
+  // `in` accepte trente valeurs : on interroge par paquets plutôt que de faire confiance
+  // aux compteurs dénormalisés, qui retombent à zéro après une annulation.
+  let registrations = 0
+  const identifiants = occurrences.docs.map((d) => d.id)
+  for (let i = 0; i < identifiants.length && registrations === 0; i += 30) {
+    const paquet = identifiants.slice(i, i + 30)
+    const trouvees = await db()
+      .collection(COLLECTIONS.registrations)
+      .where('occurrenceId', 'in', paquet)
+      .limit(50)
+      .get()
+    registrations += trouvees.size
+  }
+
+  const plan = planActivityRemoval(title, { registrations, sessions: occurrences.size })
+
+  if (plan.action === 'deleted') {
+    // Les séances d'abord : le déclencheur sur l'activité les régénérerait sinon.
+    for (let i = 0; i < occurrences.docs.length; i += 400) {
+      const batch = db().batch()
+      for (const document of occurrences.docs.slice(i, i + 400)) batch.delete(document.ref)
+      await batch.commit()
+    }
+    await reference.delete()
+  } else {
+    await reference.set({ isActive: false }, { merge: true })
+  }
+
+  logger.info('Activité retirée', { activityId, action: plan.action, registrations, sessions: occurrences.size })
+  return plan
 })
 
 // ---------------------------------------------------------------------------

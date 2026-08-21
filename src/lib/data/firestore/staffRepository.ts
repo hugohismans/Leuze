@@ -224,6 +224,13 @@ export function createFirestoreStaffApp(): StaffApp {
         return nouvelId
       },
 
+      async deleteActivity(activityId: string): Promise<CatalogRemoval> {
+        // Les inscriptions ne sont pas lisibles côté client : le serveur seul peut dire
+        // si l'activité a déjà réuni quelqu'un.
+        const call = httpsCallable<{ activityId: string }, CatalogRemoval>(functions, 'deleteActivity')
+        return (await call({ activityId })).data
+      },
+
       async listOccurrences(from: LocalDate, to: LocalDate): Promise<Occurrence[]> {
         await ready
         // Le personnel voit tout le programme : pas de filtre de service ici.

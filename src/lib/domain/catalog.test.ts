@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { planRemoval, proposed, totalUsage } from './catalog'
+import { planActivityRemoval, planRemoval, proposed, totalUsage } from './catalog'
 
 const RIEN = { activities: 0, occurrences: 0, patients: 0 }
 
@@ -43,5 +43,31 @@ describe('ce qui reste proposé', () => {
       { id: 'c' },
     ]
     expect(proposed(entries).map((e) => e.id)).toEqual(['a', 'c'])
+  })
+})
+
+describe('suppression d’une activité', () => {
+  it('supprime une activité à laquelle personne ne s’est inscrit', () => {
+    const plan = planActivityRemoval('Activité de test', { registrations: 0, sessions: 12 })
+    expect(plan.action).toBe('deleted')
+    expect(plan.message).toContain('12 séances')
+    expect(plan.message).toContain("Personne n'y était inscrit")
+  })
+
+  it('ne mentionne pas les séances quand il n’y en a aucune', () => {
+    const plan = planActivityRemoval('Brouillon', { registrations: 0, sessions: 0 })
+    expect(plan.action).toBe('deleted')
+    expect(plan.message).not.toContain('séance')
+  })
+
+  it('protège une activité dès la première inscription', () => {
+    const plan = planActivityRemoval('Yoga', { registrations: 1, sessions: 8 })
+    expect(plan.action).toBe('deactivated')
+    expect(plan.message).toContain('1 personne s’y est inscrite')
+  })
+
+  it('accorde le pluriel des inscriptions', () => {
+    const plan = planActivityRemoval('Yoga', { registrations: 4, sessions: 8 })
+    expect(plan.message).toContain('4 personnes s’y sont inscrites')
   })
 })
