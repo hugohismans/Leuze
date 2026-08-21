@@ -2,6 +2,7 @@
  * État de l'interface. Ne connaît que les ports (`AppRepository`),
  * jamais Firebase : brancher l'adapter Firestore au lot L1 ne touchera pas ce fichier.
  */
+import { upcomingScheduled } from './domain/appointments'
 import { capacityOf } from './domain/capacity'
 import { monthGrid, todayLocalDate, weekDays } from './domain/time'
 import type {
@@ -191,12 +192,22 @@ class AppStore {
    */
   readonly upcomingMine = $derived(this.mine.filter((r) => r.occurrence.end.getTime() >= Date.now()))
 
-  /** Les rendez-vous fixés, qui apparaissent dans « Mes inscriptions ». */
+  /** Les rendez-vous fixés, passés compris : la semaine les affiche tous, à leur jour. */
   readonly scheduledAppointments = $derived(
     this.appointments
       .filter((a) => a.status === 'scheduled' && a.start !== undefined)
       .sort((a, b) => (a.start?.getTime() ?? 0) - (b.start?.getTime() ?? 0)),
   )
+
+  /**
+   * Ceux qui restent à venir — les seuls qui comptent dans « Mes inscriptions ».
+   *
+   * Cet écran répond à « qu'est-ce que j'ai de prévu ». Un rendez-vous d'avant-hier y
+   * répondait faux, et il comptait même dans le nombre affiché en haut de l'écran : on
+   * croyait avoir deux rendez-vous quand il n'en restait qu'un. La règle est celle des
+   * inscriptions, juste au-dessus : ce qui n'est pas terminé.
+   */
+  readonly upcomingAppointments = $derived(upcomingScheduled(this.appointments))
 
   readonly pendingAppointments = $derived(this.appointments.filter((a) => a.status === 'requested'))
 

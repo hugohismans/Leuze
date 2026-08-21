@@ -31,11 +31,11 @@
     avec un professionnel est plus lourd de conséquences que manquer un atelier.
     Ils ne figurent que sur cet écran, jamais dans le calendrier commun.
   -->
-  {#if store.scheduledAppointments.length > 0 || store.pendingAppointments.length > 0}
+  {#if store.upcomingAppointments.length > 0 || store.pendingAppointments.length > 0}
     <section>
       <h2 class="mb-2 text-2xl font-bold">Mes rendez-vous</h2>
       <ul class="grid grid-cols-1 gap-4">
-        {#each store.scheduledAppointments as rendezVous (rendezVous.id)}
+        {#each store.upcomingAppointments as rendezVous (rendezVous.id)}
           <li class="card p-5">
             <p class="text-xl font-bold">
               <span aria-hidden="true">{kindIcon(store.appointmentKinds, rendezVous.kindId)}</span>

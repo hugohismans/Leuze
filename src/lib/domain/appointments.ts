@@ -71,6 +71,23 @@ export function pendingFirst(appointments: Appointment[]): Appointment[] {
 }
 
 /**
+ * Les rendez-vous fixés qui restent à venir, dans l'ordre.
+ *
+ * « Mes inscriptions » répond à « qu'est-ce que j'ai de prévu » : un rendez-vous
+ * d'avant-hier y répond faux. Un rendez-vous compte jusqu'à sa fin — celui de 9h30 se
+ * lit encore à 9h45, pendant qu'on y est.
+ */
+export function upcomingScheduled<T extends { status: string; start?: Date; end?: Date }>(
+  appointments: T[],
+  now: Date = new Date(),
+): T[] {
+  return appointments
+    .filter((a) => a.status === 'scheduled' && a.start !== undefined)
+    .filter((a) => (a.end ?? a.start)!.getTime() >= now.getTime())
+    .sort((a, b) => (a.start?.getTime() ?? 0) - (b.start?.getTime() ?? 0))
+}
+
+/**
  * Le prochain rendez-vous fixé, ou `null`. C'est la seule chose qu'un patient a besoin
  * de voir en arrivant : ce qui l'attend, pas la liste de ce qui est passé.
  */

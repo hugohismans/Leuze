@@ -5,7 +5,9 @@
   import { navigate, router } from '../router.svelte'
 
   const today = todayLocalDate()
-  const registeredCount = $derived(store.upcomingMine.length + store.scheduledAppointments.length)
+  // Ce nombre annonce ce qui reste à venir : une séance passée n'y compte pas, un
+  // rendez-vous passé non plus.
+  const registeredCount = $derived(store.upcomingMine.length + store.upcomingAppointments.length)
 
   /**
    * L'en-tête est resserré dans l'espace soignant, et là seulement.
