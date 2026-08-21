@@ -24,7 +24,13 @@ export type WeekEntry =
       start: Date
       end: Date
       kindId: string
+      /**
+       * La personne d'en face : le professionnel sur la feuille du patient, le patient
+       * sur celle du professionnel. C'est le même champ, lu des deux côtés.
+       */
       withWhom?: string
+      /** Pour retrouver le prénom et le service côté soignant. Jamais affiché tel quel. */
+      patientUid?: string
       locationId?: string
     }
 
@@ -78,6 +84,7 @@ export function myWeek(
       start: appointment.start,
       end: appointment.end,
       kindId: appointment.kindId,
+      patientUid: appointment.patientUid,
       ...(appointment.withWhom !== undefined ? { withWhom: appointment.withWhom } : {}),
       ...(appointment.locationId !== undefined ? { locationId: appointment.locationId } : {}),
     })

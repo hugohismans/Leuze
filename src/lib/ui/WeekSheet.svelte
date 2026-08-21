@@ -10,7 +10,12 @@
    * du service. Une seule mise en page pour les trois : ce qu'un soignant imprime pour
    * quelqu'un doit être exactement ce que cette personne obtient elle-même.
    */
-  let { titre, sousTitre, week }: { titre: string; sousTitre: string; week: WeekDay[] } = $props()
+  let {
+    titre,
+    sousTitre,
+    week,
+    mention,
+  }: { titre: string; sousTitre: string; week: WeekDay[]; mention?: string } = $props()
 </script>
 
 <article class="feuille feuille-semaine">
@@ -18,6 +23,10 @@
     <div>
       <h2 class="text-3xl font-bold text-ink">{titre}</h2>
       <p class="text-lg text-ink">{sousTitre}</p>
+      {#if mention !== undefined}
+        <!-- Une feuille qui nomme des personnes doit le dire sur elle-même. -->
+        <p class="mention">{mention}</p>
+      {/if}
     </div>
     <img src={logo} alt="ACIS" class="h-10 w-auto" />
   </header>
@@ -28,6 +37,12 @@
 </article>
 
 <style>
+  .mention {
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: var(--color-ink);
+  }
+
   /* À l'écran, la grille ne sert à rien : c'est une mise en page de papier. */
   .grille-papier {
     display: none;

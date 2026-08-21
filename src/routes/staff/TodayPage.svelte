@@ -3,6 +3,7 @@
   import { store } from '../../lib/appState.svelte'
   import { audienceLabelForStaff } from '../../lib/domain/audience'
   import { staffCapacityLabel } from '../../lib/domain/capacity'
+  import { hasFacilitator } from '../../lib/domain/attendance'
   import { formatLongDayLabel, formatTimeRange, todayLocalDate } from '../../lib/domain/time'
   import { navigate } from '../../lib/router.svelte'
   import CancelButton from './CancelButton.svelte'
@@ -58,15 +59,25 @@
           <p class="text-base text-ink-soft">{audience(occurrence.activityId)}</p>
           <p class="mt-1 text-base text-ink">{staffCapacityLabel(occurrence)}</p>
 
+          {#if !hasFacilitator(occurrence)}
+            <!-- Proposer un bouton qui mène à un refus serait une promesse en l'air. -->
+            <p class="mt-2 text-base font-semibold text-ink">
+              <span aria-hidden="true">⚠️</span>
+              Personne n'anime cette activité : l'appel n'est pas possible.
+            </p>
+          {/if}
+
           <div class="mt-3 flex flex-wrap gap-2">
             <!-- L'appel d'abord : c'est le geste du jour, les autres sont occasionnels. -->
-            <button
-              type="button"
-              class="btn btn-primary"
-              onclick={() => navigate(`/soignant/appel/${occurrence.id}`)}
-            >
-              <span aria-hidden="true">📋</span> Faire l'appel
-            </button>
+            {#if hasFacilitator(occurrence)}
+              <button
+                type="button"
+                class="btn btn-primary"
+                onclick={() => navigate(`/soignant/appel/${occurrence.id}`)}
+              >
+                <span aria-hidden="true">📋</span> Faire l'appel
+              </button>
+            {/if}
             <button
               type="button"
               class="btn btn-secondary"

@@ -200,6 +200,18 @@ class AppStore {
 
   readonly pendingAppointments = $derived(this.appointments.filter((a) => a.status === 'requested'))
 
+  /**
+   * Les motifs de rendez-vous seuls, sans les demandes.
+   *
+   * L'espace soignant en a besoin partout — pour nommer un rendez-vous sur un planning,
+   * pour relier un intervenant à son motif — mais il n'a pas de demandes « à lui » :
+   * `loadAppointments` lui rapporterait une liste vide et une requête pour rien.
+   */
+  async loadAppointmentKinds(): Promise<void> {
+    if (this.appointmentKinds.length > 0) return
+    this.appointmentKinds = await (await this.repo()).appointments.listKinds().catch(() => [])
+  }
+
   async loadAppointments(): Promise<void> {
     const repository = await this.repo()
     const [kinds, mine] = await Promise.all([

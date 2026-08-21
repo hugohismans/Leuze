@@ -121,6 +121,16 @@
 
   const publiee = $derived(isPublished({ audience: pourTous ? 'all' : 'services', serviceIds }))
 
+  /**
+   * Sans animateur désigné, il n'y a pas d'appel : personne n'est responsable de ce qui
+   * serait coché. On ne l'interdit pas — une activité peut très bien se passer de feuille
+   * de présence — mais on le dit avant d'enregistrer, une fois, et on laisse le choix.
+   *
+   * L'avertissement s'affiche sur place, dans le formulaire : une fenêtre du navigateur
+   * se ferme d'un réflexe et n'aurait rien appris à personne.
+   */
+  let avertissementAnimateur = $state(false)
+
   async function enregistrer(event: SubmitEvent): Promise<void> {
     event.preventDefault()
     erreur = null
@@ -134,6 +144,10 @@
     }
     if (repetition === 'une-fois' && !dateUnique) {
       erreur = 'Choisissez la date de l’activité.'
+      return
+    }
+    if (facilitatorId === '' && !avertissementAnimateur) {
+      avertissementAnimateur = true
       return
     }
     busy = true
@@ -431,9 +445,39 @@
       </p>
     </div>
 
+    {#if avertissementAnimateur && facilitatorId === ''}
+      <div role="alert" class="card border-4 border-amber-500 bg-amber-50 p-4">
+        <h2 class="mb-2 text-2xl font-bold text-ink">
+          <span aria-hidden="true">⚠️</span> Personne n'anime cette activité
+        </h2>
+        <p class="text-lg text-ink">
+          Il n'y aura pas d'appel : sans personne désignée pour animer, la liste des
+          présents ne peut pas être faite dans l'application.
+        </p>
+        <p class="mt-2 text-lg text-ink">
+          Choisissez quelqu'un dans « Qui anime », ou enregistrez ainsi si cette activité
+          se passe de feuille de présence.
+        </p>
+        <button
+          type="button"
+          class="btn btn-secondary mt-3"
+          onclick={() => {
+            avertissementAnimateur = false
+            document.getElementById('animateur')?.focus()
+          }}
+        >
+          Choisir quelqu'un
+        </button>
+      </div>
+    {/if}
+
     <div class="flex flex-wrap gap-3">
       <button type="submit" class="btn btn-primary" disabled={busy}>
-        {busy ? 'Enregistrement…' : 'Enregistrer'}
+        {busy
+          ? 'Enregistrement…'
+          : avertissementAnimateur && facilitatorId === ''
+            ? 'Enregistrer sans appel'
+            : 'Enregistrer'}
       </button>
       <button type="button" class="btn btn-secondary" onclick={() => navigate(retour)}>
         Annuler

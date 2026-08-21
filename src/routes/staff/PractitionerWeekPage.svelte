@@ -2,6 +2,7 @@
   import { staffStore } from '../../lib/staffState.svelte'
   import { store } from '../../lib/appState.svelte'
   import { myWeek, type WeekEntry } from '../../lib/domain/myWeek'
+  import { kindIcon, kindName } from '../../lib/domain/appointments'
   import {
     addLocalDays,
     formatDayLabel,
@@ -19,9 +20,13 @@
    * Deux usages. Savoir où il est — « elle est avec le docteur Lemaire » devient
    * vérifiable. Et lui remettre sa semaine sur papier, comme on le fait pour les patients.
    *
-   * ⚠️ Les prénoms des personnes reçues ne figurent pas ici. Un planning affiché ou
-   * imprimé dit **quand** et **où**, jamais **qui** : une feuille posée sur un bureau ne
-   * doit pas révéler qui voit le psychiatre.
+   * C'est l'agenda de travail de cette personne : il nomme donc qui elle reçoit, à quelle
+   * heure, pour quel motif et de quel service. Un agenda de psychiatre sans les noms ne
+   * sert à rien.
+   *
+   * ⚠️ La feuille imprimée devient de ce fait nominative — elle porte la mention qui le
+   * dit. C'est un écran du personnel : aucun patient n'y accède, et les règles Firestore
+   * le tiennent, pas l'interface.
    */
   let { practitionerId }: { practitionerId: string } = $props()
 
@@ -42,13 +47,32 @@
     ),
   )
 
+  /** Prénom et service de la personne reçue. Rien d'autre n'est enregistré nulle part. */
+  const recu = (patientUid: string | undefined): { prenom: string; service: string } | null => {
+    const patient = staffStore.patients.find((p) => p.uid === patientUid)
+    if (patient === undefined) return null
+    return {
+      prenom: patient.firstName,
+      service: store.serviceOf(patient.serviceId)?.name ?? patient.serviceId,
+    }
+  }
+
   const semaine = $derived(
     myWeek(
       staffStore.week,
       seances.map((occurrence) => ({ occurrence, status: 'confirmed' as const })),
-      // Sur sa propre feuille, le nom de l'intervenant n'apprend rien — et le prénom du
-      // patient n'a rien à y faire. Ne reste que le motif : « Le psychiatre ».
-      rendezVous.map(({ withWhom: _nom, ...reste }) => reste),
+      // Sur sa propre feuille, son nom n'apprend rien : la place est rendue à la
+      // personne qu'il reçoit, qui est ce qu'il vient y chercher.
+      rendezVous.map((rendezVous) => {
+        const personne = recu(rendezVous.patientUid)
+        return {
+          ...rendezVous,
+          withWhom:
+            personne === null
+              ? kindName(store.appointmentKinds, rendezVous.kindId)
+              : `${personne.prenom} · ${personne.service}`,
+        }
+      }),
     ),
   )
 
@@ -62,8 +86,14 @@
   // Les rendez-vous ont pu être fixés depuis un autre écran.
   staffStore.loadAppointments()
 
-  const intitule = (entree: WeekEntry): string =>
-    entree.kind === 'activity' ? entree.title : 'Rendez-vous individuel'
+  /** Ce qui s'affiche à l'écran : tout, en toutes lettres. */
+  const intitule = (entree: WeekEntry): string => {
+    if (entree.kind === 'activity') return entree.title
+    const motif = kindName(store.appointmentKinds, entree.kindId)
+    const personne = recu(entree.patientUid)
+    // Qui, d'où, pour quoi — dans cet ordre : c'est le nom qu'on cherche des yeux.
+    return personne === null ? motif : `${personne.prenom} · ${personne.service} · ${motif}`
+  }
 </script>
 
 <section class="mx-auto max-w-3xl px-4 py-6">
@@ -116,6 +146,11 @@
                 <ul class="mt-2 grid gap-2">
                   {#each jour.entries as entree (entree.start.getTime() + entree.kind)}
                     <li class="text-lg text-ink">
+                      <span aria-hidden="true">
+                        {entree.kind === 'appointment'
+                          ? kindIcon(store.appointmentKinds, entree.kindId)
+                          : (store.categoryOf(entree.categoryId)?.icon ?? '•')}
+                      </span>
                       <span class="font-semibold">{formatTimeRange(entree.start, entree.end)}</span>
                       — {intitule(entree)}
                       {#if entree.locationId}
@@ -132,9 +167,8 @@
         </ul>
 
         <p class="mt-4 text-base text-ink-soft">
-          Les prénoms des personnes reçues ne figurent pas sur cette feuille : elle dit
-          quand et où, jamais qui. La liste des inscrits d'une activité se consulte depuis
-          « Aujourd'hui ».
+          Cette feuille nomme les personnes reçues : ne la laissez pas sur un bureau. La
+          liste des inscrits d'une activité se consulte depuis « Aujourd'hui ».
         </p>
       {/if}
     {/if}
@@ -144,6 +178,7 @@
     <WeekSheet
       titre={`Semaine de ${intervenant.name}`}
       sousTitre={`${intervenant.role} · du ${formatDayLabel(staffStore.week[0]!)} au ${formatDayLabel(staffStore.week[6]!)}`}
+      mention="Document nominatif — à ne pas laisser sans surveillance."
       week={semaine}
     />
   {/if}

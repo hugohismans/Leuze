@@ -6,9 +6,12 @@
  *
  * L'activité appartient à celui qui l'anime : c'est lui qui voit qui est venu, et lui
  * seul qui coche. Un administrateur le peut aussi, sans quoi une absence ou un départ
- * bloquerait la feuille. Et lorsqu'aucun intervenant n'est nommé sur l'activité, personne
- * n'en est responsable en particulier : l'équipe du service s'en charge, faute de quoi
- * l'appel ne pourrait jamais être fait.
+ * bloquerait la feuille.
+ *
+ * Sans intervenant nommé, il n'y a pas d'appel du tout. C'est un choix : ouvrir la
+ * feuille à toute l'équipe reviendrait à dire que la présence d'un patient se coche par
+ * n'importe qui — or personne ne serait alors responsable de ce qui est noté, ni de ce
+ * qui ne l'est pas. Le formulaire d'activité prévient au moment d'enregistrer.
  */
 
 export type Attendance = 'present' | 'absent'
@@ -19,16 +22,28 @@ export type Marker = {
   practitionerId?: string | null
 }
 
+/** Vrai quand l'activité désigne quelqu'un pour l'animer. Sans cela, pas d'appel. */
+export function hasFacilitator(occurrence: { facilitatorId?: string }): boolean {
+  return occurrence.facilitatorId !== undefined && occurrence.facilitatorId !== ''
+}
+
 export function canMarkAttendance(actor: Marker, occurrence: { facilitatorId?: string }): boolean {
-  if (actor.role === 'admin') return true
+  // L'administrateur reste le recours : sans lui, l'absence de la personne qui anime
+  // laisserait la feuille inachevée jusqu'à son retour.
+  if (actor.role === 'admin') return hasFacilitator(occurrence)
   if (actor.role !== 'staff') return false
-  // Activité sans intervenant nommé : l'équipe fait l'appel.
-  if (occurrence.facilitatorId === undefined || occurrence.facilitatorId === '') return true
+  if (!hasFacilitator(occurrence)) return false
   return actor.practitionerId === occurrence.facilitatorId
 }
 
 /** Ce que l'écran dit quand le bouton n'est pas proposé. Toujours dire pourquoi. */
-export function attendanceRefusal(occurrence: { facilitator?: string }): string {
+export function attendanceRefusal(occurrence: {
+  facilitator?: string
+  facilitatorId?: string
+}): string {
+  if (!hasFacilitator(occurrence)) {
+    return "Personne n'anime cette activité : l'appel n'est pas possible. Modifiez l'activité pour désigner quelqu'un."
+  }
   const qui = occurrence.facilitator
   return qui === undefined || qui === ''
     ? "L'appel de cette activité est réservé à la personne qui l'anime."

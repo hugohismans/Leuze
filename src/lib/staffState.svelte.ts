@@ -75,7 +75,13 @@ class StaffStore {
     // Après connexion, le catalogue devient lisible : il faut le relire, même s'il a
     // déjà été demandé (sans succès) avant l'authentification.
     if (result.ok) {
-      await Promise.all([store.loadCatalog(true), this.refresh(), this.loadPatients(), this.loadAppointments()])
+      await Promise.all([
+        store.loadCatalog(true),
+        store.loadAppointmentKinds(),
+        this.refresh(),
+        this.loadPatients(),
+        this.loadAppointments(),
+      ])
     }
     return result.ok ? { ok: true } : { ok: false, message: result.message }
   }
@@ -102,7 +108,12 @@ class StaffStore {
     await this.refresh()
     this.identity = (await this.app$()).session.current()
     if (this.identity.role !== null) {
-      await Promise.all([store.loadCatalog(true), this.loadPatients(), this.loadAppointments()])
+      await Promise.all([
+        store.loadCatalog(true),
+        store.loadAppointmentKinds(),
+        this.loadPatients(),
+        this.loadAppointments(),
+      ])
     }
   }
 

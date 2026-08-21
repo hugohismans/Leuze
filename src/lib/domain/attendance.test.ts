@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { attendanceLabel, attendanceRefusal, canMarkAttendance, countAttendance } from './attendance'
+import {
+  attendanceLabel,
+  attendanceRefusal,
+  canMarkAttendance,
+  countAttendance,
+  hasFacilitator,
+} from './attendance'
 
 describe('qui peut faire l’appel', () => {
   const activite = { facilitatorId: 'docteur-lemaire' }
@@ -13,7 +19,7 @@ describe('qui peut faire l’appel', () => {
     expect(canMarkAttendance({ role: 'staff', practitionerId: null }, activite)).toBe(false)
   })
 
-  it('un administrateur, toujours — sans quoi une absence bloquerait la feuille', () => {
+  it('un administrateur aussi — sans quoi une absence bloquerait la feuille', () => {
     expect(canMarkAttendance({ role: 'admin', practitionerId: null }, activite)).toBe(true)
   })
 
@@ -21,15 +27,24 @@ describe('qui peut faire l’appel', () => {
     expect(canMarkAttendance({ role: null }, activite)).toBe(false)
   })
 
-  it('n’importe quel soignant quand aucun intervenant n’est nommé', () => {
-    // Sinon l'appel de ces activités-là ne pourrait jamais être fait.
-    expect(canMarkAttendance({ role: 'staff', practitionerId: null }, {})).toBe(true)
-    expect(canMarkAttendance({ role: 'staff', practitionerId: 'claire' }, { facilitatorId: '' })).toBe(true)
+  it('personne quand aucun intervenant n’est nommé — pas même l’administrateur', () => {
+    // Une présence cochée par n'importe qui n'engage personne : sans animateur désigné,
+    // il n'y a pas d'appel. Le formulaire d'activité prévient au moment d'enregistrer.
+    expect(canMarkAttendance({ role: 'staff', practitionerId: null }, {})).toBe(false)
+    expect(canMarkAttendance({ role: 'staff', practitionerId: 'claire' }, { facilitatorId: '' })).toBe(false)
+    expect(canMarkAttendance({ role: 'admin', practitionerId: 'claire' }, {})).toBe(false)
+  })
+
+  it('reconnaît une activité qui désigne quelqu’un', () => {
+    expect(hasFacilitator(activite)).toBe(true)
+    expect(hasFacilitator({})).toBe(false)
+    expect(hasFacilitator({ facilitatorId: '' })).toBe(false)
   })
 
   it('dit qui s’en charge quand le bouton n’est pas proposé', () => {
-    expect(attendanceRefusal({ facilitator: 'Marc' })).toContain('fait par Marc')
-    expect(attendanceRefusal({})).toContain("réservé à la personne qui l'anime")
+    expect(attendanceRefusal({ facilitator: 'Marc', facilitatorId: 'marc' })).toContain('fait par Marc')
+    expect(attendanceRefusal({ facilitatorId: 'marc' })).toContain("réservé à la personne qui l'anime")
+    expect(attendanceRefusal({})).toContain("l'appel n'est pas possible")
   })
 })
 
