@@ -1,8 +1,13 @@
 node_modules/
-lib/
-# Copie régénérée à chaque build par scripts/sync-domain.mjs
-src/domain/
-src/config.ts
+
+# Sortie du compilateur. Le motif est ancré à la racine de « functions/ » :
+# sans la barre oblique initiale, « lib/ » exclurait aussi « src/lib/ », c'est-à-dire
+# le cœur des fonctions — elles ont réellement manqué au dépôt à cause de cela.
+/lib/
+
+# Copies régénérées à chaque build par scripts/sync-domain.mjs
+/src/domain/
+/src/config.ts
 
 # Variables chargées uniquement par les émulateurs, jamais déployées.
 .env.local
