@@ -69,9 +69,14 @@ beforeEach(async () => {
 })
 
 describe('demander un rendez-vous', () => {
-  it('laisse le patient créer sa demande', async () => {
+  /*
+    La demande passe désormais par une fonction appelable : décider s'il reste une place
+    chez quelqu'un suppose de lire son agenda, ce qu'un patient ne verra jamais. Le
+    navigateur n'écrit donc plus rien ici — pas même une demande bien formée.
+  */
+  it('refuse au patient d’écrire lui-même sa demande', async () => {
     const database = asPatient(env, 'p_camille', MAZUREL)
-    await assertSucceeds(setDoc(doc(database, 'appointments', 'rdv-neuf'), demande('p_camille')))
+    await assertFails(setDoc(doc(database, 'appointments', 'rdv-neuf'), demande('p_camille')))
   })
 
   it('refuse une demande créée au nom de quelqu’un d’autre', async () => {
@@ -86,20 +91,6 @@ describe('demander un rendez-vous', () => {
         doc(database, 'appointments', 'rdv-force'),
         demande('p_camille', { start: new Date('2026-08-25T12:00:00Z'), withWhom: 'Docteur Lemaire' }),
       ),
-    )
-  })
-
-  it('refuse une demande déjà marquée comme fixée', async () => {
-    const database = asPatient(env, 'p_camille', MAZUREL)
-    await assertFails(
-      setDoc(doc(database, 'appointments', 'rdv-triche'), demande('p_camille', { status: 'scheduled' })),
-    )
-  })
-
-  it('refuse une préférence inventée', async () => {
-    const database = asPatient(env, 'p_camille', MAZUREL)
-    await assertFails(
-      setDoc(doc(database, 'appointments', 'rdv-bizarre'), demande('p_camille', { preference: 'la nuit' })),
     )
   })
 

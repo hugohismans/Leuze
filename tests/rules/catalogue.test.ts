@@ -175,6 +175,28 @@ describe('disponibilités d’un intervenant', () => {
     )
   })
 
+  it('l’acceptation automatique se décide de même : par l’intéressé, et par lui seul', async () => {
+    await assertSucceeds(
+      updateDoc(doc(asPractitioner(env, 'docteur-lemaire'), 'practitioners', 'docteur-lemaire'), {
+        autoAccept: true,
+      }),
+    )
+    await assertFails(
+      updateDoc(doc(asPractitioner(env, 'claire'), 'practitioners', 'docteur-lemaire'), {
+        autoAccept: true,
+      }),
+    )
+  })
+
+  it('et elle ne sert pas de cheval de Troie pour le reste de la fiche', async () => {
+    await assertFails(
+      updateDoc(doc(asPractitioner(env, 'docteur-lemaire'), 'practitioners', 'docteur-lemaire'), {
+        autoAccept: true,
+        name: 'Docteur Lemaire, chef de service',
+      }),
+    )
+  })
+
   it('un compte relié à personne n’en écrit aucune', async () => {
     await assertFails(
       updateDoc(doc(asStaff(env), 'practitioners', 'docteur-lemaire'), { availability: plages }),

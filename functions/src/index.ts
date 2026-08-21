@@ -14,12 +14,27 @@ import { assertNotRateLimited, clearFailures, recordFailure } from './lib/rateLi
 import { myRegistrationsFor, promoteTx, registerTx, rosterFor, unregisterTx } from './lib/registration'
 import { attendanceRefusal, canMarkAttendance } from './domain/attendance'
 import {
+  AUTO_DURATION_MIN,
+  AUTO_HORIZON_DAYS,
+  autoAcceptMessage,
+  findFirstSlot,
+  type BusySlot,
+} from './domain/autoAccept'
+import {
+  addLocalDays,
+  addMinutes,
+  formatFullWhen,
+  instantOf,
+  localTimeOf,
+  todayLocalDate,
+} from './domain/time'
+import {
   planActivityRemoval,
   planForcedRemoval,
   planRemoval,
   type CatalogKind,
 } from './domain/catalog'
-import type { LocalDate } from './domain/types'
+import type { AvailabilityWindow, LocalDate } from './domain/types'
 
 /**
  * Bruxelles : les fonctions vivent au plus près des données et des utilisateurs.
@@ -435,6 +450,172 @@ export const revokePatientCode = onCall(async (request: CallableRequest) => {
   await auth().revokeRefreshTokens(uid).catch(() => undefined)
   return { revoked: codes.size }
 })
+
+/**
+ * La demande de rendez-vous d'un patient — et, quand la personne concernée l'a voulu,
+ * sa mise à l'agenda immédiate.
+ *
+ * La demande ne pouvait pas rester une écriture du navigateur : décider s'il existe une
+ * place libre suppose de lire l'agenda d'un intervenant, ce qu'un patient ne verra
+ * jamais. La décision se prend donc ici, sur le serveur, et le patient reçoit une
+ * réponse tout de suite au lieu d'attendre sans savoir.
+ *
+ * Sans acceptation automatique, rien ne change pour personne : la demande rejoint la
+ * file, comme avant.
+ */
+export const requestAppointment = onCall(async (request: CallableRequest) => {
+  const patient = requirePatient(request)
+  const kindId = requireString(request.data?.kindId, 'kindId')
+  const preference = request.data?.preference
+  if (preference !== 'matin' && preference !== 'apres-midi' && preference !== 'peu-importe') {
+    throw new HttpsError('invalid-argument', 'Choisissez un moment de la journée.')
+  }
+
+  const motif = await db().collection(COLLECTIONS.appointmentKinds).doc(kindId).get()
+  const kind = motif.data()
+  if (!motif.exists || kind?.['isActive'] !== true) {
+    throw new HttpsError(
+      'failed-precondition',
+      "Ce motif de rendez-vous n'existe plus. Demandez à un soignant.",
+    )
+  }
+
+  /*
+    Une seule demande à la fois pour un même professionnel.
+
+    Sans cela, quelqu'un d'inquiet qui appuie trois fois se retrouverait avec trois
+    rendez-vous — et, depuis l'acceptation automatique, trois créneaux réellement pris
+    dans l'agenda de quelqu'un. Le garde-fou vaut mieux ici que dans l'écran : l'écran
+    peut être contourné, pas la fonction.
+  */
+  const aujourdHui = todayLocalDate()
+  const deja = await db()
+    .collection(COLLECTIONS.appointments)
+    .where('patientUid', '==', patient.uid)
+    .where('kindId', '==', kindId)
+    .get()
+  const enCours = deja.docs.some((d) => {
+    const data = d.data()
+    if (data['status'] === 'requested') return true
+    const jour = data['localDate'] as LocalDate | undefined
+    return data['status'] === 'scheduled' && jour !== undefined && jour >= aujourdHui
+  })
+  if (enCours) {
+    return {
+      ok: false,
+      scheduled: false,
+      message: 'Vous avez déjà un rendez-vous prévu avec cette personne. Parlez-en à un soignant.',
+    }
+  }
+
+  const base = {
+    patientUid: patient.uid,
+    kindId,
+    preference,
+    createdAt: Timestamp.now(),
+  }
+
+  const place = await premierePlaceLibre(kindId, preference)
+  if (place === null) {
+    await db().collection(COLLECTIONS.appointments).add({ ...base, status: 'requested' })
+    return {
+      ok: true,
+      scheduled: false,
+      message: 'Votre demande est envoyée. Un soignant vous dira quand.',
+    }
+  }
+
+  const debut = instantOf(place.slot.localDate, place.slot.time)
+  const fin = addMinutes(debut, AUTO_DURATION_MIN)
+  await db()
+    .collection(COLLECTIONS.appointments)
+    .add({
+      ...base,
+      status: 'scheduled',
+      localDate: place.slot.localDate,
+      start: Timestamp.fromDate(debut),
+      end: Timestamp.fromDate(fin),
+      withWhom: place.name,
+      practitionerId: place.practitionerId,
+      autoAccepted: true,
+    })
+
+  logger.info('Rendez-vous accepté automatiquement', {
+    practitionerId: place.practitionerId,
+    localDate: place.slot.localDate,
+  })
+
+  return {
+    ok: true,
+    scheduled: true,
+    message: autoAcceptMessage(place.slot, formatFullWhen(place.slot.localDate, debut, fin), place.name),
+  }
+})
+
+/**
+ * La première place libre chez quelqu'un qui accepte automatiquement les demandes de ce
+ * motif. `null` dès qu'il n'y en a pas — la demande rejoint alors la file, et c'est très
+ * bien : personne n'a promis un rendez-vous à date fixe.
+ */
+async function premierePlaceLibre(
+  kindId: string,
+  preference: 'matin' | 'apres-midi' | 'peu-importe',
+): Promise<{ practitionerId: string; name: string; slot: NonNullable<ReturnType<typeof findFirstSlot>> } | null> {
+  // Le catalogue des intervenants tient en quelques dizaines de lignes : on le lit en
+  // entier plutôt que de demander un index pour trois égalités.
+  type Fiche = {
+    id: string
+    name?: string
+    kindId?: string
+    isActive?: boolean
+    autoAccept?: boolean
+    availability?: AvailabilityWindow[]
+  }
+  const intervenants = await db().collection(COLLECTIONS.practitioners).get()
+  const candidats: Fiche[] = intervenants.docs
+    .map((d) => ({ ...(d.data() as Omit<Fiche, 'id'>), id: d.id }))
+    .filter((p) => p.isActive === true && p.autoAccept === true && p.kindId === kindId)
+    .sort((a, b) => (a.name ?? '').localeCompare(b.name ?? '', 'fr'))
+
+  // Jamais aujourd'hui : un rendez-vous posé dans deux heures est un rendez-vous manqué.
+  const depart = addLocalDays(todayLocalDate(), 1)
+  const jusque = addLocalDays(depart, AUTO_HORIZON_DAYS)
+
+  for (const candidat of candidats) {
+    const plages = Array.isArray(candidat.availability) ? candidat.availability : []
+    if (plages.length === 0) continue
+
+    const pris = await db()
+      .collection(COLLECTIONS.appointments)
+      .where('practitionerId', '==', candidat.id)
+      .where('status', '==', 'scheduled')
+      .where('localDate', '>=', depart)
+      .where('localDate', '<=', jusque)
+      .get()
+
+    const occupes: BusySlot[] = pris.docs.flatMap((d) => {
+      const data = d.data()
+      const debut = data['start'] as Timestamp | undefined
+      const fin = data['end'] as Timestamp | undefined
+      const jour = data['localDate'] as LocalDate | undefined
+      if (debut === undefined || fin === undefined || jour === undefined) return []
+      return [{ localDate: jour, from: localTimeOf(debut.toDate()), to: localTimeOf(fin.toDate()) }]
+    })
+
+    const slot = findFirstSlot({
+      windows: plages,
+      busy: occupes,
+      preference,
+      from: depart,
+      horizonDays: AUTO_HORIZON_DAYS,
+      durationMin: AUTO_DURATION_MIN,
+    })
+    if (slot !== null) {
+      return { practitionerId: candidat.id, name: candidat.name ?? 'un professionnel', slot }
+    }
+  }
+  return null
+}
 
 /**
  * Échange d'un code contre une session. Le code n'est jamais comparé en clair et

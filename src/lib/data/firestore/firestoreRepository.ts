@@ -24,6 +24,7 @@ import {
 } from 'firebase/firestore'
 import { httpsCallable } from 'firebase/functions'
 import { audienceQueryKeys } from '../../domain/audience'
+import { enClair } from '../../erreurs'
 import { patientIdentityOf } from '../../domain/session'
 import type {
   Appointment,
@@ -281,22 +282,28 @@ export function createFirestoreRepository(): AppRepository {
           .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
       },
 
+      /**
+       * La demande passe par le serveur, et non plus par une écriture directe.
+       *
+       * Savoir s'il reste une place chez quelqu'un suppose de lire son agenda, ce qu'un
+       * patient ne verra jamais : c'est donc la fonction appelable qui décide, et qui
+       * répond soit « c'est noté, mardi à 9 heures », soit « un soignant vous dira quand ».
+       */
       async request(kindId: string, preference: AppointmentPreference) {
         await sessionReady
         if (session.patientUid === null) {
           return { ok: false, message: 'Saisissez votre code pour demander un rendez-vous.' }
         }
         try {
-          await addDoc(collection(db, 'appointments'), {
-            patientUid: session.patientUid,
-            kindId,
-            preference,
-            status: 'requested',
-            createdAt: Timestamp.now(),
-          })
-          return { ok: true, message: 'Votre demande est envoyée. Un soignant vous dira quand.' }
-        } catch {
-          return { ok: false, message: "La demande n'a pas pu être envoyée. Réessayez dans un instant." }
+          const call = httpsCallable<
+            { kindId: string; preference: AppointmentPreference },
+            { ok: boolean; scheduled: boolean; message: string }
+          >(functions, 'requestAppointment')
+          const reponse = (await call({ kindId, preference })).data
+          mineCache = null
+          return reponse
+        } catch (error) {
+          return { ok: false, message: enClair(error) }
         }
       },
 

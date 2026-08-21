@@ -67,7 +67,14 @@ export interface StaffRegistrationService {
 export interface AppointmentService {
   listKinds(): Promise<AppointmentKind[]>
   listMine(): Promise<Appointment[]>
-  request(kindId: string, preference: AppointmentPreference): Promise<{ ok: boolean; message: string }>
+  /**
+   * `scheduled` : la demande a trouvé une place toute seule, chez quelqu'un qui accepte
+   * automatiquement. Le message dit alors quand ; sinon, il dit qu'un soignant répondra.
+   */
+  request(
+    kindId: string,
+    preference: AppointmentPreference,
+  ): Promise<{ ok: boolean; message: string; scheduled?: boolean }>
   withdraw(appointmentId: string): Promise<{ ok: boolean; message: string }>
 }
 
