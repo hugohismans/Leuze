@@ -308,3 +308,45 @@ describe('le dépassement assumé en réunion du lundi', () => {
     expect(outcome).toEqual({ ok: false, reason: 'past' })
   })
 })
+
+describe('la ligne que la désinscription annule', () => {
+  /*
+    Quelqu'un qui s'inscrit, se désinscrit, puis se réinscrit laisse derrière lui une
+    ligne déjà annulée. Celui qui écrit en base doit annuler la ligne **en cours**, et il
+    ne peut pas la retrouver seul : chercher « la ligne annulée de cette personne »
+    retombait sur l'ancienne. L'inscription du jour restait alors active, et le prénom se
+    recochait tout seul à la relecture.
+  */
+  const avecUneAncienneAnnulation = (): Board => ({
+    occurrence: makeOccurrence({ capacity: null }),
+    registrations: [
+      makeRegistration({ id: 'ancienne', patientUid: 'a', status: 'cancelled', queuedAt: now }),
+      makeRegistration({ id: 'en-cours', patientUid: 'a', status: 'confirmed', queuedAt: plusTard(10) }),
+    ],
+  })
+
+  it('est celle qui était active, jamais une annulation d’avant', () => {
+    const outcome = unregister(avecUneAncienneAnnulation(), 'a')
+    expect(outcome.ok).toBe(true)
+    expect(outcome.ok && outcome.cancelled.id).toBe('en-cours')
+  })
+
+  it('laisse la personne réellement désinscrite', () => {
+    const outcome = unregister(avecUneAncienneAnnulation(), 'a')
+    expect(outcome.ok && rosterOf(outcome.board).confirmed).toEqual([])
+    expect(outcome.ok && outcome.board.occurrence.confirmedCount).toBe(0)
+  })
+
+  it('vaut aussi pour la promotion : c’est la ligne en attente qui passe', () => {
+    const board: Board = {
+      occurrence: makeOccurrence({ capacity: 1 }),
+      registrations: [
+        makeRegistration({ id: 'ancienne', patientUid: 'a', status: 'cancelled', queuedAt: now }),
+        makeRegistration({ id: 'en-attente', patientUid: 'a', status: 'waitlist', queuedAt: plusTard(10) }),
+      ],
+    }
+    const outcome = promote(board, 'a')
+    expect(outcome.ok).toBe(true)
+    expect(outcome.ok && outcome.promoted.id).toBe('en-attente')
+  })
+})
