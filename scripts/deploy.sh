@@ -19,11 +19,16 @@ DEPOT="https://github.com/hugohismans/Leuze"
 # Cloud Shell clone parfois depuis une copie locale : « git pull » répond alors
 # « Already up to date » sans jamais aller sur GitHub. On le signale plutôt que de
 # déployer une version périmée sans s'en rendre compte.
-ORIGINE="$(git remote get-url origin 2>/dev/null || echo '')"
-if [ -n "$ORIGINE" ] && [ "$ORIGINE" != "$DEPOT" ] && [ "$ORIGINE" != "$DEPOT.git" ]; then
-  printf '\n\033[0;31m%s\033[0m\n' "Ce dossier ne suit pas GitHub (origine : ${ORIGINE:-aucune})."
-  echo "Remettez-le d'aplomb, puis relancez :"
-  echo "  git remote set-url origin $DEPOT && git pull origin main"
+# Vérification directe : ce dossier contient-il bien le dernier état publié sur GitHub ?
+# Elle attrape toutes les causes de retard d'un coup — origine mal réglée, branche
+# configurée sur le dépôt local (« From . »), simple oubli de mettre à jour. Trois
+# déploiements de suite ont publié une version périmée sans que rien ne le signale.
+git fetch "$DEPOT" main --quiet 2>/dev/null || true
+if [ -n "$(git rev-parse --verify FETCH_HEAD 2>/dev/null)" ] &&
+   ! git merge-base --is-ancestor FETCH_HEAD HEAD 2>/dev/null; then
+  printf '\n\033[0;31m%s\033[0m\n' "Ce dossier est en retard sur GitHub."
+  echo "Mettez-le à jour, puis relancez :"
+  echo "  git pull $DEPOT main && bash scripts/deploy.sh"
   exit 1
 fi
 
