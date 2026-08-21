@@ -41,6 +41,12 @@ jobs:
       - name: Vérification des types
         run: npm run check
 
+      # Les fonctions sont compilées ici parce que la CI part d'un clone neuf : c'est le
+      # seul endroit où un fichier oublié dans le dépôt se voit. Il en a réellement
+      # manqué six, un motif .gitignore trop large les excluant en silence.
+      - name: Compilation des Cloud Functions
+        run: npm --prefix functions ci && npm --prefix functions run build
+
       - name: Construction
         env:
           BASE_PATH: /Leuze/
