@@ -39,7 +39,14 @@ import type { CatalogRemoval } from '../../domain/catalog'
 import { friendlyError } from '../../domain/errors'
 import type { Account } from '../../domain/impersonation'
 import { addMinutes, instantOf } from '../../domain/time'
-import type { Activity, Appointment, LocalDate, LocalTime, Occurrence } from '../../domain/types'
+import type {
+  Activity,
+  Appointment,
+  AvailabilityWindow,
+  LocalDate,
+  LocalTime,
+  Occurrence,
+} from '../../domain/types'
 import { generationWindow, planGeneration } from '../generation'
 import type {
   NewPatientCode,
@@ -536,6 +543,38 @@ export function createFirestoreStaffApp(): StaffApp {
           return { ok: true, message: 'Rendez-vous fixé. Le patient le voit dans son calendrier.' }
         } catch {
           return { ok: false, message: "Le rendez-vous n'a pas pu être enregistré." }
+        }
+      },
+
+      async appointmentPlanning(query) {
+        const call = httpsCallable<
+          typeof query,
+          {
+            availability: AvailabilityWindow[]
+            week: {
+              localDate: string
+              windows: AvailabilityWindow[]
+              free: { from: string; to: string }[]
+              taken: { label: string; kind: 'activity' | 'appointment'; start: string; end: string }[]
+            }[]
+            suggestion: { localDate: string; time: string; matchesPreference: boolean } | null
+          }
+        >(functions, 'appointmentPlanning')
+        const reponse = (await call(query)).data
+        return {
+          availability: reponse.availability ?? [],
+          week: (reponse.week ?? []).map((jour) => ({
+            localDate: jour.localDate,
+            windows: jour.windows ?? [],
+            free: jour.free ?? [],
+            taken: (jour.taken ?? []).map((t) => ({
+              label: t.label,
+              kind: t.kind,
+              start: new Date(t.start),
+              end: new Date(t.end),
+            })),
+          })),
+          suggestion: reponse.suggestion,
         }
       },
 

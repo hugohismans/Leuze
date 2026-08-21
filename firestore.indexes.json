@@ -116,6 +116,21 @@
           "order": "ASCENDING"
         }
       ]
+    },
+    {
+      "//": "Agenda d'un patient sur une période : ses rendez-vous, pour repérer les chevauchements.",
+      "collectionGroup": "appointments",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "patientUid",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "localDate",
+          "order": "ASCENDING"
+        }
+      ]
     }
   ],
   "fieldOverrides": []

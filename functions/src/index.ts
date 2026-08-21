@@ -8,10 +8,11 @@ import { logger } from 'firebase-functions'
 
 import { requireAdmin, requirePatient, requireStaff, requireString } from './lib/auth'
 import { CODE_LENGTH, formatCodeForPrint, generateCode, hashCode, newPatientUid } from './lib/codes'
-import { auth, COLLECTIONS, db } from './lib/firestore'
+import { auth, COLLECTIONS, db, docToOccurrence } from './lib/firestore'
 import { generationWindow, regenerateActivity, regenerateAll } from './lib/occurrences'
 import { assertNotRateLimited, clearFailures, recordFailure } from './lib/rateLimit'
 import {
+  busyBetween,
   conflictsFor,
   myRegistrationsFor,
   promoteTx,
@@ -19,7 +20,8 @@ import {
   rosterFor,
   unregisterTx,
 } from './lib/registration'
-import { patientConflictNotice } from './domain/conflicts'
+import { patientConflictNotice, type BusyEntry } from './domain/conflicts'
+import { agendaWeek, suggestSlot } from './domain/agenda'
 import { attendanceRefusal, canMarkAttendance } from './domain/attendance'
 import {
   AUTO_DURATION_MIN,
@@ -501,6 +503,121 @@ export const revokePatientCode = onCall(async (request: CallableRequest) => {
   await batch.commit()
   await auth().revokeRefreshTokens(uid).catch(() => undefined)
   return { revoked: codes.size }
+})
+
+/**
+ * De quoi poser un rendez-vous sans rien deviner.
+ *
+ * Trois questions se posent en même temps au moment de fixer : quand cette personne
+ * reçoit-elle, qu'a-t-elle déjà, et le patient est-il libre ? Y répondre depuis le
+ * navigateur demanderait de lui donner les deux agendas — celui d'un collègue compris.
+ * C'est donc le serveur qui les croise, et qui ne rend que ce qui sert : des heures, un
+ * état libre ou pris, et un créneau proposé.
+ *
+ * Ce que chacun lit : l'administrateur voit les libellés — c'est lui qui répartit et qui
+ * imprime. Un intervenant voit les siens, et pour le patient seulement « Occupé » : il
+ * lui faut savoir quand, jamais quoi.
+ */
+export const appointmentPlanning = onCall(async (request: CallableRequest) => {
+  const staff = requireStaff(request)
+  const practitionerId = requireString(request.data?.practitionerId, 'practitionerId')
+  const patientUid = typeof request.data?.patientUid === 'string' ? request.data.patientUid : null
+  const preference = request.data?.preference
+  const moment: 'matin' | 'apres-midi' | 'peu-importe' =
+    preference === 'matin' || preference === 'apres-midi' ? preference : 'peu-importe'
+  const durationMin = typeof request.data?.durationMin === 'number' ? request.data.durationMin : 30
+  const depart = typeof request.data?.from === 'string' ? (request.data.from as LocalDate) : todayLocalDate()
+
+  const fiche = await db().collection(COLLECTIONS.practitioners).doc(practitionerId).get()
+  if (!fiche.exists) throw new HttpsError('not-found', "Cette personne n'a pas été trouvée.")
+  const plages = Array.isArray(fiche.data()?.['availability'])
+    ? (fiche.data()!['availability'] as AvailabilityWindow[])
+    : []
+
+  const jusque = addLocalDays(depart, 21)
+
+  // L'agenda de l'intervenant : ses rendez-vous, et les activités qu'il anime.
+  const [sesRendezVous, sesSeances] = await Promise.all([
+    db()
+      .collection(COLLECTIONS.appointments)
+      .where('practitionerId', '==', practitionerId)
+      .where('status', '==', 'scheduled')
+      .where('localDate', '>=', depart)
+      .where('localDate', '<=', jusque)
+      .get(),
+    db()
+      .collection(COLLECTIONS.occurrences)
+      .where('localDate', '>=', depart)
+      .where('localDate', '<=', jusque)
+      .get(),
+  ])
+
+  const sien = staff.role === 'admin' || staff.practitionerId === practitionerId
+  const occupeIntervenant: BusyEntry[] = []
+  for (const document of sesRendezVous.docs) {
+    const data = document.data()
+    const debut = data['start'] as Timestamp | undefined
+    const fin = data['end'] as Timestamp | undefined
+    if (debut === undefined || fin === undefined) continue
+    occupeIntervenant.push({
+      start: debut.toDate(),
+      end: fin.toDate(),
+      // Le motif d'un rendez-vous ne regarde que l'intéressé et l'administrateur.
+      label: sien ? 'Rendez-vous' : 'Occupé',
+      kind: 'appointment',
+    })
+  }
+  for (const document of sesSeances.docs) {
+    const occurrence = docToOccurrence(document)
+    if (occurrence.facilitatorId !== practitionerId || occurrence.status === 'cancelled') continue
+    occupeIntervenant.push({
+      start: occurrence.start,
+      end: occurrence.end,
+      label: sien ? occurrence.title : 'Occupé',
+      kind: 'activity',
+    })
+  }
+
+  // Celui du patient : ce qu'il a, sans dire quoi à qui n'a pas à le savoir.
+  const occupePatient: BusyEntry[] =
+    patientUid === null
+      ? []
+      : (await busyBetween(db(), patientUid, depart, jusque)).map((entree) => ({
+          ...entree,
+          // Ce que fait un patient de sa journée ne regarde pas tout le personnel : on
+          // dit quand il est pris, pas à quoi.
+          label: staff.role === 'admin' ? entree.label : 'Occupé',
+        }))
+
+  const proposition = suggestSlot({
+    windows: plages,
+    practitionerBusy: occupeIntervenant,
+    patientBusy: occupePatient,
+    preference: moment,
+    from: depart,
+    horizonDays: 21,
+    durationMin,
+  })
+
+  const jours: LocalDate[] = []
+  for (let i = 0; i < 7; i += 1) jours.push(addLocalDays(depart, i))
+  const semaine = agendaWeek(jours, plages, [...occupeIntervenant, ...occupePatient], durationMin)
+
+  return {
+    availability: plages,
+    week: semaine.map((jour) => ({
+      localDate: jour.localDate,
+      windows: jour.windows,
+      free: jour.free,
+      taken: jour.taken.map((t) => ({
+        label: t.label,
+        kind: t.kind,
+        start: t.start.toISOString(),
+        end: t.end.toISOString(),
+      })),
+    })),
+    suggestion: proposition,
+  }
 })
 
 /**

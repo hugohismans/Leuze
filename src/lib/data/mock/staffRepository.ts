@@ -2,8 +2,9 @@
  * Espace soignant en mémoire : c'est lui qui alimente `/demo`.
  * Même logique de génération que l'adapter Firestore, mêmes fonctions du domaine.
  */
-import { todayLocalDate } from '../../domain/time'
-import { instantOf, addMinutes } from '../../domain/time'
+import { addLocalDays, addMinutes, instantOf, todayLocalDate } from '../../domain/time'
+import { agendaWeek, suggestSlot } from '../../domain/agenda'
+import type { BusyEntry } from '../../domain/conflicts'
 import type { Activity, Appointment, LocalDate, LocalTime, Occurrence } from '../../domain/types'
 import { generationWindow, planGeneration } from '../generation'
 import { activitiesSeed } from '../seed/activities.seed'
@@ -15,6 +16,7 @@ import { mockCatalog } from './catalog'
 import {
   applyBoard,
   boardOf,
+  busyOn,
   CLE_SESSION_SOIGNANT,
   conflictsFor,
   DEMO_PATIENT_UID,
@@ -520,6 +522,68 @@ export function createMockStaffApp(): StaffApp {
           },
         ]
         return { ok: true, message: 'Rendez-vous fixé. Le patient le voit dans son calendrier.' }
+      },
+
+      /**
+       * Le même croisement que le serveur, sur le monde de la démonstration : les plages
+       * de l'intervenant, son agenda, celui du patient, et un créneau proposé.
+       */
+      async appointmentPlanning(query) {
+        const intervenant = mockCatalog.practitioners().find((p) => p.id === query.practitionerId)
+        const plages = intervenant?.availability ?? []
+        const duree = query.durationMin ?? 30
+        const depart = query.from ?? todayLocalDate()
+        const jusque = addLocalDays(depart, 21)
+
+        const occupeIntervenant: BusyEntry[] = []
+        for (const rendezVous of world.appointments) {
+          if (rendezVous.practitionerId !== query.practitionerId || rendezVous.status !== 'scheduled') continue
+          if (rendezVous.start === undefined || rendezVous.end === undefined) continue
+          occupeIntervenant.push({
+            start: rendezVous.start,
+            end: rendezVous.end,
+            label: 'Rendez-vous',
+            kind: 'appointment',
+          })
+        }
+        for (const occurrence of world.occurrences.values()) {
+          if (occurrence.facilitatorId !== query.practitionerId || occurrence.status === 'cancelled') continue
+          if (occurrence.localDate < depart || occurrence.localDate > jusque) continue
+          occupeIntervenant.push({
+            start: occurrence.start,
+            end: occurrence.end,
+            label: occurrence.title,
+            kind: 'activity',
+          })
+        }
+
+        const occupePatient: BusyEntry[] = []
+        if (query.patientUid !== undefined) {
+          for (let i = 0; i <= 21; i += 1) {
+            occupePatient.push(...busyOn(query.patientUid, addLocalDays(depart, i)))
+          }
+        }
+
+        const jours = Array.from({ length: 7 }, (_, i) => addLocalDays(depart, i))
+        const semaine = agendaWeek(jours, plages, [...occupeIntervenant, ...occupePatient], duree)
+        return {
+          availability: plages,
+          week: semaine.map((jour) => ({
+            localDate: jour.localDate,
+            windows: jour.windows,
+            free: jour.free,
+            taken: jour.taken.map((t) => ({ label: t.label, kind: t.kind, start: t.start, end: t.end })),
+          })),
+          suggestion: suggestSlot({
+            windows: plages,
+            practitionerBusy: occupeIntervenant,
+            patientBusy: occupePatient,
+            preference: query.preference ?? 'peu-importe',
+            from: depart,
+            horizonDays: 21,
+            durationMin: duree,
+          }),
+        }
       },
 
       async cancelAppointment(appointmentId: string, reason: string) {

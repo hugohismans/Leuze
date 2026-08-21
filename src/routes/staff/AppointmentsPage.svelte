@@ -15,10 +15,19 @@
     seesEveryAppointment,
   } from '../../lib/domain/appointmentAccess'
   import { availabilityLabel, availabilityWarning } from '../../lib/domain/availability'
+  import { suggestionMessage } from '../../lib/domain/agenda'
+  import type { AppointmentPlanning } from '../../lib/data/staffPorts'
   import { AUTO_DURATION_MIN, AUTO_HORIZON_DAYS } from '../../lib/domain/autoAccept'
   import { enClair } from '../../lib/erreurs'
   import { isoWeekdayOf } from '../../lib/domain/time'
-  import { formatFullWhen, todayLocalDate } from '../../lib/domain/time'
+  import {
+    addMinutes,
+    formatDayLabel,
+    formatFullWhen,
+    formatTime,
+    instantOf,
+    todayLocalDate,
+  } from '../../lib/domain/time'
   import type { LocalDate, LocalTime } from '../../lib/domain/types'
 
   /**
@@ -168,6 +177,68 @@
   const resumeDesPlages = $derived(availabilityLabel(plagesDe))
   const alerteDirecte = $derived(
     availabilityWarning(plagesDe, isoWeekdayOf(dateDirecte), heureDirecte, dureeDirecte),
+  )
+
+  /**
+   * L'agenda croisé : ce que l'intervenant annonce, ce qu'il a déjà, ce que le patient a
+   * déjà, et le premier créneau qui convienne aux deux.
+   *
+   * Il est calculé par le serveur, jamais ici : croiser deux agendas depuis le navigateur
+   * supposerait de lui donner celui d'un collègue. On ne reçoit que des heures, un état
+   * libre ou pris, et une proposition.
+   */
+  /**
+   * Le moment souhaité. Il vient de la demande du patient quand il y en a une ; sinon,
+   * c'est le soignant qui le dit — le plus souvent « peu importe ».
+   */
+  let preferenceSouhaitee = $state<'matin' | 'apres-midi' | 'peu-importe'>('peu-importe')
+
+  let planning = $state<AppointmentPlanning | null>(null)
+  let planningPour = $state<string>('')
+  let chargementPlanning = $state(false)
+
+  const clefPlanning = $derived(
+    intervenantDirect === '' ? '' : `${intervenantDirect}|${quiUid}|${dureeDirecte}|${preferenceSouhaitee}`,
+  )
+
+  $effect(() => {
+    const clef = clefPlanning
+    if (clef === '' || clef === planningPour || !formulaireOuvert) return
+    planningPour = clef
+    chargementPlanning = true
+    void staffStore
+      .appointmentPlanning({
+        practitionerId: intervenantDirect,
+        ...(quiUid === '' ? {} : { patientUid: quiUid }),
+        preference: preferenceSouhaitee,
+        durationMin: dureeDirecte,
+      })
+      .then((valeur) => (planning = valeur))
+      .finally(() => (chargementPlanning = false))
+  })
+
+  /** Le créneau proposé, posé dans le formulaire d'un clic. */
+  function prendreLaProposition(): void {
+    const proposition = planning?.suggestion
+    if (proposition === null || proposition === undefined) return
+    dateDirecte = proposition.localDate
+    heureDirecte = proposition.time
+  }
+
+  const messageProposition = $derived(
+    planning === null
+      ? null
+      : suggestionMessage(
+          planning.suggestion,
+          preferenceSouhaitee,
+          planning.suggestion === null
+            ? ''
+            : formatFullWhen(
+                planning.suggestion.localDate,
+                instantOf(planning.suggestion.localDate, planning.suggestion.time),
+                addMinutes(instantOf(planning.suggestion.localDate, planning.suggestion.time), dureeDirecte),
+              ),
+        ),
   )
 
   /** Même question, pour une demande de la file qu'on est en train de fixer. */
@@ -420,6 +491,88 @@
           <span aria-hidden="true">🗓️</span>
           {intervenantChoisi?.name ?? 'Cette personne'} reçoit : {resumeDesPlages}.
         </p>
+      {/if}
+
+      <!--
+        Le moment souhaité, quand le patient l'a dit de vive voix. Il ne sert qu'à la
+        proposition : rien n'empêche de choisir une autre heure ensuite.
+      -->
+      <fieldset class="mt-4">
+        <legend class="mb-2 text-lg font-semibold text-ink">Moment souhaité</legend>
+        <div class="flex flex-wrap gap-2">
+          {#each [['peu-importe', 'Peu importe'], ['matin', 'Le matin'], ['apres-midi', "L'après-midi"]] as [valeur, libelle] (valeur)}
+            <button
+              type="button"
+              class="btn"
+              class:btn-primary={preferenceSouhaitee === valeur}
+              class:btn-secondary={preferenceSouhaitee !== valeur}
+              onclick={() => (preferenceSouhaitee = valeur as typeof preferenceSouhaitee)}
+            >
+              {libelle}
+            </button>
+          {/each}
+        </div>
+      </fieldset>
+
+      {#if intervenantDirect !== ''}
+        <section class="mt-4 rounded-xl border-2 border-line p-4">
+          <h3 class="text-xl font-bold text-ink">Quand les mettre ensemble</h3>
+          {#if chargementPlanning}
+            <p class="mt-1 text-lg text-ink-soft">Un instant…</p>
+          {:else if planning === null}
+            <p class="mt-1 text-lg text-ink-soft">
+              L'agenda n'a pas pu être lu. Vous pouvez fixer le rendez-vous à l'heure de votre choix.
+            </p>
+          {:else}
+            {#if messageProposition !== null}
+              <p role="status" class="mt-1 text-lg font-semibold text-ink">{messageProposition}</p>
+            {/if}
+            {#if planning.suggestion !== null}
+              <button type="button" class="btn btn-primary mt-3" onclick={prendreLaProposition}>
+                <span aria-hidden="true">✓</span> Prendre ce créneau
+              </button>
+            {/if}
+
+            <!--
+              La semaine, jour par jour : ce qui est annoncé, ce qui est déjà pris, ce
+              qui reste. Une liste plutôt qu'une grille — elle se lit sur un téléphone, et
+              elle se lit à voix haute.
+            -->
+            <ul class="mt-4 grid gap-3">
+              {#each planning.week as jour (jour.localDate)}
+                {#if jour.windows.length > 0 || jour.taken.length > 0}
+                  <li class="rounded-lg bg-surface-soft p-3">
+                    <p class="text-lg font-bold text-ink">{formatDayLabel(jour.localDate)}</p>
+                    {#if jour.windows.length > 0}
+                      <p class="text-base text-ink-soft">
+                        <span aria-hidden="true">🗓️</span>
+                        Reçoit de {jour.windows.map((f) => `${f.from.replace(':', 'h')} à ${f.to.replace(':', 'h')}`).join(' et de ')}
+                      </p>
+                    {/if}
+                    {#each jour.taken as pris (pris.label + pris.start.toISOString())}
+                      <p class="text-base text-ink">
+                        <span aria-hidden="true">{pris.kind === 'appointment' ? '🩺' : '📅'}</span>
+                        Pris de {formatTime(pris.start)} à {formatTime(pris.end)} — {pris.label}
+                      </p>
+                    {/each}
+                    {#if jour.free.length > 0}
+                      <p class="text-base font-semibold text-brand-900">
+                        <span aria-hidden="true">✅</span>
+                        Libre de {jour.free.map((f) => `${f.from.replace(':', 'h')} à ${f.to.replace(':', 'h')}`).join(' et de ')}
+                      </p>
+                    {:else if jour.windows.length > 0}
+                      <p class="text-base font-semibold text-ink-soft">Plus rien de libre ce jour-là.</p>
+                    {/if}
+                  </li>
+                {/if}
+              {/each}
+            </ul>
+            <p class="mt-3 text-base text-ink-soft">
+              « Pris » rassemble les deux agendas : celui de {intervenantChoisi?.name ?? 'la personne'}
+              {#if quiUid !== ''}et celui de {patient(quiUid)?.firstName ?? 'la personne reçue'}{/if}.
+            </p>
+          {/if}
+        </section>
       {/if}
       {#if alerteDirecte !== null}
         <p role="status" class="mt-3 rounded-xl bg-amber-50 p-3 text-lg font-semibold text-ink">
