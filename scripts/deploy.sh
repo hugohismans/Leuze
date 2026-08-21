@@ -111,14 +111,20 @@ vert "Version vérifiée : branchée sur Firestore."
 npx firebase deploy --only hosting --project "$PROJET"
 
 bleu "Terminé."
-cat <<'FIN'
+# Le script de promotion vise « demo-leuze » par défaut, c'est-à-dire l'émulateur :
+# sans GCLOUD_PROJECT, il chercherait le compte dans une base qui n'existe pas.
+cat <<FIN
 Il reste une chose, à faire une seule fois :
 
   1. Créez votre compte dans la console Firebase → Authentication → Ajouter un
-     utilisateur (adresse + mot de passe).
-  2. Donnez-lui le rôle administrateur :
+     utilisateur (adresse + mot de passe) :
+     https://console.firebase.google.com/project/$PROJET/authentication/users
+  2. Donnez-lui le rôle administrateur, depuis ce dossier :
 
-       npm run promote:admin -- votre.adresse@exemple.be
+       GCLOUD_PROJECT=$PROJET npm run promote:admin -- votre.adresse@exemple.be
 
-L'application est en ligne sur https://leuze-d23b5.web.app
+  3. Reconnectez-vous dans l'application : le rôle ne prend effet qu'au prochain
+     jeton.
+
+L'application est en ligne sur https://$PROJET.web.app
 FIN

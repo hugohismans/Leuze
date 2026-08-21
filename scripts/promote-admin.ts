@@ -21,6 +21,13 @@ if (!email) {
 }
 
 const projectId = process.env.GCLOUD_PROJECT ?? 'demo-leuze'
+// « demo-leuze » est le projet de l'émulateur. Sans émulateur en face, la commande
+// irait interroger un projet inexistant et renverrait une erreur incompréhensible.
+if (projectId === 'demo-leuze' && process.env.FIRESTORE_EMULATOR_HOST === undefined) {
+  console.error("Aucun projet indiqué. Sur le vrai projet, lancez :")
+  console.error(`  GCLOUD_PROJECT=leuze-d23b5 npm run promote:admin -- ${email}`)
+  process.exit(1)
+}
 const app = initializeApp({ projectId })
 
 async function main(): Promise<void> {
