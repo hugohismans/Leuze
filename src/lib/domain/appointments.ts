@@ -69,3 +69,18 @@ export function pendingFirst(appointments: Appointment[]): Appointment[] {
     .filter((a) => a.status === 'requested')
     .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
 }
+
+/**
+ * Le prochain rendez-vous fixé, ou `null`. C'est la seule chose qu'un patient a besoin
+ * de voir en arrivant : ce qui l'attend, pas la liste de ce qui est passé.
+ */
+export function nextScheduled<T extends { status: string; start?: Date }>(
+  appointments: T[],
+  now: Date = new Date(),
+): T | null {
+  return (
+    appointments
+      .filter((a) => a.status === 'scheduled' && a.start !== undefined && a.start.getTime() >= now.getTime())
+      .sort((a, b) => (a.start?.getTime() ?? 0) - (b.start?.getTime() ?? 0))[0] ?? null
+  )
+}

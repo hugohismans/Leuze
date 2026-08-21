@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   PREFERENCE_LABELS,
   kindName,
+  nextScheduled,
   patientStatusLabel,
   pendingFirst,
   waitingDays,
@@ -90,5 +91,29 @@ describe('préférence de moment', () => {
   it('reste grossière : ce n’est qu’une préférence', () => {
     expect(Object.keys(PREFERENCE_LABELS)).toEqual(['matin', 'apres-midi', 'peu-importe'])
     expect(PREFERENCE_LABELS['peu-importe']).toBe('Peu importe le moment')
+  })
+})
+
+describe('le prochain rendez-vous', () => {
+  const maintenant = new Date('2026-08-20T09:00:00Z')
+  const fixe = (id: string, quand: string): Appointment =>
+    demande({ id, status: 'scheduled', start: new Date(quand), end: new Date(quand) })
+
+  it('est le plus proche à venir, jamais un rendez-vous passé', () => {
+    const liste = [
+      fixe('apres-demain', '2026-08-22T09:00:00Z'),
+      fixe('hier', '2026-08-19T09:00:00Z'),
+      fixe('demain', '2026-08-21T09:00:00Z'),
+    ]
+    expect(nextScheduled(liste, maintenant)?.id).toBe('demain')
+  })
+
+  it('n’existe pas quand tout est passé, annulé ou encore en attente', () => {
+    expect(nextScheduled([fixe('hier', '2026-08-19T09:00:00Z')], maintenant)).toBeNull()
+    expect(nextScheduled([demande({ status: 'requested' })], maintenant)).toBeNull()
+    expect(
+      nextScheduled([demande({ status: 'cancelled', start: new Date('2026-08-25T09:00:00Z') })], maintenant),
+    ).toBeNull()
+    expect(nextScheduled([], maintenant)).toBeNull()
   })
 })
