@@ -121,6 +121,16 @@ export type Activity = {
   facilitator?: string
   /** L'intervenant, quand il vient du catalogue : c'est lui qui relie à son planning. */
   facilitatorId?: string
+  /**
+   * L'activité est animée par un patient, seul.
+   *
+   * Ce n'est pas la même chose qu'une activité sans personne désignée. Ici quelqu'un
+   * anime — son prénom est dans `facilitator` — mais ce n'est pas un membre du
+   * personnel, et il n'y a pas d'appel : personne ne note les présences, et c'est voulu.
+   * Coché, ce champ vaut donc décision, pas oubli. Les écrans le disent en toutes lettres
+   * plutôt que d'afficher « personne n'anime cette activité », qui serait faux.
+   */
+  ledByPatient?: boolean
   audience: AudienceKind
   /** Vide quand `audience === 'all'`. */
   serviceIds: string[]
@@ -153,6 +163,8 @@ export type Occurrence = {
   locationId: string
   facilitator?: string
   facilitatorId?: string
+  /** Animée par un patient, seul : pas d'appel. Voir `Activity.ledByPatient`. */
+  ledByPatient?: boolean
   /**
    * Clés d'audience dénormalisées : `['all']`, ou la liste des services autorisés.
    * Permet au calendrier de ne demander que ce que le patient a le droit de voir,

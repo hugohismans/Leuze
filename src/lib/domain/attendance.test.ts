@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   attendanceLabel,
   attendanceRefusal,
+  isLedByPatient,
   canMarkAttendance,
   countAttendance,
   hasFacilitator,
@@ -63,6 +64,43 @@ describe('le compte de l’appel', () => {
     expect(attendanceLabel({ present: 6, absent: 2, unmarked: 1 })).toBe('6 présents, 2 absents, 1 sans réponse')
     expect(attendanceLabel({ present: 1, absent: 0, unmarked: 0 })).toBe('1 présent')
     expect(attendanceLabel({ present: 0, absent: 0, unmarked: 0 })).toBe('Personne d’inscrit')
+  })
+})
+
+describe('une activité animée par un patient', () => {
+  /*
+    Ce n'est ni un manque ni une erreur : c'est une décision. Un patient qui anime une
+    partie d'échecs n'a pas à noter qui était là — lui confier la présence de ses
+    camarades serait lui confier autre chose que l'activité.
+  */
+  it('n’a pas d’appel, et l’écran ne propose pas de le corriger', () => {
+    const phrase = attendanceRefusal({ facilitator: 'Bernard', ledByPatient: true })
+    expect(phrase).toBe("Bernard anime cette activité. Il n'y a pas d'appel, et c'est voulu.")
+    expect(phrase).not.toContain('compte')
+    expect(phrase).not.toContain('Modifiez')
+  })
+
+  it('se dit même sans prénom', () => {
+    expect(attendanceRefusal({ ledByPatient: true })).toContain("animée par un patient")
+  })
+
+  it('n’est confondue avec aucune autre situation', () => {
+    expect(isLedByPatient({ ledByPatient: true })).toBe(true)
+    expect(isLedByPatient({})).toBe(false)
+    // Un nom du personnel écrit à la main, sans compte : autre cas, autre phrase.
+    expect(attendanceRefusal({ facilitator: 'Fatima' })).toContain('compte')
+  })
+
+  it('reste sans appel pour tout le monde, administrateur compris', () => {
+    expect(canMarkAttendance({ role: 'admin' }, { ledByPatient: true })).toBe(false)
+    expect(canMarkAttendance({ role: 'staff', practitionerId: 'marc' }, { ledByPatient: true })).toBe(false)
+  })
+
+  it('l’emporte même si un intervenant est resté renseigné', () => {
+    // Un appel dont personne n'a voulu ne doit pas se rouvrir par une donnée oubliée.
+    const seance = { ledByPatient: true, facilitatorId: 'marc' }
+    expect(canMarkAttendance({ role: 'admin' }, seance)).toBe(false)
+    expect(canMarkAttendance({ role: 'staff', practitionerId: 'marc' }, seance)).toBe(false)
   })
 })
 

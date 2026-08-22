@@ -31,6 +31,9 @@ function draftFrom(activity: Activity, localDate: LocalDate, startTime: LocalTim
     // Dénormalisé comme le reste : c'est ce qui permet de retrouver les séances d'un
     // intervenant sans lire toutes les activités.
     ...(activity.facilitatorId === undefined ? {} : { facilitatorId: activity.facilitatorId }),
+    // Voyage avec le nom : c'est lui qui dit qu'il n'y aura pas d'appel, et l'écran de
+    // la séance ne lit pas l'activité.
+    ...(activity.ledByPatient === true ? { ledByPatient: true } : {}),
     audienceKeys: audienceKeysOf(activity),
     capacity: activity.capacity,
     registrationRequired: activity.registrationRequired,
@@ -159,6 +162,7 @@ export type SeriesEdit = Partial<
     | 'locationId'
     | 'facilitator'
     | 'facilitatorId'
+    | 'ledByPatient'
     | 'capacity'
     | 'registrationRequired'
     | 'waitlistEnabled'

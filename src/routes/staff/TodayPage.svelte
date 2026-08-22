@@ -3,7 +3,7 @@
   import { store } from '../../lib/appState.svelte'
   import { audienceLabelForStaff } from '../../lib/domain/audience'
   import { staffCapacityLabel } from '../../lib/domain/capacity'
-  import { attendanceRefusal, hasFacilitator } from '../../lib/domain/attendance'
+  import { attendanceOpen, attendanceRefusal } from '../../lib/domain/attendance'
   import { formatLongDayLabel, formatTimeRange, todayLocalDate } from '../../lib/domain/time'
   import { navigate } from '../../lib/router.svelte'
   import CancelButton from './CancelButton.svelte'
@@ -63,7 +63,7 @@
           <p class="text-base text-ink-soft">{audience(occurrence.activityId)}</p>
           <p class="mt-1 text-base text-ink">{staffCapacityLabel(occurrence)}</p>
 
-          {#if !hasFacilitator(occurrence)}
+          {#if !attendanceOpen(occurrence)}
             <!--
               Proposer un bouton qui mène à un refus serait une promesse en l'air. La
               phrase vient du domaine : elle distingue « personne n'anime » de « quelqu'un
@@ -77,7 +77,7 @@
 
           <div class="mt-3 flex flex-wrap gap-2">
             <!-- L'appel d'abord : c'est le geste du jour, les autres sont occasionnels. -->
-            {#if hasFacilitator(occurrence)}
+            {#if attendanceOpen(occurrence)}
               <button
                 type="button"
                 class="btn btn-primary"

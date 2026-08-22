@@ -38,6 +38,8 @@
   let locationId = $state('')
   let facilitator = $state('')
   let facilitatorId = $state('')
+  /** L'activité est animée par un patient, seul : pas d'appel. Voir `domain/attendance`. */
+  let animeParUnPatient = $state(false)
   /**
    * La grande majorité des activités sont **ponctuelles** : le programme se refait
    * chaque semaine selon les disponibilités. La récurrence existe pour les quelques
@@ -99,6 +101,16 @@
       if (idee !== null) {
         titre = idee.title
         description = idee.description
+        /*
+          La personne s'est proposée pour animer : on la met en animatrice, seule. C'est
+          exactement ce qu'elle a demandé, et l'activité n'aura pas d'appel — ce que
+          l'écran dit juste en dessous du choix. Il reste possible de désigner un membre
+          du personnel à la place, d'un clic.
+        */
+        if (idee.wantsToLead && idee.patientFirstName) {
+          animeParUnPatient = true
+          facilitator = idee.patientFirstName
+        }
         // Une activité née d'une idée n'est pas au programme d'emblée : il lui manque un
         // jour, une heure et un lieu, et c'est ce formulaire qui les demande.
         auProgramme = false
@@ -134,6 +146,7 @@
       locationId = activity.locationId
       facilitator = activity.facilitator ?? ''
       facilitatorId = activity.facilitatorId ?? ''
+      animeParUnPatient = activity.ledByPatient === true
       repetition = activity.recurrence === null ? 'une-fois' : 'chaque-semaine'
       dateUnique = activity.singleStart?.date ?? date ?? todayLocalDate()
       void 0
@@ -221,15 +234,29 @@
       erreur = 'Choisissez la date de l’activité.'
       return
     }
-    // Le domaine tranche : pour qui ne choisit pas, l'activité est la sienne.
-    const anime = facilitatorFor(moi, facilitatorId === '' ? null : facilitatorId)
-    if (anime !== facilitatorId) {
-      facilitatorId = anime ?? ''
-      facilitator = store.practitionerOf(facilitatorId)?.name ?? ''
-    }
-    if (facilitatorId === '' && !avertissementAnimateur) {
-      avertissementAnimateur = true
-      return
+    /*
+      Le domaine tranche : pour qui ne choisit pas, l'activité est la sienne.
+
+      Sauf quand un patient anime : là, le choix est fait et il est explicite. Laisser le
+      domaine attribuer l'activité au soignant connecté reviendrait à défaire ce qu'on
+      vient de demander, et à rouvrir un appel dont on a dit qu'il n'y en aurait pas.
+    */
+    if (animeParUnPatient) {
+      facilitatorId = ''
+      if (facilitator.trim().length === 0) {
+        erreur = 'Donnez le prénom de la personne qui anime.'
+        return
+      }
+    } else {
+      const anime = facilitatorFor(moi, facilitatorId === '' ? null : facilitatorId)
+      if (anime !== facilitatorId) {
+        facilitatorId = anime ?? ''
+        facilitator = store.practitionerOf(facilitatorId)?.name ?? ''
+      }
+      if (facilitatorId === '' && !avertissementAnimateur) {
+        avertissementAnimateur = true
+        return
+      }
     }
     busy = true
     try {
@@ -244,6 +271,7 @@
         // planning de la personne. Les deux voyagent ensemble.
         ...(facilitator.trim().length > 0 ? { facilitator: facilitator.trim() } : {}),
         ...(facilitatorId ? { facilitatorId } : {}),
+        ...(animeParUnPatient ? { ledByPatient: true } : {}),
         audience: pourTous ? 'all' : 'services',
         serviceIds: pourTous ? [] : serviceIds,
         capacity: placesLimitees ? capacite : null,
@@ -626,33 +654,94 @@
           Seul un administrateur peut en confier une à quelqu'un d'autre.
         </p>
       {:else}
-      <label for="animateur" class="mt-4 mb-2 block text-lg font-semibold text-ink">
-        Qui anime
-      </label>
-      <select
-        id="animateur"
-        class={champ}
-        style="min-height: 56px;"
-        value={facilitatorId}
-        onchange={(event) => {
-          facilitatorId = event.currentTarget.value
-          // Le nom suit l'identifiant : c'est lui que le patient lira, et il reste juste
-          // même si la personne est retirée du catalogue plus tard.
-          facilitator = store.practitionerOf(facilitatorId)?.name ?? ''
-        }}
-      >
-        <option value="">Personne en particulier</option>
-        {#each proposed(store.practitioners) as intervenant (intervenant.id)}
-          <option value={intervenant.id}>{intervenant.name} — {intervenant.role}</option>
-        {/each}
-      </select>
-      {#if facilitatorId === '' && facilitator !== ''}
-        <!-- Une activité créée avant le catalogue des intervenants garde son nom écrit
-             à la main : on l'affiche plutôt que de le perdre en silence. -->
-        <p class="mt-2 text-base text-ink-soft">
-          Actuellement : {facilitator}. Choisissez un intervenant pour le relier à son planning.
-        </p>
-      {/if}
+      <fieldset class="mt-4">
+        <legend class="mb-2 px-1 text-lg font-semibold text-ink">Qui anime</legend>
+
+        <!--
+          Deux situations, et elles ne se ressemblent pas.
+
+          Un membre du personnel anime : son compte donne le droit de faire l'appel, et
+          quelqu'un est responsable de ce qui est coché.
+
+          Un patient anime, seul : il n'y a pas d'appel, et ce n'est pas un manque. Lui
+          confier la présence de ses camarades serait lui confier autre chose que
+          l'activité. On le dit ici, avant d'enregistrer, plutôt que de le découvrir
+          devant une feuille d'appel qui refuse de s'ouvrir.
+        -->
+        <div class="flex flex-col gap-2">
+          <label class="flex items-center gap-3 text-lg text-ink" style="min-height: 56px;">
+            <input
+              type="radio"
+              name="qui-anime"
+              checked={!animeParUnPatient}
+              onchange={() => {
+                animeParUnPatient = false
+                facilitator = store.practitionerOf(facilitatorId)?.name ?? ''
+              }}
+              class="size-6"
+            />
+            Un membre du personnel
+          </label>
+          <label class="flex items-center gap-3 text-lg text-ink" style="min-height: 56px;">
+            <input
+              type="radio"
+              name="qui-anime"
+              checked={animeParUnPatient}
+              onchange={() => {
+                animeParUnPatient = true
+                facilitatorId = ''
+              }}
+              class="size-6"
+            />
+            Un patient, seul
+          </label>
+        </div>
+
+        {#if animeParUnPatient}
+          <label for="prenom-animateur" class="mt-3 mb-2 block text-lg font-semibold text-ink">
+            Son prénom
+          </label>
+          <input
+            id="prenom-animateur"
+            bind:value={facilitator}
+            class={champ}
+            style="min-height: 56px;"
+            maxlength="40"
+            placeholder="Bernard"
+            autocomplete="off"
+          />
+          <p class="mt-2 rounded-xl bg-surface-soft p-3 text-base text-ink">
+            <span aria-hidden="true">ℹ️</span>
+            Cette activité n'aura pas d'appel : personne ne notera les présences. Le prénom
+            s'affichera sur le programme, comme pour tout animateur.
+          </p>
+        {:else}
+          <select
+            id="animateur"
+            class={champ}
+            style="min-height: 56px;"
+            value={facilitatorId}
+            onchange={(event) => {
+              facilitatorId = event.currentTarget.value
+              // Le nom suit l'identifiant : c'est lui que le patient lira, et il reste juste
+              // même si la personne est retirée du catalogue plus tard.
+              facilitator = store.practitionerOf(facilitatorId)?.name ?? ''
+            }}
+          >
+            <option value="">Personne en particulier</option>
+            {#each proposed(store.practitioners) as intervenant (intervenant.id)}
+              <option value={intervenant.id}>{intervenant.name} — {intervenant.role}</option>
+            {/each}
+          </select>
+          {#if facilitatorId === '' && facilitator !== ''}
+            <!-- Une activité créée avant le catalogue des intervenants garde son nom écrit
+                 à la main : on l'affiche plutôt que de le perdre en silence. -->
+            <p class="mt-2 text-base text-ink-soft">
+              Actuellement : {facilitator}. Choisissez un intervenant pour le relier à son planning.
+            </p>
+          {/if}
+        {/if}
+      </fieldset>
       {/if}
     </div>
 
