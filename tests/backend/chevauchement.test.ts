@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { COLLECTIONS, Timestamp, db } from '../../functions/src/lib/firestore'
-import { appointmentConflictsFor, registerTx } from '../../functions/src/lib/registration'
+import { appointmentConflictsFor, conflictsFor, registerTx } from '../../functions/src/lib/registration'
 
 /**
  * Ce qui arrête une inscription prise en réunion, éprouvé sur l'émulateur.
@@ -114,5 +114,53 @@ describe('ce qui arrête une inscription prise par un soignant', () => {
 
   it('ne trouve rien quand la journée est libre', async () => {
     expect(await appointmentConflictsFor(db(), PATIENT, SEANCE)).toEqual([])
+  })
+})
+
+describe('ce que le patient voit annoncé quand il s’inscrit seul', () => {
+  /*
+    Ici, contrairement au soignant, les autres activités comptent : elles n'empêchent
+    rien, mais on les dit. Ces cas couvrent la version qui mène ses lectures de front —
+    la séance, les inscriptions et les rendez-vous partent ensemble, et le motif d'un
+    rendez-vous n'est lu que s'il en manque un.
+  */
+  it('nomme l’autre activité qui tombe au même moment', async () => {
+    await seedOccurrence(VOISINE, 'Jeux de société', '14:30', '16:00')
+    await registerTx(db(), { occurrenceId: VOISINE, patientUid: PATIENT, by: 'staff' })
+
+    const conflits = await conflictsFor(db(), PATIENT, SEANCE)
+    expect(conflits.map((c) => [c.kind, c.label])).toEqual([['activity', 'Jeux de société']])
+  })
+
+  it('ne se signale pas lui-même', async () => {
+    await registerTx(db(), { occurrenceId: SEANCE, patientUid: PATIENT, by: 'staff' })
+    expect(await conflictsFor(db(), PATIENT, SEANCE)).toEqual([])
+  })
+
+  it('ignore une séance annulée à laquelle on reste inscrit', async () => {
+    await seedOccurrence(VOISINE, 'Jeux de société', '14:30', '16:00')
+    await registerTx(db(), { occurrenceId: VOISINE, patientUid: PATIENT, by: 'staff' })
+    await db().collection(COLLECTIONS.occurrences).doc(VOISINE).update({ status: 'cancelled' })
+    expect(await conflictsFor(db(), PATIENT, SEANCE)).toEqual([])
+  })
+
+  it('rend l’activité et le rendez-vous ensemble, chacun nommé', async () => {
+    await seedOccurrence(VOISINE, 'Jeux de société', '14:30', '16:00')
+    await registerTx(db(), { occurrenceId: VOISINE, patientUid: PATIENT, by: 'staff' })
+    await seedRendezVous('14:15', '14:45', 'Docteur Lemaire')
+
+    const conflits = await conflictsFor(db(), PATIENT, SEANCE)
+    expect(conflits.map((c) => c.kind).sort()).toEqual(['activity', 'appointment'])
+    expect(conflits.find((c) => c.kind === 'appointment')?.label).toBe('Rendez-vous avec Docteur Lemaire')
+  })
+
+  it('va chercher le motif seulement quand le rendez-vous n’a personne d’attitré', async () => {
+    await db()
+      .collection(COLLECTIONS.appointmentKinds)
+      .doc('psychiatre')
+      .set({ name: 'le psychiatre', icon: '🩺', isActive: true })
+    await seedRendezVous('14:15', '14:45', null)
+    const conflits = await conflictsFor(db(), PATIENT, SEANCE)
+    expect(conflits[0]?.label).toBe('Rendez-vous avec le psychiatre')
   })
 })

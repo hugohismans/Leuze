@@ -115,6 +115,14 @@
     </p>
   {/if}
 
+  <!--
+    La semaine reste lisible pendant qu'on la relit : on ne retire pas les sept jours de
+    l'écran pour un aller-retour. Voir `refresh()` dans le magasin.
+  -->
+  {#if staffStore.rafraichit && !staffStore.loading}
+    <p class="mb-2 text-base text-ink-soft" aria-live="polite">Mise à jour de la semaine…</p>
+  {/if}
+
   {#if staffStore.loading}
     <p class="text-lg text-ink-soft">Chargement…</p>
   {:else}

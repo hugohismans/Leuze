@@ -142,10 +142,20 @@ describe('liste d’attente', () => {
   })
 
   it('donne au soignant une liste ordonnée', () => {
-    let board = emptyBoard(1)
-    board = inscrire(board, 'a', now)
-    board = inscrire(board, 'c', plusTard(10))
-    board = inscrire(board, 'b', plusTard(5))
+    /*
+      La liste se range sur l'heure de mise en file, pas sur l'ordre des documents. On
+      construit ici le tableau à la main, dans le désordre : passer par `register` ne
+      permettrait plus de fabriquer ce cas, puisqu'il garantit désormais que l'heure de
+      mise en file avance toujours — c'est justement ce qui rend cet ordre fiable.
+    */
+    const board: Board = {
+      occurrence: makeOccurrence({ capacity: 1 }),
+      registrations: [
+        makeRegistration({ id: 'reg-a', patientUid: 'a', status: 'confirmed', queuedAt: now }),
+        makeRegistration({ id: 'reg-c', patientUid: 'c', status: 'waitlist', queuedAt: plusTard(10) }),
+        makeRegistration({ id: 'reg-b', patientUid: 'b', status: 'waitlist', queuedAt: plusTard(5) }),
+      ],
+    }
     const roster = rosterOf(board)
     expect(roster.confirmed.map((r) => r.patientUid)).toEqual(['a'])
     expect(roster.waitlist.map((r) => r.patientUid)).toEqual(['b', 'c'])
@@ -348,5 +358,61 @@ describe('la ligne que la désinscription annule', () => {
     const outcome = promote(board, 'a')
     expect(outcome.ok).toBe(true)
     expect(outcome.ok && outcome.promoted.id).toBe('en-attente')
+  })
+})
+
+describe('deux inscriptions à la même milliseconde', () => {
+  /*
+    Deux bornes en salle commune, ou un soignant qui clique vite : l'horloge donne la même
+    heure aux deux. Personne ne doit s'entendre dire « position 1 » alors qu'il est
+    deuxième, et personne ne doit reculer d'une place sans qu'un autre se soit inscrit.
+  */
+  const pleine = () => emptyBoard(0)
+
+  it('donnent des positions distinctes, dans l’ordre d’arrivée', () => {
+    let board = pleine()
+    const positions: Array<number | null> = []
+    for (const uid of ['a', 'b', 'c']) {
+      const outcome = register(board, uid, { now, registrationId: `reg-${uid}`, by: 'patient' })
+      if (!outcome.ok) throw new Error('inscription refusée')
+      positions.push(outcome.position)
+      board = outcome.board
+    }
+    expect(positions).toEqual([1, 2, 3])
+  })
+
+  it('gardent cet ordre quel que soit l’ordre de lecture', () => {
+    let board = pleine()
+    for (const uid of ['a', 'b', 'c']) {
+      const outcome = register(board, uid, { now, registrationId: `reg-${uid}`, by: 'patient' })
+      if (!outcome.ok) throw new Error('inscription refusée')
+      board = outcome.board
+    }
+    const melange: Board = { ...board, registrations: [...board.registrations].reverse() }
+    expect(rosterOf(melange).waitlist.map((r) => r.patientUid)).toEqual(['a', 'b', 'c'])
+    expect(waitlistPosition(melange, 'b')).toBe(2)
+  })
+
+  it('ne touchent pas à l’heure réelle de l’inscription', () => {
+    let board = pleine()
+    const premier = register(board, 'a', { now, registrationId: 'reg-a', by: 'patient' })
+    if (!premier.ok) throw new Error('refusée')
+    board = premier.board
+    const second = register(board, 'b', { now, registrationId: 'reg-b', by: 'patient' })
+    if (!second.ok) throw new Error('refusée')
+    const ligne = second.board.registrations.find((r) => r.patientUid === 'b')!
+    expect(ligne.createdAt.getTime()).toBe(now.getTime())
+    expect(ligne.queuedAt.getTime()).toBeGreaterThan(now.getTime())
+  })
+
+  it('laissent l’horloge décider dès qu’elle avance vraiment', () => {
+    let board = pleine()
+    const premier = register(board, 'a', { now, registrationId: 'reg-a', by: 'patient' })
+    if (!premier.ok) throw new Error('refusée')
+    board = premier.board
+    const second = register(board, 'b', { now: plusTard(5), registrationId: 'reg-b', by: 'patient' })
+    if (!second.ok) throw new Error('refusée')
+    const ligne = second.board.registrations.find((r) => r.patientUid === 'b')!
+    expect(ligne.queuedAt.getTime()).toBe(plusTard(5).getTime())
   })
 })

@@ -96,6 +96,18 @@
 
   <Filters />
 
+  <!--
+    Le programme se met à jour sans disparaître.
+
+    On vidait la page à chaque flèche, le temps de l'aller-retour : le seul repère de
+    l'écran s'en allait, et l'on avait l'impression d'avoir cassé quelque chose. Le
+    programme d'avant reste donc affiché, et une ligne discrète dit qu'il change. Jamais
+    la couleur seule : c'est une phrase.
+  -->
+  {#if store.rafraichit && !store.loading}
+    <p class="text-base text-ink-soft" aria-live="polite">Mise à jour du programme…</p>
+  {/if}
+
   {#if store.lectureEchouee}
     <!--
       Une lecture qui échoue ne doit pas laisser un calendrier vide sans explication :

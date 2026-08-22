@@ -24,22 +24,45 @@
 
   const PREFERENCES: AppointmentPreference[] = ['matin', 'apres-midi', 'peu-importe']
 
+  /*
+    Réveiller la fonction de demande pendant qu'on choisit son motif : on lit la page,
+    on choisit, et le bouton ne paie plus le démarrage d'une fonction endormie.
+  */
+  $effect(() => {
+    void store.warmAppointment()
+  })
+
   async function envoyer(): Promise<void> {
     if (kindId === null || busy) return
     busy = true
-    const resultat = await store.requestAppointment(kindId, preference)
-    message = resultat.message
-    if (resultat.ok) {
-      kindId = null
-      preference = 'peu-importe'
+    try {
+      const resultat = await store.requestAppointment(kindId, preference)
+      message = resultat.message
+      if (resultat.ok) {
+        kindId = null
+        preference = 'peu-importe'
+      }
+    } finally {
+      // Quoi qu'il arrive, le bouton redevient utilisable.
+      busy = false
     }
-    busy = false
   }
 
+  /**
+   * Retirer une demande verrouillait le formulaire de demande — deux gestes sans rapport
+   * partageaient le même verrou — et n'avait aucune garde contre le double appui. Chaque
+   * demande se garde désormais elle-même ; la ligne disparaît dans le geste.
+   */
+  let retraitEnCours = $state<string | null>(null)
+
   async function retirer(appointmentId: string): Promise<void> {
-    busy = true
-    message = (await store.withdrawAppointment(appointmentId)).message
-    busy = false
+    if (retraitEnCours === appointmentId) return
+    retraitEnCours = appointmentId
+    try {
+      message = (await store.withdrawAppointment(appointmentId)).message
+    } finally {
+      retraitEnCours = null
+    }
   }
 </script>
 
@@ -66,7 +89,7 @@
             <button
               type="button"
               class="btn btn-secondary mt-3"
-              disabled={busy}
+              disabled={retraitEnCours === rendezVous.id}
               onclick={() => retirer(rendezVous.id)}
             >
               Retirer ma demande

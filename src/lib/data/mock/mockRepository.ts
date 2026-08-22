@@ -221,6 +221,10 @@ export function createMockRepository(options: { now?: () => Date } = {}): MockRe
         applyBoard(outcome.board)
         return { ok: true, message: 'Vous êtes désinscrit.' }
       },
+
+      async warmRegistration(): Promise<void> {
+        // Rien à réveiller : la démonstration ne parle à aucun serveur.
+      },
     },
 
     appointments: {
@@ -310,6 +314,10 @@ export function createMockRepository(options: { now?: () => Date } = {}): MockRe
           a.id === appointmentId ? { ...a, status: 'cancelled' as const } : a,
         )
         return { ok: true, message: 'Votre demande est retirée.' }
+      },
+
+      async warmRequest(): Promise<void> {
+        // Rien à réveiller : la démonstration ne parle à aucun serveur.
       },
     },
 

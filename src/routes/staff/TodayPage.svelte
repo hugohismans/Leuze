@@ -37,6 +37,10 @@
     </p>
   {/if}
 
+  {#if staffStore.rafraichit && !staffStore.loading}
+    <p class="mb-2 text-base text-ink-soft" aria-live="polite">Mise à jour…</p>
+  {/if}
+
   {#if staffStore.loading}
     <p class="text-lg text-ink-soft">Chargement…</p>
   {:else if staffStore.today.length === 0}

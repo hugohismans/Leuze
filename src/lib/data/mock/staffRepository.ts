@@ -177,7 +177,7 @@ export function createMockStaffApp(): StaffApp {
         return regenerate(activityId, modifiee)
       },
 
-      async duplicateActivity(activityId: string): Promise<string> {
+      async duplicateActivity(activityId: string, _source?: Activity): Promise<string> {
         const source = activities.get(activityId)
         if (!source) throw new Error("Cette activité n'existe plus.")
         const nouvelId = `${activityId}-copie-${Date.now()}`

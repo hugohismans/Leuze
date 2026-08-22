@@ -268,6 +268,20 @@ export function createFirestoreRepository(): AppRepository {
         mineCache = null
         return result as { ok: boolean; message: string }
       },
+
+      async warmRegistration(): Promise<void> {
+        /*
+          Deux appels vides, sans conséquence : les deux fonctions se lèvent pendant qu'on
+          lit la fiche. « S'inscrire » et « se désinscrire » sont deux fonctions
+          distinctes, et l'on peut arriver sur la fiche pour l'une comme pour l'autre —
+          ne réveiller que la première laissait la seconde payer son démarrage.
+        */
+        await Promise.all(
+          ['register', 'unregister'].map((nom) =>
+            httpsCallable(functions, nom)({ warm: true }).catch(() => undefined),
+          ),
+        )
+      },
     },
 
     /**
@@ -335,6 +349,11 @@ export function createFirestoreRepository(): AppRepository {
         } catch {
           return { ok: false, message: "Cette demande n'a pas pu être retirée." }
         }
+      },
+
+      async warmRequest(): Promise<void> {
+        // Voir `warmRegistration` : un appel vide pendant qu'on choisit son motif.
+        await httpsCallable(functions, 'requestAppointment')({ warm: true }).catch(() => undefined)
       },
     },
 

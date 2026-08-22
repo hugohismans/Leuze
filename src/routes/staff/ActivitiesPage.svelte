@@ -67,6 +67,26 @@
     const jours = regle.byWeekday.map((j) => JOURS[j]).join(', ')
     return `Tous les ${jours} à ${regle.startTime.replace(':', 'h')} — ${formatDuration(regle.durationMin)}`
   }
+
+  /*
+    Une activité à la fois, et elle seule.
+
+    « Dupliquer » et « Retirer du programme » ne disaient rien pendant qu'ils
+    travaillaient : on recliquait, et l'on se retrouvait avec trois copies. Les deux
+    boutons de cette ligne se ferment le temps du geste ; les autres lignes restent
+    vivantes.
+  */
+  let enCours = $state<string | null>(null)
+
+  async function agir(activityId: string, geste: () => Promise<unknown>): Promise<void> {
+    if (enCours === activityId) return
+    enCours = activityId
+    try {
+      await geste()
+    } finally {
+      enCours = null
+    }
+  }
 </script>
 
 <section class="mx-auto max-w-4xl px-4 py-6">
@@ -121,10 +141,20 @@
             <button type="button" class="btn btn-secondary" onclick={() => navigate(`/soignant/activite/${activity.id}`)}>
               Modifier
             </button>
-            <button type="button" class="btn btn-secondary" onclick={() => staffStore.duplicate(activity.id)}>
+            <button
+              type="button"
+              class="btn btn-secondary"
+              disabled={enCours === activity.id}
+              onclick={() => agir(activity.id, () => staffStore.duplicate(activity.id))}
+            >
               Dupliquer
             </button>
-            <button type="button" class="btn btn-secondary" onclick={() => staffStore.setActive(activity.id, !activity.isActive)}>
+            <button
+              type="button"
+              class="btn btn-secondary"
+              disabled={enCours === activity.id}
+              onclick={() => agir(activity.id, () => staffStore.setActive(activity.id, !activity.isActive))}
+            >
               {activity.isActive ? 'Retirer du programme' : 'Mettre au programme'}
             </button>
             <button type="button" class="btn btn-secondary" onclick={() => (aSupprimer = activity.id)}>

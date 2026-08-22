@@ -57,6 +57,8 @@
   let seriesId = $state<string | undefined>(undefined)
 
   let chargee = $state(false)
+  /** L'activité déjà demandée au serveur : on ne la demande jamais deux fois. */
+  let demandee: string | null = null
   let erreur = $state<string | null>(null)
   let busy = $state(false)
 
@@ -82,7 +84,21 @@
       return
     }
 
+    /*
+      L'activité n'est demandée qu'une fois, et sa réponse ne peut plus écraser une saisie.
+
+      Cet effet se rejoue tant que le formulaire n'est pas rempli — et le catalogue, qui
+      se recharge après la connexion, le relançait avant que la première réponse ne soit
+      revenue. Deux lectures partaient donc, et la seconde arrivait après que le
+      formulaire était affiché : si l'on avait commencé à taper entre-temps, elle
+      remettait les anciennes valeurs par-dessus. On ne demande plus qu'une fois, et une
+      réponse qui n'est plus celle du formulaire ouvert n'écrit rien.
+    */
+    if (demandee === activityId) return
+    demandee = activityId
+    const pour = activityId
     void staffStore.getActivity(activityId).then((activity: Activity | null) => {
+      if (pour !== activityId || chargee) return
       if (activity === null) {
         erreur = "Cette activité n'a pas été trouvée."
         chargee = true

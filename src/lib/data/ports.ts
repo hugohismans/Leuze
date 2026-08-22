@@ -63,6 +63,16 @@ export interface RegistrationService {
   statusFor(occurrenceId: string): Promise<MyRegistration | null>
   register(occurrenceId: string): Promise<RegisterResult>
   unregister(occurrenceId: string): Promise<{ ok: boolean; message: string }>
+
+  /**
+   * Réveille la fonction d'inscription, sans rien inscrire.
+   *
+   * Même raison que pour la saisie du code : une fonction qui n'a pas servi depuis un
+   * quart d'heure met plusieurs secondes à repartir, et ce retard tombe toujours sur la
+   * personne qui appuie sur « Je m'inscris ». La fiche d'activité le demande en
+   * s'affichant — on la lit bien avant de décider. Sans effet sur la démonstration.
+   */
+  warmRegistration(): Promise<void>
 }
 
 /** Réservé au personnel : la liste des inscrits n'est jamais lisible côté patient. */
@@ -86,6 +96,13 @@ export interface AppointmentService {
     preference: AppointmentPreference,
   ): Promise<{ ok: boolean; message: string; scheduled?: boolean }>
   withdraw(appointmentId: string): Promise<{ ok: boolean; message: string }>
+
+  /**
+   * Réveille la fonction de demande, sans rien demander. L'écran le fait en s'affichant :
+   * on choisit un motif et un moment de la journée avant d'appuyer, ce qui laisse tout
+   * le temps. Sans effet sur la démonstration.
+   */
+  warmRequest(): Promise<void>
 }
 
 export type PatientSession = {
