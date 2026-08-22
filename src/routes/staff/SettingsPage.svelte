@@ -31,7 +31,7 @@
     if (enCours === action) return
     enCours = action
     try {
-      await staffStore.setPatientAction(action, ouvert)
+      await staffStore.setServiceAction(action, ouvert)
     } finally {
       enCours = null
     }

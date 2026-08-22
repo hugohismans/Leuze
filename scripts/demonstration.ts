@@ -108,6 +108,8 @@ const COLLECTIONS = [
   'appointments',
   // Les idées des patients : texte libre et prénom. Elles doivent partir avec le reste.
   'proposals',
+  // Les réglages particuliers : ils portent l'identifiant d'un compte qui n'existera plus.
+  'patientActions',
   'patients',
   'patientCodes',
   'practitioners',

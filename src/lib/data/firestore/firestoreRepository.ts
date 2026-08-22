@@ -48,6 +48,8 @@ import { enClair } from '../../erreurs'
 import { patientIdentityOf } from '../../domain/session'
 import {
   OPEN_TO_PATIENTS,
+  effectivePermissions,
+  readOverrides,
   readPermissions,
   type PatientPermissions,
 } from '../../domain/permissions'
@@ -297,9 +299,20 @@ export function createFirestoreRepository(): AppRepository {
      */
     settings: {
       async patientPermissions(): Promise<PatientPermissions> {
+        await sessionReady
         try {
-          const snapshot = await getDoc(doc(db, 'config', 'app'))
-          return readPermissions(snapshot.data()?.['patientActions'])
+          // La règle du service et le réglage particulier de la personne : deux petits
+          // documents, lus ensemble. Le second l'emporte là où il existe.
+          const [service, particulier] = await Promise.all([
+            getDoc(doc(db, 'config', 'app')),
+            session.patientUid === null
+              ? Promise.resolve(null)
+              : getDoc(doc(db, 'patientActions', session.patientUid)).catch(() => null),
+          ])
+          return effectivePermissions(
+            readPermissions(service.data()?.['patientActions']),
+            readOverrides(particulier?.data() ?? null),
+          )
         } catch {
           // Un réglage illisible ne ferme jamais rien : voir `domain/permissions`.
           return { ...OPEN_TO_PATIENTS }

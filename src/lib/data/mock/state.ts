@@ -12,7 +12,12 @@ import { config } from '../../config'
 import { conflictsWith, type BusyEntry } from '../../domain/conflicts'
 import { expand } from '../../domain/recurrence'
 import { addLocalDays, instantOf, startOfIsoWeek, todayLocalDate } from '../../domain/time'
-import { OPEN_TO_PATIENTS, type PatientPermissions } from '../../domain/permissions'
+import {
+  OPEN_TO_PATIENTS,
+  effectivePermissions,
+  type PatientActionOverrides,
+  type PatientPermissions,
+} from '../../domain/permissions'
 import type { ActivityProposal } from '../../domain/proposals'
 import type { Appointment, Occurrence, Registration } from '../../domain/types'
 import { recount, type Board } from '../../domain/waitlist'
@@ -45,6 +50,8 @@ export type MockWorld = {
   proposals: ActivityProposal[]
   /** Ce que les patients ont le droit de faire. Tout ouvert dans la démonstration. */
   patientPermissions: PatientPermissions
+  /** Les réglages particuliers, par personne. Vide tant que personne n'en a. */
+  patientActions: Record<string, PatientActionOverrides>
   patients: (SeedPatient & { expiresAt?: Date })[]
   session: PatientSession
   /**
@@ -193,6 +200,7 @@ function build(now: Date): MockWorld {
       },
     ],
     patientPermissions: { ...OPEN_TO_PATIENTS },
+    patientActions: {},
     patients,
     session:
       aLaPlaceDe === undefined
@@ -283,5 +291,13 @@ export function conflictsFor(patientUid: string, occurrenceId: string): BusyEntr
   return conflictsWith(
     { start: occurrence.start, end: occurrence.end },
     busyOn(patientUid, occurrence.localDate, occurrenceId),
+  )
+}
+
+/** Ce qu'une personne peut faire, tout compte fait : la règle du service, puis la sienne. */
+export function droitsDe(patientUid: string | null): PatientPermissions {
+  return effectivePermissions(
+    world.patientPermissions,
+    patientUid === null ? {} : (world.patientActions[patientUid] ?? {}),
   )
 }

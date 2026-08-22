@@ -59,6 +59,8 @@ export const COLLECTIONS = {
   appointments: 'appointments',
   /** Les activités proposées par les patients, avant validation. */
   proposals: 'proposals',
+  /** Ce qu'une personne peut faire quand cela diffère de la règle du service. */
+  patientActions: 'patientActions',
   appointmentKinds: 'appointmentKinds',
   config: 'config',
 } as const

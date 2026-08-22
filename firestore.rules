@@ -10,7 +10,10 @@ rules_version = '2';
 //      inscrits d'une activité.
 //   3. Aucune écriture client sur `registrations` ni `patients` : la capacité et la liste
 //      d'attente ne sont modifiées que par une transaction de Cloud Function.
-//   4. Une idée d'activité déposée par un patient n'est lue que par lui et par
+//   4. Un réglage particulier accordé à quelqu'un n'est lu que par lui et par le
+//      personnel, et n'est écrit que par l'administrateur : une exception est une
+//      décision de service.
+//   5. Une idée d'activité déposée par un patient n'est lue que par lui et par
 //      l'administrateur, et aucune ne s'écrit depuis un navigateur : la longueur des
 //      textes et la limite d'une seule idée en attente ne peuvent se vérifier que dans
 //      une fonction appelable — une règle Firestore ne sait pas compter les documents
@@ -323,6 +326,22 @@ service cloud.firestore {
         || (isPatient() && patientWithdrawal());
       // Un rendez-vous ne se supprime pas : il s'annule, avec un motif.
       allow delete: if false;
+    }
+
+    // --- réglages particuliers d'une personne ----------------------------------
+    //
+    // Ce qu'une personne peut faire quand cela diffère de la règle du service : quatre
+    // booléens, rien d'autre. Aucun nom, aucune date, rien de clinique — l'identifiant du
+    // document est celui du compte.
+    //
+    // Chacun lit le sien : son écran s'en sert pour ne pas proposer un geste qui serait
+    // refusé, et pour dire ce qu'il faut faire à la place. Le personnel lit tout — c'est
+    // lui qui voit la fiche. Seul l'administrateur écrit : une exception accordée à
+    // quelqu'un est une décision de service, pas un arrangement de couloir.
+    match /patientActions/{patientUid} {
+      allow get: if isStaff() || (isPatient() && request.auth.uid == patientUid);
+      allow list: if isStaff();
+      allow write: if isAdmin();
     }
 
     // --- idées des patients ---------------------------------------------------

@@ -2,7 +2,7 @@
  * Ports de l'espace soignant. Comme pour le patient, l'interface ne connaît que ceci —
  * jamais Firebase. Deux adapters les implémentent : `firestore/` et `mock/`.
  */
-import type { PatientPermissions } from '../domain/permissions'
+import type { PatientActionOverrides, PatientPermissions } from '../domain/permissions'
 import type { ActivityProposal } from '../domain/proposals'
 import type { CatalogKind, CatalogRemoval } from '../domain/catalog'
 import type { Account } from '../domain/impersonation'
@@ -178,6 +178,20 @@ export interface StaffRepository {
    */
   readPatientPermissions(): Promise<PatientPermissions>
   savePatientPermissions(permissions: PatientPermissions): Promise<{ ok: boolean; message: string }>
+
+  /**
+   * Les réglages particuliers, par personne : ce qui diffère de la règle du service.
+   *
+   * Une clé absente veut dire « comme le service », et continue de le vouloir dire quand
+   * le service change. C'est tout l'intérêt : recopier la règle générale sur chaque
+   * personne donnerait des réglages figés, et fermer un geste pour le service n'aurait
+   * alors d'effet sur personne.
+   */
+  readPatientActions(): Promise<Record<string, PatientActionOverrides>>
+  savePatientActions(
+    patientUid: string,
+    overrides: PatientActionOverrides,
+  ): Promise<{ ok: boolean; message: string }>
 
   /** Le calendrier du personnel : tout le programme, sans filtre de service. */
   listOccurrences(from: LocalDate, to: LocalDate): Promise<Occurrence[]>

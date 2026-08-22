@@ -5,6 +5,10 @@ import {
   actionConsequence,
   actionLabel,
   allOpen,
+  effectivePermissions,
+  hasOverrides,
+  overrideOrigin,
+  readOverrides,
   isAllowed,
   permissionsSummary,
   readPermissions,
@@ -115,5 +119,59 @@ describe('le résumé de l’écran', () => {
     const resume = permissionsSummary(ferme(...PATIENT_ACTIONS))
     expect(resume).toContain('consultent le programme')
     expect(allOpen(ferme(...PATIENT_ACTIONS))).toBe(false)
+  })
+})
+
+describe('le réglage particulier d’une personne', () => {
+  /*
+    Le point qui compte : un geste non réglé suit le service, et continue de le suivre
+    quand il change. Recopier la règle générale sur chaque personne donnerait quarante
+    réglages figés, et fermer un geste pour le service n'aurait alors d'effet sur personne.
+  */
+  it('suit le service tant qu’on n’a rien décidé', () => {
+    const service = readPermissions({ register: false })
+    expect(effectivePermissions(service, {})).toEqual(service)
+  })
+
+  it('suit le service même quand celui-ci change', () => {
+    const ouvert = effectivePermissions(readPermissions({}), {})
+    const ferme = effectivePermissions(readPermissions({ register: false }), {})
+    expect(ouvert.register).toBe(true)
+    expect(ferme.register).toBe(false)
+  })
+
+  it('ouvre pour une personne ce que le service a fermé', () => {
+    const service = readPermissions({ register: false })
+    expect(effectivePermissions(service, { register: true }).register).toBe(true)
+  })
+
+  it('ferme pour une personne ce que le service a ouvert', () => {
+    const service = readPermissions({})
+    expect(effectivePermissions(service, { register: false }).register).toBe(false)
+  })
+
+  it('ne déborde pas sur les autres gestes', () => {
+    const finales = effectivePermissions(readPermissions({}), { register: false })
+    expect(finales.register).toBe(false)
+    expect(finales.unregister).toBe(true)
+    expect(finales.proposeActivity).toBe(true)
+  })
+
+  it('ignore ce qu’il ne comprend pas', () => {
+    expect(readOverrides(null)).toEqual({})
+    expect(readOverrides('non')).toEqual({})
+    expect(readOverrides({ register: 'oui' })).toEqual({})
+    expect(readOverrides({ register: false, danser: true })).toEqual({ register: false })
+  })
+
+  it('se sait particulier, ou pas', () => {
+    expect(hasOverrides({})).toBe(false)
+    expect(hasOverrides({ register: true })).toBe(true)
+  })
+
+  it('dit d’où vient la valeur, et si elle suivra le service', () => {
+    expect(overrideOrigin('register', {})).toContain('Suivra le service')
+    expect(overrideOrigin('register', { register: true })).toContain('même si le service ferme')
+    expect(overrideOrigin('register', { register: false })).toContain('même si le service l’ouvre')
   })
 })
