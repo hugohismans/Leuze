@@ -2,6 +2,7 @@
  * Ports de l'espace soignant. Comme pour le patient, l'interface ne connaît que ceci —
  * jamais Firebase. Deux adapters les implémentent : `firestore/` et `mock/`.
  */
+import type { ActivityProposal } from '../domain/proposals'
 import type { CatalogKind, CatalogRemoval } from '../domain/catalog'
 import type { Account } from '../domain/impersonation'
 import type {
@@ -144,6 +145,27 @@ export interface StaffRepository {
    * l'annulation, qui laisse la séance visible et barrée, avec son motif.
    */
   deleteOccurrence(occurrenceId: string): Promise<{ ok: boolean; message: string }>
+
+  /**
+   * Les idées déposées par les patients — toutes, pour l'administrateur qui répond.
+   *
+   * Lecture directe : les règles la lui accordent, et une lecture directe ne paie aucun
+   * démarrage à froid. C'est répondre qui passe par une fonction.
+   */
+  listProposals(): Promise<ActivityProposal[]>
+
+  /**
+   * Répondre à une idée. Un refus demande un motif : « non » sans raison décourage plus
+   * sûrement que le refus lui-même, et la personne lira cette phrase telle quelle.
+   *
+   * `activityId` rattache après coup l'activité née d'une idée retenue. La même idée peut
+   * donc être décidée deux fois avec le même verdict — c'est ainsi qu'elle se complète.
+   */
+  decideProposal(
+    proposalId: string,
+    decision: 'accepted' | 'declined',
+    options?: { declineReason?: string; activityId?: string },
+  ): Promise<{ ok: boolean; message: string }>
 
   /** Le calendrier du personnel : tout le programme, sans filtre de service. */
   listOccurrences(from: LocalDate, to: LocalDate): Promise<Occurrence[]>

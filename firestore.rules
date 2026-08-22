@@ -10,6 +10,11 @@ rules_version = '2';
 //      inscrits d'une activité.
 //   3. Aucune écriture client sur `registrations` ni `patients` : la capacité et la liste
 //      d'attente ne sont modifiées que par une transaction de Cloud Function.
+//   4. Une idée d'activité déposée par un patient n'est lue que par lui et par
+//      l'administrateur, et aucune ne s'écrit depuis un navigateur : la longueur des
+//      textes et la limite d'une seule idée en attente ne peuvent se vérifier que dans
+//      une fonction appelable — une règle Firestore ne sait pas compter les documents
+//      d'une collection.
 
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -318,6 +323,26 @@ service cloud.firestore {
         || (isPatient() && patientWithdrawal());
       // Un rendez-vous ne se supprime pas : il s'annule, avec un motif.
       allow delete: if false;
+    }
+
+    // --- idées des patients ---------------------------------------------------
+    //
+    // Une proposition d'activité : un titre, une description, et le fait que la personne
+    // se propose ou non de l'animer. Ce n'est pas un message à un soignant, et cela ne
+    // doit jamais le devenir — d'où deux précautions ici.
+    //
+    // **Aucune écriture cliente.** Déposer une idée passe par une fonction appelable, qui
+    // vérifie la longueur des textes et qu'une seule idée attend à la fois. Un navigateur
+    // qui pourrait écrire ici pourrait écrire un texte de dix mille caractères, ou dix
+    // idées d'affilée, et la file cesserait d'être lue.
+    //
+    // **Chacun ne lit que les siennes.** Une idée porte le prénom de qui l'a proposée :
+    // la laisser lire aux autres patients reviendrait à publier qui demande quoi.
+    // L'administrateur, lui, lit tout — c'est lui qui répond.
+    match /proposals/{proposalId} {
+      allow get, list: if isAdmin()
+        || (isPatient() && resource.data.patientUid == request.auth.uid);
+      allow write: if false;
     }
 
     // --- patients -------------------------------------------------------------

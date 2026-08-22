@@ -140,6 +140,19 @@
       }}
     />
   {/if}
+
+  <!--
+    Proposer une activité, au bas du programme.
+    
+    Sa place est ici, après le calendrier : on lit d'abord ce qui est prévu, et c'est en
+    ne trouvant pas ce qu'on cherche qu'on a envie de proposer autre chose. En haut, ce
+    bouton passerait avant l'information que tout le monde vient chercher.
+  -->
+  {#if store.isDemo || store.signedIn}
+    <button type="button" class="btn btn-secondary" onclick={() => navigate('/proposer')}>
+      <span aria-hidden="true">💡</span> Proposer une activité
+    </button>
+  {/if}
 </div>
 
 <style>

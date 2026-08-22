@@ -12,6 +12,7 @@
   import MyWeekPage from './routes/MyWeekPage.svelte'
   import StaffApp from './routes/staff/StaffApp.svelte'
   import MyRegistrationsPage from './routes/MyRegistrationsPage.svelte'
+  import ProposePage from './routes/ProposePage.svelte'
 
   // Le catalogue n'est lisible qu'une fois la session ouverte (règles Firestore).
   $effect(() => {
@@ -74,7 +75,7 @@
 <AppHeader />
 <ImpersonationBanner />
 
-{#if !espaceSoignant && (occurrenceId !== null || router.path === '/mes-inscriptions' || router.path === '/rendez-vous' || router.path === '/ma-semaine')}
+{#if !espaceSoignant && (occurrenceId !== null || router.path === '/mes-inscriptions' || router.path === '/rendez-vous' || router.path === '/ma-semaine' || router.path === '/proposer')}
   <BackLink />
 {/if}
 
@@ -115,6 +116,8 @@
     <AppointmentsPage />
   {:else if router.path === '/ma-semaine'}
     <MyWeekPage />
+  {:else if router.path === '/proposer'}
+    <ProposePage />
   {:else}
     <CalendarPage />
   {/if}

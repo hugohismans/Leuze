@@ -82,6 +82,8 @@ import type {
   StaffRole,
   SuperAdminService,
 } from '../staffPorts'
+import type { ActivityProposal } from '../../domain/proposals'
+import { versProposition } from './propositions'
 import { firebase } from './app'
 import { FIRST_NAME_KEY } from './keys'
 
@@ -663,6 +665,41 @@ export function createFirestoreStaffApp(): StaffApp {
             'staffUnregister',
           )
           return (await call({ occurrenceId, patientUid })).data
+        } catch (error) {
+          return { ok: false, message: messageDErreur(error) }
+        }
+      },
+
+      async listProposals(): Promise<ActivityProposal[]> {
+        // Lecture directe : les règles l'accordent à l'administrateur, et cela évite un
+        // aller-retour de fonction pour une liste qu'on ouvre plusieurs fois par jour.
+        try {
+          const snapshot = await lire(getDocs(collection(db, 'proposals')))
+          return snapshot.docs
+            .map((d) => versProposition(d.id, d.data() as Record<string, unknown>))
+            .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+        } catch {
+          return []
+        }
+      },
+
+      async decideProposal(
+        proposalId: string,
+        decision: 'accepted' | 'declined',
+        options: { declineReason?: string; activityId?: string } = {},
+      ) {
+        try {
+          const call = httpsCallable<
+            {
+              proposalId: string
+              decision: 'accepted' | 'declined'
+              declineReason?: string
+              activityId?: string
+            },
+            { ok: boolean; message?: string }
+          >(functions, 'decideProposal')
+          const resultat = (await call({ proposalId, decision, ...options })).data
+          return { ok: resultat.ok, message: resultat.message ?? 'Réponse enregistrée.' }
         } catch (error) {
           return { ok: false, message: messageDErreur(error) }
         }
