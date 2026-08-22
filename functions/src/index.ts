@@ -291,9 +291,19 @@ export const staffWeekPlannings = onCall(async (request: CallableRequest) => {
 
   const maintenant = Date.now()
   const collection = db().collection(COLLECTIONS.patients)
-  const patientsSnapshot = await (serviceId === null
-    ? collection.get()
-    : collection.where('serviceId', '==', serviceId).get())
+  /*
+    Les personnes et les séances de la semaine ne dépendent pas les unes des autres :
+    elles se lisent ensemble. On les attendait l'une après l'autre, et cet écran est
+    celui qu'on ouvre à la fin de la réunion, quand tout le monde attend sa feuille.
+  */
+  const [patientsSnapshot, occurrences] = await Promise.all([
+    serviceId === null ? collection.get() : collection.where('serviceId', '==', serviceId).get(),
+    db()
+      .collection(COLLECTIONS.occurrences)
+      .where('localDate', '>=', from)
+      .where('localDate', '<=', to)
+      .get(),
+  ])
   const patients = patientsSnapshot.docs
     .map((document) => {
       const data = document.data() as { firstName?: string; serviceId?: string; expiresAt?: Timestamp }
@@ -308,21 +318,19 @@ export const staffWeekPlannings = onCall(async (request: CallableRequest) => {
     .filter((patient) => patient.expiresAtMs > maintenant)
   if (patients.length === 0) return { plannings: [] }
 
-  const occurrences = await db()
-    .collection(COLLECTIONS.occurrences)
-    .where('localDate', '>=', from)
-    .where('localDate', '<=', to)
-    .get()
-
-  // `in` accepte trente valeurs : on interroge par paquets.
+  // `in` accepte trente valeurs : on interroge par paquets — tous en même temps. Les
+  // paquets s'attendaient les uns les autres, ce qui faisait dix allers-retours pour une
+  // semaine chargée là où un seul suffit.
   const parPatient = new Map<string, Array<{ occurrenceId: string; status: 'confirmed' | 'waitlist' }>>()
   const identifiants = occurrences.docs.map((d) => d.id)
-  for (let i = 0; i < identifiants.length; i += 30) {
-    const paquet = identifiants.slice(i, i + 30)
-    const trouvees = await db()
-      .collection(COLLECTIONS.registrations)
-      .where('occurrenceId', 'in', paquet)
-      .get()
+  const paquets: string[][] = []
+  for (let i = 0; i < identifiants.length; i += 30) paquets.push(identifiants.slice(i, i + 30))
+  const lots = await Promise.all(
+    paquets.map((paquet) =>
+      db().collection(COLLECTIONS.registrations).where('occurrenceId', 'in', paquet).get(),
+    ),
+  )
+  for (const trouvees of lots) {
     for (const document of trouvees.docs) {
       const data = document.data() as { patientUid?: string; occurrenceId?: string; status?: string }
       if (data.status !== 'confirmed' && data.status !== 'waitlist') continue
@@ -699,13 +707,35 @@ export const appointmentPlanning = onCall(async (request: CallableRequest) => {
  */
 export const requestAppointment = onCall(async (request: CallableRequest) => {
   const patient = requirePatient(request)
+  // Réveil : voir `register`. L'écran des rendez-vous le demande en s'affichant — on
+  // choisit un motif et un moment de la journée avant d'appuyer.
+  if (request.data?.warm === true) return { ok: true, warmed: true }
   const kindId = requireString(request.data?.kindId, 'kindId')
   const preference = request.data?.preference
   if (preference !== 'matin' && preference !== 'apres-midi' && preference !== 'peu-importe') {
     throw new HttpsError('invalid-argument', 'Choisissez un moment de la journée.')
   }
 
-  const motif = await db().collection(COLLECTIONS.appointmentKinds).doc(kindId).get()
+  /*
+    Trois questions indépendantes, posées ensemble : le motif existe-t-il, la personne
+    a-t-elle déjà une demande en cours, et reste-t-il une place quelque part ?
+
+    Elles s'enchaînaient — motif, puis demandes, puis la recherche de créneau qui lisait
+    elle-même le catalogue et les agendas l'un après l'autre. Aucune ne dépend des autres.
+    Chercher une place pour rien, quand la demande est un doublon, ne coûte que des
+    lectures ; faire attendre quelqu'un d'inquiet coûte plus cher.
+  */
+  const aujourdHui = todayLocalDate()
+  const [motif, deja, place] = await Promise.all([
+    db().collection(COLLECTIONS.appointmentKinds).doc(kindId).get(),
+    db()
+      .collection(COLLECTIONS.appointments)
+      .where('patientUid', '==', patient.uid)
+      .where('kindId', '==', kindId)
+      .get(),
+    premierePlaceLibre(kindId, preference),
+  ])
+
   const kind = motif.data()
   if (!motif.exists || kind?.['isActive'] !== true) {
     throw new HttpsError(
@@ -722,12 +752,6 @@ export const requestAppointment = onCall(async (request: CallableRequest) => {
     dans l'agenda de quelqu'un. Le garde-fou vaut mieux ici que dans l'écran : l'écran
     peut être contourné, pas la fonction.
   */
-  const aujourdHui = todayLocalDate()
-  const deja = await db()
-    .collection(COLLECTIONS.appointments)
-    .where('patientUid', '==', patient.uid)
-    .where('kindId', '==', kindId)
-    .get()
   const enCours = deja.docs.some((d) => {
     const data = d.data()
     if (data['status'] === 'requested') return true
@@ -749,7 +773,6 @@ export const requestAppointment = onCall(async (request: CallableRequest) => {
     createdAt: Timestamp.now(),
   }
 
-  const place = await premierePlaceLibre(kindId, preference)
   if (place === null) {
     await db().collection(COLLECTIONS.appointments).add({ ...base, status: 'requested' })
     return {
@@ -809,25 +832,36 @@ async function premierePlaceLibre(
   const candidats: Fiche[] = intervenants.docs
     .map((d) => ({ ...(d.data() as Omit<Fiche, 'id'>), id: d.id }))
     .filter((p) => p.isActive === true && p.autoAccept === true && p.kindId === kindId)
+    .filter((p) => Array.isArray(p.availability) && p.availability.length > 0)
     .sort((a, b) => (a.name ?? '').localeCompare(b.name ?? '', 'fr'))
+  if (candidats.length === 0) return null
 
   // Jamais aujourd'hui : un rendez-vous posé dans deux heures est un rendez-vous manqué.
   const depart = addLocalDays(todayLocalDate(), 1)
   const jusque = addLocalDays(depart, AUTO_HORIZON_DAYS)
 
-  for (const candidat of candidats) {
-    const plages = Array.isArray(candidat.availability) ? candidat.availability : []
-    if (plages.length === 0) continue
+  /*
+    Les agendas des candidats se lisent tous en même temps.
 
-    const pris = await db()
-      .collection(COLLECTIONS.appointments)
-      .where('practitionerId', '==', candidat.id)
-      .where('status', '==', 'scheduled')
-      .where('localDate', '>=', depart)
-      .where('localDate', '<=', jusque)
-      .get()
+    On les parcourait l'un après l'autre en s'arrêtant au premier qui avait de la place :
+    économe en lectures, coûteux en attente — avec trois psychiatres, c'étaient trois
+    allers-retours en file avant que le patient n'ait sa réponse. On lit tout d'un coup et
+    l'on garde le premier dans l'ordre, qui est le même qu'avant.
+  */
+  const agendas = await Promise.all(
+    candidats.map((candidat) =>
+      db()
+        .collection(COLLECTIONS.appointments)
+        .where('practitionerId', '==', candidat.id)
+        .where('status', '==', 'scheduled')
+        .where('localDate', '>=', depart)
+        .where('localDate', '<=', jusque)
+        .get(),
+    ),
+  )
 
-    const occupes: BusySlot[] = pris.docs.flatMap((d) => {
+  for (const [index, candidat] of candidats.entries()) {
+    const occupes: BusySlot[] = (agendas[index]?.docs ?? []).flatMap((d) => {
       const data = d.data()
       const debut = data['start'] as Timestamp | undefined
       const fin = data['end'] as Timestamp | undefined
@@ -837,7 +871,7 @@ async function premierePlaceLibre(
     })
 
     const slot = findFirstSlot({
-      windows: plages,
+      windows: candidat.availability ?? [],
       busy: occupes,
       preference,
       from: depart,

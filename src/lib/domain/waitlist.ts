@@ -12,6 +12,15 @@ export type Board = {
 }
 
 const active = (r: Registration) => r.status !== 'cancelled'
+/**
+ * L'ordre de la file d'attente : l'heure d'arrivée, et elle seule.
+ *
+ * Rien ne départage deux heures identiques, et c'est voulu — parce que `register`
+ * garantit qu'il n'y en a pas (voir plus bas). Ajouter un second critère, l'identifiant
+ * par exemple, serait pire que de n'en avoir aucun : le nouvel arrivant pourrait passer
+ * devant quelqu'un qui attendait déjà, et l'on annoncerait « position 1 » à deux
+ * personnes. Essayé, et rattrapé par les tests.
+ */
 const byQueueOrder = (a: Registration, b: Registration) => a.queuedAt.getTime() - b.queuedAt.getTime()
 
 /** Recalcule les compteurs dénormalisés. Invariant vérifié après chaque opération. */
@@ -103,13 +112,30 @@ export function register(
     options.walkIn !== true && !depassementAssume && capacity !== null && confirmed >= capacity
 
   const status = goesToWaitlist ? ('waitlist' as const) : ('confirmed' as const)
+
+  /*
+    L'heure de mise en file avance toujours, même quand l'horloge n'avance pas.
+
+    Cinq personnes qui s'inscrivent dans la même milliseconde — deux bornes en salle
+    commune, ou un soignant qui clique vite — porteraient la même heure d'arrivée. Rien
+    ne les départagerait alors, et l'ordre de la file dépendrait de celui dans lequel la
+    base rend les documents, qui n'est pas le même d'une lecture à l'autre : quelqu'un
+    reculerait d'une place sans que personne ne se soit inscrit avant lui.
+
+    On décale donc d'une milliseconde après le dernier arrivé. `createdAt` garde l'heure
+    vraie ; `queuedAt` n'existe que pour ranger la file, et une file se range dans l'ordre
+    où les gens se présentent.
+  */
+  const dernier = board.registrations.reduce((max, r) => Math.max(max, r.queuedAt.getTime()), 0)
+  const queuedAt = new Date(Math.max(options.now.getTime(), dernier + 1))
+
   const registration: Registration = {
     id: options.registrationId,
     occurrenceId: board.occurrence.id,
     patientUid,
     status,
     createdAt: options.now,
-    queuedAt: options.now,
+    queuedAt,
     createdBy: options.by,
   }
 
