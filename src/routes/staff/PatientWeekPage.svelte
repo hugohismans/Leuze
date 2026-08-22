@@ -38,8 +38,8 @@
     chargement = true
     erreur = null
     try {
-      await staffStore.loadAppointments()
-      const tous = await staffStore.weekPlannings()
+      // Deux lectures indépendantes : elles partent ensemble.
+      const [, tous] = await Promise.all([staffStore.loadAppointments(), staffStore.weekPlannings()])
       planning = tous.find((p) => p.patientUid === patientUid) ?? null
     } catch (error) {
       erreur = enClair(error)

@@ -39,11 +39,19 @@
     chargement = true
     erreur = null
     try {
-      // Les rendez-vous sont lisibles par le personnel : ils viennent du magasin, pas
-      // d'un second appel. Ceux d'un patient d'un autre service ne seront pas retenus,
-      // la feuille étant construite prénom par prénom.
-      await staffStore.loadAppointments()
-      plannings = await staffStore.weekPlannings(service)
+      /*
+        Les rendez-vous sont lisibles par le personnel : ils viennent du magasin, pas d'un
+        second appel. Ceux d'un patient d'un autre service ne seront pas retenus, la
+        feuille étant construite prénom par prénom.
+
+        Les deux lectures partent ensemble : elles ne s'apprennent rien l'une à l'autre,
+        et c'est la pile de feuilles qu'on attend à la fin de la réunion.
+      */
+      const [, feuilles] = await Promise.all([
+        staffStore.loadAppointments(),
+        staffStore.weekPlannings(service),
+      ])
+      plannings = feuilles
     } catch (error) {
       erreur = enClair(error)
       plannings = []
