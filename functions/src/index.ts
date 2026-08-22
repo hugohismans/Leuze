@@ -377,7 +377,11 @@ export const staffRoster = onCall(async (request: CallableRequest) => {
   const occurrence = snapshot.data() as { facilitatorId?: string } | undefined
   // L'appel n'est renvoyé qu'à qui a le droit de le faire : voir `canMarkAttendance`.
   const peutFaireAppel = occurrence !== undefined && canMarkAttendance(staff, occurrence)
-  return { lines: await rosterFor(db(), occurrenceId, peutFaireAppel), canMarkAttendance: peutFaireAppel }
+  // La séance vient d'être lue : on la passe, plutôt que de la relire aussitôt.
+  return {
+    lines: await rosterFor(db(), occurrenceId, peutFaireAppel, snapshot),
+    canMarkAttendance: peutFaireAppel,
+  }
 })
 
 /**
@@ -401,7 +405,23 @@ export const markAttendance = onCall(async (request: CallableRequest) => {
     throw new HttpsError('invalid-argument', 'La présence doit être « present », « absent » ou vide.')
   }
 
-  const occurrenceSnapshot = await db().collection(COLLECTIONS.occurrences).doc(occurrenceId).get()
+  /*
+    La séance et l'inscription de la personne partent ensemble : savoir qui anime et
+    savoir si la personne est déjà inscrite sont deux questions indépendantes.
+
+    Et l'on ne relit plus l'inscription qu'on vient de créer. La même requête était faite
+    deux fois de suite — une fois pour savoir s'il fallait inscrire, une fois pour
+    retrouver le document à noter — même quand la première l'avait déjà trouvé. Sur une
+    feuille d'appel, ce geste se répète dix ou quinze fois d'affilée.
+  */
+  const [occurrenceSnapshot, existantes] = await Promise.all([
+    db().collection(COLLECTIONS.occurrences).doc(occurrenceId).get(),
+    db()
+      .collection(COLLECTIONS.registrations)
+      .where('occurrenceId', '==', occurrenceId)
+      .where('patientUid', '==', patientUid)
+      .get(),
+  ])
   const occurrence = occurrenceSnapshot.data() as
     | { facilitatorId?: string; facilitator?: string }
     | undefined
@@ -410,29 +430,18 @@ export const markAttendance = onCall(async (request: CallableRequest) => {
     throw new HttpsError('permission-denied', attendanceRefusal(occurrence))
   }
 
-  const existantes = await db()
-    .collection(COLLECTIONS.registrations)
-    .where('occurrenceId', '==', occurrenceId)
-    .where('patientUid', '==', patientUid)
-    .get()
   const active = existantes.docs.find((d) => d.data()['status'] !== 'cancelled')
 
-  if (active === undefined) {
+  let cibleId = active?.id
+  if (cibleId === undefined) {
     // Personne venue spontanément : on l'inscrit, puis on la note. L'inscription passe
     // par la transaction habituelle — la capacité et la liste d'attente s'appliquent.
     const resultat = await registerTx(db(), { occurrenceId, patientUid, by: 'staff', walkIn: true })
     if (!resultat.ok) return resultat
+    cibleId = resultat.registrationId
   }
 
-  const aNoter = await db()
-    .collection(COLLECTIONS.registrations)
-    .where('occurrenceId', '==', occurrenceId)
-    .where('patientUid', '==', patientUid)
-    .get()
-  const cible = aNoter.docs.find((d) => d.data()['status'] !== 'cancelled')
-  if (cible === undefined) throw new HttpsError('failed-precondition', "L'inscription n'a pas été trouvée.")
-
-  await cible.ref.set(
+  await db().collection(COLLECTIONS.registrations).doc(cibleId).set(
     {
       attendance: valeur,
       attendanceBy: valeur === null ? null : staff.uid,

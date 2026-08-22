@@ -23,7 +23,16 @@ import { COLLECTIONS, docToOccurrence, docToRegistration, registrationToDoc } fr
  */
 
 export type RegisterOutput =
-  | { ok: true; status: 'confirmed' | 'waitlist'; position: number | null }
+  | {
+      ok: true
+      status: 'confirmed' | 'waitlist'
+      position: number | null
+      /**
+       * L'inscription créée. Rendue pour que l'appel puisse noter la présence sans
+       * repartir la chercher : il venait d'écrire ce document, et le relisait aussitôt.
+       */
+      registrationId: string
+    }
   | { ok: false; reason: string; message: string }
 
 export type UnregisterOutput = { ok: boolean; message: string }
@@ -389,7 +398,7 @@ export async function registerTx(
       registrationToDoc(created),
     )
     writeCounters(database, transaction, outcome.board.occurrence)
-    return { ok: true, status: outcome.status, position: outcome.position }
+    return { ok: true, status: outcome.status, position: outcome.position, registrationId }
   })
 }
 
@@ -506,13 +515,20 @@ export async function rosterFor(
   database: Firestore,
   occurrenceId: string,
   withAttendance = false,
+  /**
+   * La séance, quand celui qui appelle vient déjà de la lire — c'est le cas de la
+   * fonction `staffRoster`, qui doit d'abord savoir si la personne a le droit de faire
+   * l'appel. Sans cela le même document était lu deux fois de suite, pour rien.
+   */
+  occurrenceDejaLue?: FirebaseFirestore.DocumentSnapshot,
 ): Promise<RosterLine[]> {
-  const occurrenceSnapshot = await database.collection(COLLECTIONS.occurrences).doc(occurrenceId).get()
+  // La séance et ses inscriptions ne dépendent pas l'une de l'autre : elles partent
+  // ensemble plutôt que l'une après l'autre.
+  const [occurrenceSnapshot, registrationsSnapshot] = await Promise.all([
+    occurrenceDejaLue ?? database.collection(COLLECTIONS.occurrences).doc(occurrenceId).get(),
+    database.collection(COLLECTIONS.registrations).where('occurrenceId', '==', occurrenceId).get(),
+  ])
   if (!occurrenceSnapshot.exists) return []
-  const registrationsSnapshot = await database
-    .collection(COLLECTIONS.registrations)
-    .where('occurrenceId', '==', occurrenceId)
-    .get()
 
   const board: Board = {
     occurrence: docToOccurrence(occurrenceSnapshot),

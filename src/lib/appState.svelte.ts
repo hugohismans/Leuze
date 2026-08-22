@@ -80,6 +80,14 @@ class AppStore {
   appointments = $state<Appointment[]>([])
   appointmentKinds = $state<AppointmentKind[]>([])
   loading = $state(true)
+  /**
+   * Une relecture est en cours alors que l'écran a déjà quelque chose à montrer.
+   *
+   * Ce n'est pas la même chose qu'un écran vide, et cela ne se dit pas de la même façon :
+   * on garde le programme précédent affiché et l'on signale discrètement qu'il se met à
+   * jour. Vider la page à chaque flèche faisait disparaître le seul repère qu'elle porte.
+   */
+  rafraichit = $state(false)
   /** Vrai quand la dernière lecture n'a pas abouti : l'écran doit le dire et proposer de réessayer. */
   lectureEchouee = $state<boolean>(false)
 
@@ -300,22 +308,50 @@ class AppStore {
    * laissait `loading` à vrai pour toujours, et l'application restait sur « Un instant… »
    * sans que la personne puisse rien faire — pas même redemander son code.
    */
+  /**
+   * Numéro de la dernière demande de programme.
+   *
+   * Deux appuis rapprochés sur « Semaine suivante » lancent deux lectures, et rien ne
+   * garantit qu'elles reviennent dans l'ordre : la première pouvait s'afficher en dernier,
+   * et l'on lisait la semaine d'avant sous le bon titre.
+   */
+  #versionProgramme = 0
+
   async refresh(): Promise<void> {
+    const version = (this.#versionProgramme += 1)
     const { from, to } = this.range
-    this.loading = true
+    /*
+      On ne vide l'écran que s'il n'y a rien à garder.
+      
+      « Chargement du programme… » remplaçait la grille entière à chaque flèche : le seul
+      repère de la page disparaissait pendant l'aller-retour, et l'on avait l'impression
+      d'avoir cassé quelque chose. Le programme d'avant reste donc affiché, et se remplace
+      quand le nouveau arrive.
+    */
+    this.loading = this.occurrences.length === 0
+    this.rafraichit = true
+    let lues: Occurrence[] | null = null
     try {
-      this.occurrences = await (await this.repo()).occurrences.listBetween(from, to)
-      this.lectureEchouee = false
+      lues = await (await this.repo()).occurrences.listBetween(from, to)
     } catch {
-      // Rien à afficher plutôt qu'un écran bloqué. La session, elle, est relue ci-dessous.
+      lues = null
+    }
+
+    // Une demande plus récente est partie entre-temps : celle-ci ne vaut plus rien.
+    if (version !== this.#versionProgramme) return
+
+    if (lues === null) {
       this.occurrences = []
       this.lectureEchouee = true
-    } finally {
-      // La session Firebase est restaurée de façon asynchrone au démarrage : à ce
-      // point-ci elle est connue, on aligne l'interface dessus.
-      this.syncSession()
-      this.loading = false
+    } else {
+      this.occurrences = lues
+      this.lectureEchouee = false
     }
+    // La session Firebase est restaurée de façon asynchrone au démarrage : à ce
+    // point-ci elle est connue, on aligne l'interface dessus.
+    this.syncSession()
+    this.loading = false
+    this.rafraichit = false
 
     // Ce qui suit complète l'écran sans jamais le bloquer.
     void this.loadMine()

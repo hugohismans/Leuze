@@ -74,6 +74,11 @@ class StaffStore {
    */
   #survitAuProchainChangement = false
   loading = $state(false)
+  /**
+   * Une relecture est en cours alors que la semaine est déjà à l'écran. On le dit sans
+   * rien retirer : un écran vidé et un écran qui se met à jour ne se ressemblent pas.
+   */
+  rafraichit = $state(false)
 
   readonly signedIn = $derived(this.identity.role !== null)
   readonly isAdmin = $derived(this.identity.role === 'admin')
@@ -139,13 +144,27 @@ class StaffStore {
     }
   }
 
+  /** Numéro de la dernière demande : une réponse plus ancienne n'écrase jamais l'écran. */
+  #versionProgramme = 0
+
   async refresh(): Promise<void> {
-    this.loading = true
+    const version = (this.#versionProgramme += 1)
+    /*
+      La semaine reste à l'écran pendant qu'on la relit.
+
+      « Chargement… » remplaçait les sept jours à chaque flèche, sur le geste le plus
+      fréquent de l'écran principal. On ne vide donc que s'il n'y a rien à garder ; sinon
+      la semaine d'avant reste lisible et se remplace à l'arrivée de la nouvelle.
+    */
+    this.loading = this.occurrences.length === 0
+    this.rafraichit = true
     const jours = weekDays(this.date)
     const [activities, occurrences] = await Promise.all([
       (await this.app$()).repository.listActivities().catch(() => []),
       (await this.app$()).repository.listOccurrences(jours[0]!, jours[6]!).catch(() => []),
     ])
+    // Une flèche plus récente est partie entre-temps : cette réponse ne vaut plus rien.
+    if (version !== this.#versionProgramme) return
     this.activities = activities
     this.occurrences = occurrences
     /*
@@ -158,6 +177,7 @@ class StaffStore {
     */
     if (this.rosterOf !== null) this.accorderLeCompteur(this.rosterOf, this.roster)
     this.loading = false
+    this.rafraichit = false
   }
 
   async createPatient(firstName: string, serviceId: string): Promise<NewPatientCode> {
@@ -345,15 +365,57 @@ class StaffStore {
     )
   }
 
-  /** L'appel. Inscrit d'office la personne qui se présente sans l'être. */
+  /**
+   * L'appel. Inscrit d'office la personne qui se présente sans l'être.
+   *
+   * La coche bouge dans le geste, comme le prénom en réunion : on coche dix ou quinze
+   * lignes à la suite, et attendre le serveur à chaque fois rendait la feuille plus lente
+   * que le papier qu'elle remplace. La vérité revient derrière, et un refus remet cette
+   * ligne-là — et elle seule — dans son état d'avant.
+   *
+   * Le programme de la semaine n'est plus relu : `openRoster` accorde déjà le nombre
+   * d'inscrits de la séance, et c'est la seule chose que l'appel puisse changer.
+   */
   async markAttendance(
     occurrenceId: string,
     patientUid: string,
     attendance: 'present' | 'absent' | null,
   ): Promise<string> {
-    const resultat = await (await this.app$()).repository.markAttendance(occurrenceId, patientUid, attendance)
-    await this.openRoster(occurrenceId)
-    await this.refresh()
+    const repository = (await this.app$()).repository
+    const avant = this.roster.find((ligne) => ligne.patientUid === patientUid) ?? null
+    const personne = this.patients.find((p) => p.uid === patientUid)
+
+    // Une personne qui n'était pas sur la liste y entre : c'est le geste « quelqu'un
+    // s'est présenté », et il doit se voir tout de suite lui aussi.
+    const base: RosterLine = avant ?? {
+      patientUid,
+      firstName: personne?.firstName ?? 'Cette personne',
+      serviceId: personne?.serviceId ?? null,
+      status: 'confirmed' as const,
+      position: null,
+    }
+    const { attendance: _sansPresence, ...sansLaCoche } = base
+    const apres: RosterLine = attendance === null ? sansLaCoche : { ...base, attendance }
+
+    this.#versionRoster += 1
+    this.#ecrituresEnCours += 1
+    if (avant === null) this.ajusterCompteur(occurrenceId, 1)
+    this.roster = withToggled(this.roster, apres, false)
+
+    let resultat
+    try {
+      resultat = await repository.markAttendance(occurrenceId, patientUid, attendance)
+    } finally {
+      this.#ecrituresEnCours -= 1
+    }
+
+    if (!resultat.ok) {
+      this.#versionRoster += 1
+      if (avant === null) this.ajusterCompteur(occurrenceId, -1)
+      this.roster = undoToggle(this.roster, patientUid, avant)
+    }
+
+    if (this.#ecrituresEnCours === 0) void this.openRoster(occurrenceId)
     return resultat.message
   }
 

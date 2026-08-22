@@ -21,7 +21,14 @@
 
   const occurrence = $derived(staffStore.occurrences.find((o) => o.id === occurrenceId) ?? null)
   let message = $state<string | null>(null)
-  let busy = $state(false)
+  /**
+   * La ligne en cours d'envoi, et elle seule.
+   *
+   * Un seul verrou pour toute la feuille gelait les quinze prénoms le temps d'un
+   * aller-retour ; on coche à la suite, on n'attend pas. Chaque ligne se garde
+   * elle-même contre le double envoi, et les autres restent vivantes.
+   */
+  let enCours = $state<string | null>(null)
   let ajoutOuvert = $state(false)
 
   /*
@@ -50,19 +57,28 @@
   )
 
   async function noter(patientUid: string, valeur: 'present' | 'absent' | null): Promise<void> {
-    if (busy) return
-    busy = true
-    message = await staffStore.markAttendance(occurrenceId, patientUid, valeur)
-    busy = false
+    if (enCours === patientUid) return
+    enCours = patientUid
+    try {
+      message = await staffStore.markAttendance(occurrenceId, patientUid, valeur)
+    } finally {
+      // Quoi qu'il arrive, la ligne redevient cliquable.
+      enCours = null
+    }
   }
 
   async function ajouter(patientUid: string): Promise<void> {
-    if (busy) return
-    busy = true
-    // Ajouter quelqu'un, c'est le noter présent : il est là, c'est tout le propos.
-    message = await staffStore.markAttendance(occurrenceId, patientUid, 'present')
+    if (enCours === patientUid) return
+    enCours = patientUid
+    // Le volet se referme dans le geste : la personne apparaît aussitôt sur la liste,
+    // c'est là qu'on la cherche des yeux.
     ajoutOuvert = false
-    busy = false
+    try {
+      // Ajouter quelqu'un, c'est le noter présent : il est là, c'est tout le propos.
+      message = await staffStore.markAttendance(occurrenceId, patientUid, 'present')
+    } finally {
+      enCours = null
+    }
   }
 </script>
 
@@ -124,7 +140,6 @@
                     class:btn-primary={ligne.attendance === 'present'}
                     class:btn-secondary={ligne.attendance !== 'present'}
                     aria-pressed={ligne.attendance === 'present'}
-                    disabled={busy}
                     onclick={() => noter(ligne.patientUid, ligne.attendance === 'present' ? null : 'present')}
                   >
                     <span aria-hidden="true">✓</span> Présent
@@ -135,7 +150,6 @@
                     class:btn-primary={ligne.attendance === 'absent'}
                     class:btn-secondary={ligne.attendance !== 'absent'}
                     aria-pressed={ligne.attendance === 'absent'}
-                    disabled={busy}
                     onclick={() => noter(ligne.patientUid, ligne.attendance === 'absent' ? null : 'absent')}
                   >
                     <span aria-hidden="true">✗</span> Absent
@@ -170,7 +184,6 @@
                     <button
                       type="button"
                       class="btn btn-secondary w-full text-left"
-                      disabled={busy}
                       onclick={() => ajouter(patient.uid)}
                     >
                       <span class="text-xl font-bold">{patient.firstName}</span>

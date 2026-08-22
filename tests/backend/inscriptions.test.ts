@@ -226,3 +226,40 @@ describe('se désinscrire après s’être réinscrit', () => {
     expect(await counters()).toEqual({ confirmed: 1, waitlist: 0 })
   })
 })
+
+describe('ce que l’inscription rend à celui qui l’a demandée', () => {
+  it('nomme le document créé, pour qu’on n’ait pas à le rechercher', async () => {
+    /*
+      L'appel notait la présence d'une personne venue spontanément en la réinscrivant,
+      puis en relançant la même requête pour retrouver le document qu'il venait d'écrire.
+      Il le reçoit désormais ; ce test garantit qu'il est exact.
+    */
+    await seedOccurrence({ capacity: 10 })
+    const resultat = await registerTx(db(), { occurrenceId: OCCURRENCE, patientUid: 'p_1', by: 'staff' })
+    expect(resultat.ok).toBe(true)
+    if (!resultat.ok) return
+
+    const document = await db().collection(COLLECTIONS.registrations).doc(resultat.registrationId).get()
+    expect(document.exists).toBe(true)
+    expect(document.data()).toMatchObject({ occurrenceId: OCCURRENCE, patientUid: 'p_1', status: 'confirmed' })
+  })
+
+  it('nomme aussi la ligne mise en liste d’attente', async () => {
+    await seedOccurrence({ capacity: 1 })
+    await registerTx(db(), { occurrenceId: OCCURRENCE, patientUid: 'p_1', by: 'staff' })
+    const second = await registerTx(db(), { occurrenceId: OCCURRENCE, patientUid: 'p_2', by: 'staff' })
+    expect(second.ok && second.status).toBe('waitlist')
+    if (!second.ok) return
+    const document = await db().collection(COLLECTIONS.registrations).doc(second.registrationId).get()
+    expect(document.data()).toMatchObject({ patientUid: 'p_2', status: 'waitlist' })
+  })
+
+  it('rend la même liste que la séance soit déjà lue ou non', async () => {
+    // `staffRoster` lit la séance pour savoir qui a le droit de faire l'appel, puis la
+    // passait à nouveau au serveur. Les deux chemins doivent rester identiques.
+    await seedOccurrence({ capacity: 10 })
+    await registerTx(db(), { occurrenceId: OCCURRENCE, patientUid: 'p_1', by: 'staff' })
+    const seance = await db().collection(COLLECTIONS.occurrences).doc(OCCURRENCE).get()
+    expect(await rosterFor(db(), OCCURRENCE, false, seance)).toEqual(await rosterFor(db(), OCCURRENCE))
+  })
+})
