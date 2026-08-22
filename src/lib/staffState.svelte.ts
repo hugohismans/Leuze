@@ -20,7 +20,10 @@ import type { CatalogKind, CatalogRemoval } from './domain/catalog'
 import {
   OPEN_TO_PATIENTS,
   actionLabel,
+  effectivePermissions,
+  hasOverrides,
   type PatientAction,
+  type PatientActionOverrides,
   type PatientPermissions,
 } from './domain/permissions'
 import type { ActivityProposal } from './domain/proposals'
@@ -122,6 +125,7 @@ class StaffStore {
         void this.loadProposals()
         void this.loadPatientPermissions()
       }
+      if (this.identity.role !== null) void this.loadPatientActions()
       await this.refresh()
     }
     return result.ok ? { ok: true } : { ok: false, message: result.message }
@@ -159,6 +163,7 @@ class StaffStore {
         void this.loadProposals()
         void this.loadPatientPermissions()
       }
+      if (this.identity.role !== null) void this.loadPatientActions()
     }
   }
 
@@ -612,7 +617,7 @@ class StaffStore {
    * Ouvrir ou fermer un geste. L'interrupteur bascule tout de suite et revient si le
    * serveur refuse — c'est un réglage, pas un formulaire : on ne fait pas attendre.
    */
-  async setPatientAction(action: PatientAction, ouvert: boolean): Promise<void> {
+  async setServiceAction(action: PatientAction, ouvert: boolean): Promise<void> {
     const avant = this.patientPermissions
     this.patientPermissions = { ...avant, [action]: ouvert }
     const resultat = await (await this.app$()).repository.savePatientPermissions(
@@ -632,6 +637,57 @@ class StaffStore {
     this.message = ouvert
       ? `« ${actionLabel(action)} » est ouvert aux patients.`
       : `« ${actionLabel(action)} » est fermé. Les patients liront ce qu'il faut faire à la place.`
+  }
+
+  /**
+   * Les réglages particuliers, par personne. Une clé absente veut dire « comme le
+   * service » — et le veut encore quand le service change.
+   */
+  patientActions = $state<Record<string, PatientActionOverrides>>({})
+
+  async loadPatientActions(): Promise<void> {
+    this.patientActions = await (await this.app$()).repository.readPatientActions().catch(() => ({}))
+  }
+
+  /** Ce que cette personne peut faire, tout compte fait : le service, puis son réglage. */
+  effectiveFor(patientUid: string): PatientPermissions {
+    return effectivePermissions(this.patientPermissions, this.patientActions[patientUid] ?? {})
+  }
+
+  /**
+   * Régler un geste pour une personne : ouvert, fermé, ou « comme le service ».
+   *
+   * `null` efface l'exception et remet la personne sous la règle générale. C'est ce
+   * troisième état qui donne sa valeur au réglage : sans lui, on figerait la règle du
+   * jour sur chaque fiche, et changer la règle du service ne changerait plus rien.
+   */
+  async setPatientAction(
+    patientUid: string,
+    action: PatientAction,
+    valeur: boolean | null,
+  ): Promise<void> {
+    const avant = this.patientActions
+    const sien = { ...(avant[patientUid] ?? {}) }
+    if (valeur === null) delete sien[action]
+    else sien[action] = valeur
+
+    const suivants = { ...avant }
+    if (hasOverrides(sien)) suivants[patientUid] = sien
+    else delete suivants[patientUid]
+    this.patientActions = suivants
+
+    const resultat = await (await this.app$()).repository.savePatientActions(patientUid, sien)
+    if (!resultat.ok) {
+      this.patientActions = avant
+      this.message = resultat.message
+      return
+    }
+    this.message =
+      valeur === null
+        ? `« ${actionLabel(action)} » suit de nouveau le réglage du service.`
+        : valeur
+          ? `« ${actionLabel(action)} » est ouvert pour cette personne.`
+          : `« ${actionLabel(action)} » est fermé pour cette personne.`
   }
 
   // --- les idées des patients ------------------------------------------------

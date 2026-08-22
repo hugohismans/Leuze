@@ -29,10 +29,13 @@ afterAll(async () => {
 beforeEach(async () => {
   await env.clearFirestore()
   await env.withSecurityRulesDisabled(async (context) => {
-    await setDoc(doc(context.firestore(), 'config', 'app'), {
+    const database = context.firestore()
+    await setDoc(doc(database, 'config', 'app'), {
       retentionDays: 90,
       patientActions: { register: true, unregister: false, requestAppointment: true, proposeActivity: true },
     })
+    await setDoc(doc(database, 'patientActions', 'p_camille'), { register: false })
+    await setDoc(doc(database, 'patientActions', 'p_bernard'), { proposeActivity: true })
   })
 })
 
@@ -73,5 +76,42 @@ describe('modifier le réglage', () => {
         patientActions: { unregister: true },
       }),
     )
+  })
+})
+
+describe('le réglage particulier d’une personne', () => {
+  it('elle lit le sien : son écran en dépend', async () => {
+    const snapshot = await assertSucceeds(
+      getDoc(doc(asPatient(env, 'p_camille', MAZUREL), 'patientActions', 'p_camille')),
+    )
+    expect(snapshot.data()).toMatchObject({ register: false })
+  })
+
+  it('elle ne lit pas celui de quelqu’un d’autre', async () => {
+    await assertFails(
+      getDoc(doc(asPatient(env, 'p_camille', MAZUREL), 'patientActions', 'p_bernard')),
+    )
+  })
+
+  it('le personnel les lit tous : c’est lui qui voit la fiche', async () => {
+    await assertSucceeds(getDoc(doc(asStaff(env), 'patientActions', 'p_camille')))
+    await assertSucceeds(getDoc(doc(asAdmin(env), 'patientActions', 'p_bernard')))
+  })
+
+  it('l’administrateur seul l’écrit : une exception est une décision de service', async () => {
+    await assertSucceeds(setDoc(doc(asAdmin(env), 'patientActions', 'p_camille'), { register: true }))
+    await assertFails(setDoc(doc(asStaff(env), 'patientActions', 'p_camille'), { register: true }))
+  })
+
+  it('personne ne s’accorde d’exception à soi-même', async () => {
+    await assertFails(
+      setDoc(doc(asPatient(env, 'p_camille', MAZUREL), 'patientActions', 'p_camille'), {
+        register: true,
+      }),
+    )
+  })
+
+  it('un visiteur sans session ne lit rien', async () => {
+    await assertFails(getDoc(doc(asVisitor(env), 'patientActions', 'p_camille')))
   })
 })

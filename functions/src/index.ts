@@ -23,7 +23,9 @@ import {
 } from './lib/registration'
 import { patientConflictNotice, type BusyEntry } from './domain/conflicts'
 import {
+  effectivePermissions,
   isAllowed,
+  readOverrides,
   readPermissions,
   refusalFor,
   OPEN_TO_PATIENTS,
@@ -150,14 +152,35 @@ async function patientPermissions(): Promise<PatientPermissions> {
 }
 
 /**
- * Ce que les patients ont le droit de faire, tel que l'administration l'a réglé.
+ * Ce qu'une personne peut faire, tout compte fait.
  *
  * C'est ici que le réglage mord. L'écran cache les boutons fermés, mais un écran se
  * contourne : si la vérification ne vivait que là, le réglage serait un décor.
+ *
+ * Deux sources, et la seconde l'emporte là où elle existe : la règle du service, gardée
+ * en mémoire, et le réglage particulier de cette personne — une lecture, qu'on peut
+ * souvent mener de front avec celles que la fonction fait déjà. Le réglage particulier
+ * absent laisse la règle du service s'appliquer, aujourd'hui et quand elle changera.
+ *
+ * `dejaLu` sert quand l'appelant vient de lire ce document pour une autre raison.
  */
-async function patientMay(action: PatientAction): Promise<{ ok: true } | { ok: false; message: string }> {
-  const permissions = await patientPermissions()
-  return isAllowed(permissions, action) ? { ok: true } : { ok: false, message: refusalFor(action) }
+async function patientMay(
+  action: PatientAction,
+  patientUid: string,
+  dejaLu?: FirebaseFirestore.DocumentSnapshot,
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  const [service, particulier] = await Promise.all([
+    patientPermissions(),
+    dejaLu !== undefined
+      ? Promise.resolve(dejaLu)
+      : db()
+          .collection(COLLECTIONS.patientActions)
+          .doc(patientUid)
+          .get()
+          .catch(() => null),
+  ])
+  const finales = effectivePermissions(service, readOverrides(particulier?.data() ?? null))
+  return isAllowed(finales, action) ? { ok: true } : { ok: false, message: refusalFor(action) }
 }
 
 // ---------------------------------------------------------------------------
@@ -219,7 +242,7 @@ export const register = onCall(async (request: CallableRequest) => {
   // Le service a-t-il ouvert ce geste aux patients ? La question part avec la recherche
   // de chevauchement : elles ne s'apprennent rien l'une à l'autre.
   const [ouvert, conflits] = await Promise.all([
-    patientMay('register'),
+    patientMay('register', patient.uid),
     conflictsFor(db(), patient.uid, occurrenceId),
   ])
   if (!ouvert.ok) return { ok: false, reason: 'closed', message: ouvert.message }
@@ -246,7 +269,7 @@ export const unregister = onCall(async (request: CallableRequest) => {
   // pour s'inscrire comme pour se désinscrire.
   if (request.data?.warm === true) return { ok: true, warmed: true }
   const occurrenceId = requireString(request.data?.occurrenceId, 'occurrenceId')
-  const ouvert = await patientMay('unregister')
+  const ouvert = await patientMay('unregister', patient.uid)
   if (!ouvert.ok) return { ok: false, message: ouvert.message }
   return unregisterTx(db(), { occurrenceId, patientUid: patient.uid })
 })
@@ -777,7 +800,7 @@ export const requestAppointment = onCall(async (request: CallableRequest) => {
   */
   const aujourdHui = todayLocalDate()
   const [ouvert, motif, deja, place] = await Promise.all([
-    patientMay('requestAppointment'),
+    patientMay('requestAppointment', patient.uid),
     db().collection(COLLECTIONS.appointmentKinds).doc(kindId).get(),
     db()
       .collection(COLLECTIONS.appointments)
@@ -973,7 +996,7 @@ export const proposeActivity = onCall(async (request: CallableRequest) => {
 
   // Les idées de cette personne, et sa fiche : deux lectures indépendantes.
   const [ouvert, siennes, fiche] = await Promise.all([
-    patientMay('proposeActivity'),
+    patientMay('proposeActivity', patient.uid),
     db().collection(COLLECTIONS.proposals).where('patientUid', '==', patient.uid).get(),
     db().collection(COLLECTIONS.patients).doc(patient.uid).get(),
   ])

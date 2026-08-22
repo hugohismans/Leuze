@@ -123,3 +123,67 @@ describe('régler ces droits', () => {
     expect(await app.repository.readPatientPermissions()).toEqual(ferme)
   })
 })
+
+describe('le réglage particulier d’une personne', () => {
+  /*
+    Une exception, dans un sens comme dans l'autre — et surtout, un troisième état :
+    « comme le service ». C'est lui qui empêche de figer sur quarante fiches la règle
+    du jour, et qui fait qu'un changement de règle générale change encore quelque chose.
+  */
+  const seance = () => seanceAVenir()
+
+  it('ouvre pour quelqu’un ce que le service a fermé', async () => {
+    const app = await ouvrirAdministrateur()
+    await app.repository.savePatientPermissions({ ...OPEN_TO_PATIENTS, register: false })
+    await app.repository.savePatientActions(DEMO_PATIENT_UID, { register: true })
+
+    const patient = createMockRepository()
+    expect((await patient.registrations.register(seance().id)).ok).toBe(true)
+  })
+
+  it('ferme pour quelqu’un ce que le service a ouvert', async () => {
+    const app = await ouvrirAdministrateur()
+    await app.repository.savePatientActions(DEMO_PATIENT_UID, { register: false })
+
+    const patient = createMockRepository()
+    const resultat = await patient.registrations.register(seance().id)
+    expect(resultat.ok).toBe(false)
+    expect(resultat.ok === false && resultat.message).toContain('soignant')
+  })
+
+  it('ne touche pas aux autres personnes', async () => {
+    const app = await ouvrirAdministrateur()
+    await app.repository.savePatientActions('quelquun-dautre', { register: false })
+
+    const patient = createMockRepository()
+    expect((await patient.registrations.register(seance().id)).ok).toBe(true)
+  })
+
+  it('rendu à « comme le service », il suit de nouveau le service', async () => {
+    const app = await ouvrirAdministrateur()
+    await app.repository.savePatientActions(DEMO_PATIENT_UID, { register: false })
+    // On efface l'exception : la personne repasse sous la règle générale…
+    await app.repository.savePatientActions(DEMO_PATIENT_UID, {})
+    expect(await app.repository.readPatientActions()).toEqual({})
+
+    const patient = createMockRepository()
+    expect((await patient.registrations.register(seance().id)).ok).toBe(true)
+
+    // …et suit cette règle quand elle change.
+    await app.repository.savePatientPermissions({ ...OPEN_TO_PATIENTS, unregister: false })
+    expect((await patient.registrations.unregister(seance().id)).ok).toBe(false)
+  })
+
+  it('n’est réglé que par l’administrateur', async () => {
+    const personne = createMockStaffApp()
+    await expect(personne.repository.savePatientActions(DEMO_PATIENT_UID, { register: false })).rejects.toThrow(
+      "réservée à l'administrateur",
+    )
+  })
+
+  it('ne garde pas de fiche vide dans la liste', async () => {
+    const app = await ouvrirAdministrateur()
+    await app.repository.savePatientActions(DEMO_PATIENT_UID, {})
+    expect(await app.repository.readPatientActions()).toEqual({})
+  })
+})

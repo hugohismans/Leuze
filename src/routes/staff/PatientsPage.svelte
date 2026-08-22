@@ -1,4 +1,10 @@
 <script lang="ts">
+  import {
+    PATIENT_ACTIONS,
+    actionLabel,
+    hasOverrides,
+    overrideOrigin,
+  } from '../../lib/domain/permissions'
   import { staffStore } from '../../lib/staffState.svelte'
   import { proposed } from '../../lib/domain/catalog'
   import { store } from '../../lib/appState.svelte'
@@ -120,6 +126,19 @@
   }
 
   const champ = 'w-full rounded-xl border-2 border-line bg-white p-3 text-lg text-ink'
+
+  /*
+    Le panneau des droits d'une personne, ouvert sur demande.
+
+    Il ne s'affiche pas d'emblée : quatre réglages sur chaque fiche noieraient l'écran,
+    alors qu'on n'y touche presque jamais. Le bouton, lui, dit quand il y a quelque chose
+    à voir — « réglage particulier » quand cette personne diffère du service.
+  */
+  let droitsOuverts = $state<string | null>(null)
+
+  /** Vrai quand cette personne a au moins un réglage qui la distingue du service. */
+  const particulier = (patientUid: string): boolean =>
+    hasOverrides(staffStore.patientActions[patientUid] ?? {})
 </script>
 
 <section class="mx-auto max-w-4xl px-4 py-6">
@@ -256,12 +275,73 @@
                   <button type="button" class="btn btn-secondary" disabled={busy} onclick={() => nouveauCode(patient.uid)}>
                     Nouveau code
                   </button>
+                  <button
+                    type="button"
+                    class="btn btn-secondary"
+                    aria-expanded={droitsOuverts === patient.uid}
+                    onclick={() => (droitsOuverts = droitsOuverts === patient.uid ? null : patient.uid)}
+                  >
+                    <!-- Le prénom plutôt qu'un pronom : on ne présume pas du genre. -->
+                    Ce que {patient.firstName} peut faire{particulier(patient.uid) ? ' · réglage particulier' : ''}
+                  </button>
                   <button type="button" class="btn btn-secondary" disabled={busy} onclick={() => staffStore.endStay(patient.uid)}>
                     Fin de séjour
                   </button>
                 {/if}
               </div>
             </div>
+
+            {#if staffStore.isAdmin && droitsOuverts === patient.uid}
+              <!--
+                Trois états, et non deux : ouvert, fermé, ou « comme le service ».
+                
+                Le troisième est celui qui compte. Une simple case à cocher figerait ici la
+                règle du jour : le service pourrait ensuite fermer un geste sans que cela
+                change rien pour les quarante personnes dont la fiche l'avait recopié. Tant
+                qu'on ne décide rien pour quelqu'un, il suit le service — et continue de le
+                suivre quand celui-ci change.
+              -->
+              <div class="mt-3 border-t-2 border-line pt-3">
+                <p class="mb-1 text-lg font-semibold text-ink">
+                  Ce que {patient.firstName} peut faire dans l'application
+                </p>
+                <p class="mb-3 text-base text-ink-soft">
+                  Sans réglage particulier, cette personne suit ce qui est décidé dans
+                  « Réglages », pour tout le service.
+                </p>
+
+                <ul class="grid gap-3">
+                  {#each PATIENT_ACTIONS as action (action)}
+                    {@const sien = staffStore.patientActions[patient.uid]?.[action]}
+                    {@const effectif = staffStore.effectiveFor(patient.uid)[action] !== false}
+                    <li class="rounded-xl border-2 border-line p-3">
+                      <p class="text-lg font-semibold text-ink">{actionLabel(action)}</p>
+                      <div class="mt-2 flex flex-wrap gap-2">
+                        {#each [{ v: null, t: 'Comme le service' }, { v: true, t: 'Oui' }, { v: false, t: 'Non' }] as choix (choix.t)}
+                          <button
+                            type="button"
+                            class="btn"
+                            class:btn-primary={sien === choix.v || (sien === undefined && choix.v === null)}
+                            class:btn-secondary={!(sien === choix.v || (sien === undefined && choix.v === null))}
+                            aria-pressed={sien === choix.v || (sien === undefined && choix.v === null)}
+                            disabled={busy}
+                            onclick={() => staffStore.setPatientAction(patient.uid, action, choix.v)}
+                          >
+                            {choix.t}
+                          </button>
+                        {/each}
+                      </div>
+                      <p class="mt-2 text-base text-ink-soft">
+                        {overrideOrigin(action, staffStore.patientActions[patient.uid] ?? {})}
+                        <span class="block font-semibold text-ink">
+                          Aujourd'hui : {effectif ? 'ouvert' : 'fermé'} pour {patient.firstName}.
+                        </span>
+                      </p>
+                    </li>
+                  {/each}
+                </ul>
+              </div>
+            {/if}
           </li>
         {/each}
       </ul>

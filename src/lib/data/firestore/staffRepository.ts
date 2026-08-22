@@ -86,7 +86,10 @@ import type { ActivityProposal } from '../../domain/proposals'
 import { versProposition } from './propositions'
 import {
   OPEN_TO_PATIENTS,
+  hasOverrides,
+  readOverrides,
   readPermissions,
+  type PatientActionOverrides,
   type PatientPermissions,
 } from '../../domain/permissions'
 import { firebase } from './app'
@@ -690,6 +693,33 @@ export function createFirestoreStaffApp(): StaffApp {
           // des codes. On n'écrit que le champ qu'on vient de régler.
           await setDoc(doc(db, 'config', 'app'), { patientActions: permissions }, { merge: true })
           return { ok: true, message: 'Réglage enregistré.' }
+        } catch (error) {
+          return { ok: false, message: messageDErreur(error) }
+        }
+      },
+
+      async readPatientActions(): Promise<Record<string, PatientActionOverrides>> {
+        try {
+          const snapshot = await getDocs(collection(db, 'patientActions'))
+          const par: Record<string, PatientActionOverrides> = {}
+          for (const document of snapshot.docs) {
+            const lues = readOverrides(document.data())
+            // On ne garde que ce qui distingue réellement quelqu'un : un document vide
+            // encombrerait la fiche d'une exception qui n'en est pas une.
+            if (hasOverrides(lues)) par[document.id] = lues
+          }
+          return par
+        } catch {
+          return {}
+        }
+      },
+
+      async savePatientActions(patientUid: string, overrides: PatientActionOverrides) {
+        try {
+          // `setDoc` sans `merge` : retirer une exception doit réellement l'effacer, et
+          // non laisser derrière elle une clé que personne ne voit plus.
+          await setDoc(doc(db, 'patientActions', patientUid), overrides)
+          return { ok: true, message: 'Réglage enregistré pour cette personne.' }
         } catch (error) {
           return { ok: false, message: messageDErreur(error) }
         }

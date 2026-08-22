@@ -111,6 +111,67 @@ export function actionConsequence(action: PatientAction): string {
   }
 }
 
+/**
+ * Le réglage particulier d'une personne, quand il y en a un.
+ *
+ * Un service fixe une règle générale ; une personne peut demander une exception, dans un
+ * sens comme dans l'autre. Quelqu'un qui s'inscrit à tout puis ne vient pas, et à qui
+ * l'équipe préfère reparler de vive voix. Quelqu'un à qui l'on ouvre l'inscription en
+ * premier, pour essayer, alors que le service attend encore.
+ *
+ * Un geste absent de cet objet **suit la règle du service**, et continue de la suivre
+ * quand elle change. C'est le point qui compte : recopier la règle générale sur chaque
+ * personne au moment de créer son compte donnerait quarante réglages figés, et fermer un
+ * geste pour le service n'aurait alors aucun effet sur personne.
+ */
+export type PatientActionOverrides = Partial<Record<PatientAction, boolean>>
+
+/** Lit un réglage particulier venu de la base. Ne retient que les booléens qu'on connaît. */
+export function readOverrides(raw: unknown): PatientActionOverrides {
+  if (raw === null || typeof raw !== 'object') return {}
+  const brut = raw as Record<string, unknown>
+  const lues: PatientActionOverrides = {}
+  for (const action of PATIENT_ACTIONS) {
+    if (typeof brut[action] === 'boolean') lues[action] = brut[action] as boolean
+  }
+  return lues
+}
+
+/**
+ * Ce qu'une personne peut faire, tout compte fait : la règle du service, sauf là où un
+ * réglage particulier la remplace.
+ */
+export function effectivePermissions(
+  service: PatientPermissions,
+  overrides: PatientActionOverrides,
+): PatientPermissions {
+  const finales = {} as PatientPermissions
+  for (const action of PATIENT_ACTIONS) {
+    finales[action] = overrides[action] ?? service[action] !== false
+  }
+  return finales
+}
+
+/** Vrai quand cette personne a au moins un réglage qui la distingue du service. */
+export function hasOverrides(overrides: PatientActionOverrides): boolean {
+  return PATIENT_ACTIONS.some((action) => overrides[action] !== undefined)
+}
+
+/**
+ * Ce que l'écran écrit sous chaque interrupteur d'une fiche patient : d'où vient la
+ * valeur, et si elle suivra le service quand il changera.
+ */
+export function overrideOrigin(
+  action: PatientAction,
+  overrides: PatientActionOverrides,
+): string {
+  const particulier = overrides[action]
+  if (particulier === undefined) return 'Comme le service. Suivra le service s’il change.'
+  return particulier
+    ? 'Ouvert pour cette personne, même si le service ferme ce geste.'
+    : 'Fermé pour cette personne, même si le service l’ouvre.'
+}
+
 /** Vrai quand tout est ouvert : l'état par défaut, qu'on n'a pas besoin de commenter. */
 export function allOpen(permissions: PatientPermissions): boolean {
   return PATIENT_ACTIONS.every((action) => permissions[action] !== false)

@@ -10,7 +10,12 @@
  */
 import { isVisibleToService } from '../../domain/audience'
 import { patientConflictNotice } from '../../domain/conflicts'
-import { isAllowed, refusalFor, type PatientPermissions } from '../../domain/permissions'
+import {
+  effectivePermissions,
+  isAllowed,
+  refusalFor,
+  type PatientPermissions,
+} from '../../domain/permissions'
 import {
   alreadyWaiting,
   cleanProposal,
@@ -59,6 +64,7 @@ import {
   applyBoard,
   boardOf,
   conflictsFor,
+  droitsDe,
   resetWorld,
   world,
 } from './state'
@@ -199,7 +205,7 @@ export function createMockRepository(options: { now?: () => Date } = {}): MockRe
           return { ok: false, reason: 'unknown', message: "Cette activité n'a pas été trouvée." }
         }
         // Le service a-t-il ouvert ce geste ? Même refus que le serveur, au mot près.
-        if (!isAllowed(world.patientPermissions, 'register')) {
+        if (!isAllowed(droitsDe(uid), 'register')) {
           return { ok: false, reason: 'closed', message: refusalFor('register') }
         }
         // Un rendez-vous déjà fixé interdit de s'inscrire par-dessus ; une autre
@@ -228,7 +234,7 @@ export function createMockRepository(options: { now?: () => Date } = {}): MockRe
         const board = boardOf(occurrenceId)
         const uid = world.session.patientUid
         if (!board || uid === null) return { ok: false, message: "Cette activité n'a pas été trouvée." }
-        if (!isAllowed(world.patientPermissions, 'unregister')) {
+        if (!isAllowed(droitsDe(uid), 'unregister')) {
           return { ok: false, message: refusalFor('unregister') }
         }
         const outcome = domainUnregister(board, uid)
@@ -245,7 +251,11 @@ export function createMockRepository(options: { now?: () => Date } = {}): MockRe
     /** Les réglages de la démonstration : tout est ouvert, et modifiable en mémoire. */
     settings: {
       async patientPermissions(): Promise<PatientPermissions> {
-        return { ...world.patientPermissions }
+        const uid = world.session.patientUid
+        return effectivePermissions(
+          world.patientPermissions,
+          uid === null ? {} : (world.patientActions[uid] ?? {}),
+        )
       },
     },
 
@@ -264,7 +274,7 @@ export function createMockRepository(options: { now?: () => Date } = {}): MockRe
         if (uid === null) return { ok: false, message: 'Saisissez votre code pour proposer une activité.' }
         // Le même refus que le serveur, au mot près : la démonstration doit montrer ce
         // que les patients auront réellement.
-        if (!isAllowed(world.patientPermissions, 'proposeActivity')) {
+        if (!isAllowed(droitsDe(uid), 'proposeActivity')) {
           return { ok: false, message: refusalFor('proposeActivity') }
         }
         const propre = cleanProposal(draft)
@@ -313,7 +323,7 @@ export function createMockRepository(options: { now?: () => Date } = {}): MockRe
       async request(kindId: string, preference: AppointmentPreference) {
         const uid = world.session.patientUid
         if (uid === null) return { ok: false, message: 'Saisissez votre code pour demander un rendez-vous.' }
-        if (!isAllowed(world.patientPermissions, 'requestAppointment')) {
+        if (!isAllowed(droitsDe(uid), 'requestAppointment')) {
           return { ok: false, message: refusalFor('requestAppointment') }
         }
         /*
