@@ -2,6 +2,7 @@
  * Ports de l'espace soignant. Comme pour le patient, l'interface ne connaît que ceci —
  * jamais Firebase. Deux adapters les implémentent : `firestore/` et `mock/`.
  */
+import type { PatientPermissions } from '../domain/permissions'
 import type { ActivityProposal } from '../domain/proposals'
 import type { CatalogKind, CatalogRemoval } from '../domain/catalog'
 import type { Account } from '../domain/impersonation'
@@ -166,6 +167,17 @@ export interface StaffRepository {
     decision: 'accepted' | 'declined',
     options?: { declineReason?: string; activityId?: string },
   ): Promise<{ ok: boolean; message: string }>
+
+  /**
+   * Ce que les patients ont le droit de faire, et le régler.
+   *
+   * Quatre gestes : s'inscrire, se retirer, demander un rendez-vous, proposer une
+   * activité. Aucun service n'est obligé de les ouvrir tous, ni de les ouvrir tout de
+   * suite — c'est une décision d'organisation, et elle ne devrait pas demander un
+   * développeur. Réservé à l'administrateur.
+   */
+  readPatientPermissions(): Promise<PatientPermissions>
+  savePatientPermissions(permissions: PatientPermissions): Promise<{ ok: boolean; message: string }>
 
   /** Le calendrier du personnel : tout le programme, sans filtre de service. */
   listOccurrences(from: LocalDate, to: LocalDate): Promise<Occurrence[]>

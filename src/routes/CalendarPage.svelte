@@ -148,7 +148,7 @@
     ne trouvant pas ce qu'on cherche qu'on a envie de proposer autre chose. En haut, ce
     bouton passerait avant l'information que tout le monde vient chercher.
   -->
-  {#if store.isDemo || store.signedIn}
+  {#if (store.isDemo || store.signedIn) && store.may('proposeActivity')}
     <button type="button" class="btn btn-secondary" onclick={() => navigate('/proposer')}>
       <span aria-hidden="true">💡</span> Proposer une activité
     </button>

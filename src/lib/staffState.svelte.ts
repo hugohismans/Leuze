@@ -17,6 +17,12 @@ import { describeGeneration } from './data/generation'
 import type { Account } from './domain/impersonation'
 import type { PatientPlanning } from './data/staffPorts'
 import type { CatalogKind, CatalogRemoval } from './domain/catalog'
+import {
+  OPEN_TO_PATIENTS,
+  actionLabel,
+  type PatientAction,
+  type PatientPermissions,
+} from './domain/permissions'
 import type { ActivityProposal } from './domain/proposals'
 import { store } from './appState.svelte'
 import { countsOf, undoToggle, withToggled } from './domain/roster'
@@ -112,7 +118,10 @@ class StaffStore {
       void this.loadAppointments()
       // Les idées ne concernent que l'administrateur : lui seul les lit, et lui seul
       // porte le compteur de l'onglet.
-      if (this.identity.role === 'admin') void this.loadProposals()
+      if (this.identity.role === 'admin') {
+        void this.loadProposals()
+        void this.loadPatientPermissions()
+      }
       await this.refresh()
     }
     return result.ok ? { ok: true } : { ok: false, message: result.message }
@@ -146,7 +155,10 @@ class StaffStore {
       void store.loadAppointmentKinds()
       void this.loadPatients()
       void this.loadAppointments()
-      if (this.identity.role === 'admin') void this.loadProposals()
+      if (this.identity.role === 'admin') {
+        void this.loadProposals()
+        void this.loadPatientPermissions()
+      }
     }
   }
 
@@ -584,6 +596,42 @@ class StaffStore {
     if (this.#ecrituresEnCours === 0) void this.openRoster(occurrenceId)
     this.message = resultat.message
     return resultat.message
+  }
+
+  // --- ce que les patients ont le droit de faire ------------------------------
+
+  patientPermissions = $state<PatientPermissions>({ ...OPEN_TO_PATIENTS })
+
+  async loadPatientPermissions(): Promise<void> {
+    this.patientPermissions = await (await this.app$()).repository
+      .readPatientPermissions()
+      .catch(() => ({ ...OPEN_TO_PATIENTS }))
+  }
+
+  /**
+   * Ouvrir ou fermer un geste. L'interrupteur bascule tout de suite et revient si le
+   * serveur refuse — c'est un réglage, pas un formulaire : on ne fait pas attendre.
+   */
+  async setPatientAction(action: PatientAction, ouvert: boolean): Promise<void> {
+    const avant = this.patientPermissions
+    this.patientPermissions = { ...avant, [action]: ouvert }
+    const resultat = await (await this.app$()).repository.savePatientPermissions(
+      this.patientPermissions,
+    )
+    if (!resultat.ok) {
+      this.patientPermissions = avant
+      this.message = resultat.message
+      return
+    }
+    /*
+      L'écran patient vit dans la même page : il doit voir le changement tout de suite.
+      Sans cela, on montrerait en réunion un bouton qu'on vient de fermer sous les yeux
+      de tout le monde.
+    */
+    void store.loadPatientPermissions(true)
+    this.message = ouvert
+      ? `« ${actionLabel(action)} » est ouvert aux patients.`
+      : `« ${actionLabel(action)} » est fermé. Les patients liront ce qu'il faut faire à la place.`
   }
 
   // --- les idées des patients ------------------------------------------------

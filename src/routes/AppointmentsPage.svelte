@@ -100,6 +100,20 @@
     </ul>
   {/if}
 
+  {#if !store.may('requestAppointment')}
+    <!--
+      Le formulaire disparaît, pas la page : les rendez-vous déjà fixés restent au-dessus,
+      et l'on dit ce qu'il faut faire pour en demander un nouveau.
+    -->
+    <p role="status" class="card p-5 text-lg text-ink">
+      <span aria-hidden="true">💬</span>
+      {store.refusal('requestAppointment')}
+    </p>
+
+    <button type="button" class="btn btn-secondary mt-5" onclick={() => navigate('/mes-inscriptions')}>
+      <span aria-hidden="true">←</span> Retour à mes inscriptions
+    </button>
+  {:else}
   <h2 class="mb-2 text-2xl font-bold text-ink">Qui souhaitez-vous voir ?</h2>
   <ul class="mb-5 grid gap-2 sm:grid-cols-2">
     {#each store.appointmentKinds as kind (kind.id)}
@@ -162,4 +176,5 @@
   <button type="button" class="btn btn-secondary mt-5" onclick={() => navigate('/mes-inscriptions')}>
     <span aria-hidden="true">←</span> Retour à mes inscriptions
   </button>
+  {/if}
 </section>

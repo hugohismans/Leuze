@@ -84,6 +84,11 @@ import type {
 } from '../staffPorts'
 import type { ActivityProposal } from '../../domain/proposals'
 import { versProposition } from './propositions'
+import {
+  OPEN_TO_PATIENTS,
+  readPermissions,
+  type PatientPermissions,
+} from '../../domain/permissions'
 import { firebase } from './app'
 import { FIRST_NAME_KEY } from './keys'
 
@@ -665,6 +670,26 @@ export function createFirestoreStaffApp(): StaffApp {
             'staffUnregister',
           )
           return (await call({ occurrenceId, patientUid })).data
+        } catch (error) {
+          return { ok: false, message: messageDErreur(error) }
+        }
+      },
+
+      async readPatientPermissions(): Promise<PatientPermissions> {
+        try {
+          const snapshot = await getDoc(doc(db, 'config', 'app'))
+          return readPermissions(snapshot.data()?.['patientActions'])
+        } catch {
+          return { ...OPEN_TO_PATIENTS }
+        }
+      },
+
+      async savePatientPermissions(permissions: PatientPermissions) {
+        try {
+          // `merge` : ce document porte aussi la durée de conservation et la validité
+          // des codes. On n'écrit que le champ qu'on vient de régler.
+          await setDoc(doc(db, 'config', 'app'), { patientActions: permissions }, { merge: true })
+          return { ok: true, message: 'Réglage enregistré.' }
         } catch (error) {
           return { ok: false, message: messageDErreur(error) }
         }
