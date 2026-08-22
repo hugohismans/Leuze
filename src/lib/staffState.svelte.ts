@@ -597,10 +597,28 @@ class StaffStore {
     void this.refresh()
   }
 
+  /**
+   * Copier une activité. La copie apparaît dans la liste tout de suite.
+   *
+   * Rien ne bougeait à l'écran pendant trois allers-retours — relire l'activité qu'on
+   * avait déjà, écrire la copie, relire tout le programme — et rien n'empêchait de
+   * recliquer, donc de créer trois copies.
+   */
   async duplicate(activityId: string): Promise<string> {
-    const nouvelId = await (await this.app$()).repository.duplicateActivity(activityId)
-    await this.refresh()
+    const source = this.activityOf(activityId)
+    const nouvelId = await (await this.app$()).repository.duplicateActivity(
+      activityId,
+      ...(source === null ? [] : ([source] as const)),
+    )
+    if (source !== null) {
+      // Telle que le serveur vient de l'écrire : en brouillon, avec sa propre série.
+      this.activities = [
+        ...this.activities,
+        { ...source, id: nouvelId, seriesId: `serie-${nouvelId}`, title: `${source.title} (copie)`, isActive: false },
+      ]
+    }
     this.message = 'Copie créée. Elle est en brouillon : relisez-la, puis mettez-la au programme.'
+    void this.refresh()
     return nouvelId
   }
 

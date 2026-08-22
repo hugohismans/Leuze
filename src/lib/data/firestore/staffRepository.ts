@@ -175,13 +175,9 @@ export function createFirestoreStaffApp(): StaffApp {
   setTimeout(() => notifyReady(), 10_000)
 
   /** Relit les occurrences d'une activité sur la fenêtre, applique le plan, renvoie le compte rendu. */
-  const regenerate = async (
-    activityId: string,
-    activity: Activity | null,
-    options: { overrideFrom?: LocalDate } = {},
-  ): Promise<GenerationReport> => {
-    const window = generationWindow()
-    const existing = await getDocs(
+  /** Les séances déjà posées pour une activité, sur la fenêtre glissante. */
+  const seancesExistantes = (activityId: string, window: { from: LocalDate; to: LocalDate }) =>
+    getDocs(
       query(
         collection(db, 'occurrences'),
         where('activityId', '==', activityId),
@@ -189,6 +185,20 @@ export function createFirestoreStaffApp(): StaffApp {
         where('localDate', '<=', window.to),
       ),
     )
+
+  const regenerate = async (
+    activityId: string,
+    activity: Activity | null,
+    options: { overrideFrom?: LocalDate } = {},
+    /**
+     * La lecture des séances existantes, quand celui qui appelle a pu la lancer plus tôt.
+     * Elle ne dépend pas de l'écriture de la fiche : les faire l'une après l'autre coûtait
+     * un aller-retour de plus à chaque enregistrement.
+     */
+    dejaLues?: Promise<Awaited<ReturnType<typeof seancesExistantes>>>,
+  ): Promise<GenerationReport> => {
+    const window = generationWindow()
+    const existing = await (dejaLues ?? seancesExistantes(activityId, window))
     const plan = planGeneration(activity, existing.docs.map(toOccurrence), window, options)
 
     // Firestore refuse au-delà de 500 opérations par lot.
@@ -259,8 +269,12 @@ export function createFirestoreStaffApp(): StaffApp {
         const activity: Activity = { ...(fields as Omit<Activity, 'id'>), id: activityId, seriesId }
 
         const { id: _dropped, ...stored } = activity
+        // La fiche s'écrit pendant qu'on lit les séances déjà posées : la seconde ne
+        // dépend pas de la première, et le formulaire attendait les deux l'une après
+        // l'autre avant de rendre la main.
+        const lecture = seancesExistantes(activityId, generationWindow())
         await setDoc(doc(db, 'activities', activityId), stored, { merge: false })
-        const report = await regenerate(activityId, activity)
+        const report = await regenerate(activityId, activity, {}, lecture)
         return { activityId, report }
       },
 
@@ -278,10 +292,15 @@ export function createFirestoreStaffApp(): StaffApp {
         return regenerate(activityId, avant.exists() ? { ...toActivity(avant), isActive } : null)
       },
 
-      async duplicateActivity(activityId: string): Promise<string> {
-        const source = await getDoc(doc(db, 'activities', activityId))
-        if (!source.exists()) throw new Error("Cette activité n'existe plus.")
-        const copie = toActivity(source)
+      async duplicateActivity(activityId: string, source?: Activity): Promise<string> {
+        // L'activité est déjà à l'écran quand on clique « Dupliquer » : la relire coûtait
+        // un aller-retour pour une valeur qu'on avait sous la main.
+        let copie = source ?? null
+        if (copie === null) {
+          const lue = await getDoc(doc(db, 'activities', activityId))
+          if (!lue.exists()) throw new Error("Cette activité n'existe plus.")
+          copie = toActivity(lue)
+        }
         const nouvelId = doc(collection(db, 'activities')).id
         const { id: _id, seriesId: _serie, ...reste } = copie
         // La copie est créée inactive : elle ne part pas au calendrier avant relecture.

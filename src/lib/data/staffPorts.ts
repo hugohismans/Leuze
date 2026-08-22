@@ -123,7 +123,11 @@ export interface StaffRepository {
   setActivityActive(activityId: string, isActive: boolean): Promise<GenerationReport>
 
   /** Duplique une activité existante, en la laissant inactive tant qu'elle n'est pas relue. */
-  duplicateActivity(activityId: string): Promise<string>
+  /**
+   * Copier une activité. `source` évite une lecture : l'écran qui propose « Dupliquer »
+   * a l'activité sous les yeux, et donc en mémoire.
+   */
+  duplicateActivity(activityId: string, source?: Activity): Promise<string>
 
   /**
    * Supprime une activité et ses séances si personne ne s'y est jamais inscrit ; la

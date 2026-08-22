@@ -908,9 +908,19 @@ export const exchangeCode = onCall({ secrets: [CODE_PEPPER] }, async (request: C
     throw new HttpsError('invalid-argument', 'Saisissez le code inscrit sur votre feuille.')
   }
   const clientKey = request.rawRequest?.ip ?? 'inconnu'
-  await assertNotRateLimited(clientKey)
+  /*
+    La limite de tentatives et le code se lisent ensemble.
 
-  const codeSnapshot = await db().collection(COLLECTIONS.patientCodes).doc(hashCode(raw)).get()
+    Elles ne dépendent pas l'une de l'autre : l'une regarde une adresse, l'autre une
+    empreinte. On les enchaînait, et c'est le moment de l'application où l'attente coûte
+    le plus cher — quelqu'un tape six caractères sur une feuille et attend de savoir s'il
+    a le droit d'entrer. Si la limite est atteinte, l'erreur remonte comme avant ; on aura
+    lu un document pour rien, ce qui est sans conséquence.
+  */
+  const [, codeSnapshot] = await Promise.all([
+    assertNotRateLimited(clientKey),
+    db().collection(COLLECTIONS.patientCodes).doc(hashCode(raw)).get(),
+  ])
   const codeData = codeSnapshot.data() as { uid: string; expiresAt: Timestamp } | undefined
   const expired = codeData !== undefined && codeData.expiresAt.toMillis() < Date.now()
 
@@ -929,7 +939,10 @@ export const exchangeCode = onCall({ secrets: [CODE_PEPPER] }, async (request: C
     throw new HttpsError('not-found', "Ce code n'est pas reconnu. Demandez un nouveau code à un soignant.")
   }
 
-  await clearFailures(clientKey)
+  // L'effacement des tentatives ratées part maintenant, et l'on ne l'attend qu'à la fin :
+  // il n'apprend rien à la signature du jeton, qui est le vrai temps de cette fonction.
+  const effacement = clearFailures(clientKey)
+
   // Le service voyage dans le jeton : le patient ne peut pas le changer, et les règles
   // Firestore s'en servent pour filtrer le calendrier.
   //
@@ -949,6 +962,9 @@ export const exchangeCode = onCall({ secrets: [CODE_PEPPER] }, async (request: C
       'La connexion n’a pas pu être ouverte. Prévenez la personne qui a installé l’application.',
     )
   }
+  // Une écriture laissée en l'air peut être coupée quand la fonction rend la main : on
+  // s'assure qu'elle a abouti. Elle est partie il y a longtemps, cela ne coûte rien.
+  await effacement
   return { token, firstName: patient.firstName, serviceId: patient.serviceId }
 })
 
