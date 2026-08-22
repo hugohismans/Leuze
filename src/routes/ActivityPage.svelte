@@ -76,36 +76,47 @@
     occurrence ? Math.round((occurrence.end.getTime() - occurrence.start.getTime()) / 60_000) : 0,
   )
 
+  /*
+    Le bouton répond dans le geste.
+
+    Il attendait quatre allers-retours enchaînés avant de changer d'état, et restait grisé
+    sans rien dire pendant ce temps — ce qui se lit comme « l'application ne m'a pas
+    entendu ». C'est le magasin qui tient désormais l'affichage immédiat et la correction
+    en cas de refus ; l'écran ne fait plus que dire ce qui s'est passé. La relecture du
+    nombre de places part derrière, sans que personne ne l'attende.
+  */
   async function inscrire(): Promise<void> {
     if (!occurrence || busy) return
     busy = true
-    const result = await store.registerTo(occurrence.id)
-    messageIsError = !result.ok
-    if (result.ok) {
-      const pris =
-        result.status === 'confirmed'
-          ? 'Vous êtes inscrit.'
-          : `Vous êtes sur la liste d'attente, en position ${result.position}.`
-      // Une autre activité tombe au même moment : l'inscription est prise, et on le dit
-      // dans la foulée plutôt que de laisser la personne le découvrir le jour même.
-      message = result.warning === undefined ? pris : `${pris} ${result.warning}`
-    } else {
-      message = result.message
+    try {
+      const result = await store.registerTo(occurrence.id)
+      messageIsError = !result.ok
+      if (result.ok) {
+        const pris =
+          result.status === 'confirmed'
+            ? 'Vous êtes inscrit.'
+            : `Vous êtes sur la liste d'attente, en position ${result.position}.`
+        // Une autre activité tombe au même moment : l'inscription est prise, et on le dit
+        // dans la foulée plutôt que de laisser la personne le découvrir le jour même.
+        message = result.warning === undefined ? pris : `${pris} ${result.warning}`
+      } else {
+        message = result.message
+      }
+    } finally {
+      busy = false
     }
-    await store.refreshOccurrence(occurrence.id)
-    occurrence = await store.getOccurrence(occurrence.id)
-    busy = false
   }
 
   async function desinscrire(): Promise<void> {
     if (!occurrence || busy) return
     busy = true
-    const result = await store.unregisterFrom(occurrence.id)
-    messageIsError = !result.ok
-    message = result.ok ? 'Vous êtes désinscrit.' : result.message
-    await store.refreshOccurrence(occurrence.id)
-    occurrence = await store.getOccurrence(occurrence.id)
-    busy = false
+    try {
+      const result = await store.unregisterFrom(occurrence.id)
+      messageIsError = !result.ok
+      message = result.ok ? 'Vous êtes désinscrit.' : result.message
+    } finally {
+      busy = false
+    }
   }
 </script>
 

@@ -3,7 +3,7 @@
  * jamais Firebase : brancher l'adapter Firestore au lot L1 ne touchera pas ce fichier.
  */
 import { upcomingScheduled } from './domain/appointments'
-import { capacityOf } from './domain/capacity'
+import { capacityOf, likelyStatus } from './domain/capacity'
 import { monthGrid, todayLocalDate, weekDays } from './domain/time'
 import type {
   Appointment,
@@ -164,6 +164,8 @@ class AppStore {
     this.syncSession()
     this.occurrences = []
     this.mine = []
+    // Plus rien à garder à l'écran : la prochaine lecture repart d'une page vide.
+    this.#dejaAffiche = false
   }
 
   clearFilters(): void {
@@ -186,12 +188,88 @@ class AppStore {
     return (await this.repo()).occurrences.get(occurrenceId)
   }
 
+  /**
+   * Deux compteurs, comme pour la réunion du lundi : voir `staffState`.
+   *
+   * `#versionMine` périme les relectures parties avant un clic ; `#ecrituresInscription`
+   * empêche de relire tant qu'une inscription n'est pas revenue. Sans eux, une relecture
+   * en retard remettrait le bouton dans son état d'avant, une seconde après le geste.
+   */
+  #versionMine = 0
+  #ecrituresInscription = 0
+
+  /**
+   * S'inscrire. L'écran change d'état avant la réponse du serveur.
+   *
+   * C'était le bouton le plus lent de l'application : quatre allers-retours enchaînés,
+   * pendant lesquels il restait grisé sans rien dire. Un bouton grisé qui ne dit rien se
+   * lit comme « l'application ne m'a pas entendu » — et l'on réappuie.
+   *
+   * Ce qui s'affiche n'est pas une promesse en l'air : le bouton annonçait déjà
+   * « Je m'inscris sur la liste d'attente » quand l'activité est complète, et c'est la
+   * même prévision — `likelyStatus` — qui sert ici. Le serveur tranche derrière, dans sa
+   * transaction ; s'il dit autre chose, l'écran se corrige et le dit.
+   */
   async registerTo(occurrenceId: string): Promise<RegisterResult> {
-    return (await this.repo()).registrations.register(occurrenceId)
+    const service = (await this.repo()).registrations
+    const occurrence = this.occurrences.find((o) => o.id === occurrenceId) ?? null
+    const dejaInscrit = this.mine.some((r) => r.occurrence.id === occurrenceId)
+
+    if (occurrence !== null && !dejaInscrit) {
+      this.#versionMine += 1
+      this.mine = [...this.mine, { occurrence, status: likelyStatus(occurrence), position: null }]
+    }
+
+    this.#ecrituresInscription += 1
+    let resultat: RegisterResult
+    try {
+      resultat = await service.register(occurrenceId)
+    } finally {
+      this.#ecrituresInscription -= 1
+    }
+
+    this.#versionMine += 1
+    if (!resultat.ok) {
+      // Refusé : on défait cette inscription-là, et rien d'autre.
+      if (!dejaInscrit) this.mine = this.mine.filter((r) => r.occurrence.id !== occurrenceId)
+    } else if (occurrence !== null) {
+      // Le serveur a tranché : on aligne le statut et la position sur ce qu'il dit.
+      this.mine = this.mine.map((r) =>
+        r.occurrence.id === occurrenceId
+          ? { ...r, status: resultat.status, position: resultat.position }
+          : r,
+      )
+    }
+
+    // Le vrai nombre de places et la position exacte arrivent derrière, sans retenir
+    // l'écran — et seulement quand plus aucune inscription n'est en route.
+    if (this.#ecrituresInscription === 0) void this.refreshOccurrence(occurrenceId)
+    return resultat
   }
 
+  /** Se désinscrire. Même principe : la ligne disparaît tout de suite, et revient si le serveur refuse. */
   async unregisterFrom(occurrenceId: string): Promise<{ ok: boolean; message: string }> {
-    return (await this.repo()).registrations.unregister(occurrenceId)
+    const service = (await this.repo()).registrations
+    const avant = this.mine.find((r) => r.occurrence.id === occurrenceId) ?? null
+
+    this.#versionMine += 1
+    this.mine = this.mine.filter((r) => r.occurrence.id !== occurrenceId)
+
+    this.#ecrituresInscription += 1
+    let resultat: { ok: boolean; message: string }
+    try {
+      resultat = await service.unregister(occurrenceId)
+    } finally {
+      this.#ecrituresInscription -= 1
+    }
+
+    if (!resultat.ok && avant !== null) {
+      this.#versionMine += 1
+      this.mine = [...this.mine.filter((r) => r.occurrence.id !== occurrenceId), avant]
+    }
+
+    if (this.#ecrituresInscription === 0) void this.refreshOccurrence(occurrenceId)
+    return resultat
   }
 
   /** Réveille la fonction d'inscription, sans rien inscrire. Voir le port. */
@@ -317,18 +395,29 @@ class AppStore {
    */
   #versionProgramme = 0
 
+  /**
+   * Vrai dès qu'un programme a été affiché une fois. Volontairement non réactif :
+   * voir le commentaire de `refresh()`.
+   */
+  #dejaAffiche = false
+
   async refresh(): Promise<void> {
     const version = (this.#versionProgramme += 1)
     const { from, to } = this.range
     /*
       On ne vide l'écran que s'il n'y a rien à garder.
-      
+
       « Chargement du programme… » remplaçait la grille entière à chaque flèche : le seul
       repère de la page disparaissait pendant l'aller-retour, et l'on avait l'impression
       d'avoir cassé quelque chose. Le programme d'avant reste donc affiché, et se remplace
       quand le nouveau arrive.
+
+      Le drapeau qui le dit n'est **pas** réactif, et c'est essentiel : `refresh()` est
+      appelé depuis un effet, et lire ici un état réactif ferait de lui une dépendance de
+      cet effet — que `refresh()` modifie ensuite. La relecture se rappellerait sans fin,
+      et la page se figerait avant même de s'afficher. C'est arrivé.
     */
-    this.loading = this.occurrences.length === 0
+    this.loading = !this.#dejaAffiche
     this.rafraichit = true
     let lues: Occurrence[] | null = null
     try {
@@ -346,6 +435,7 @@ class AppStore {
     } else {
       this.occurrences = lues
       this.lectureEchouee = false
+      this.#dejaAffiche = lues.length > 0
     }
     // La session Firebase est restaurée de façon asynchrone au démarrage : à ce
     // point-ci elle est connue, on aligne l'interface dessus.
@@ -360,23 +450,35 @@ class AppStore {
 
   /** Les inscriptions du patient, en arrière-plan : leur absence ne cache pas le programme. */
   private async loadMine(): Promise<void> {
+    const version = this.#versionMine
+    let lues: MyRegistration[]
     try {
-      this.mine = await (await this.repo()).registrations.listMine()
+      lues = await (await this.repo()).registrations.listMine()
     } catch {
-      this.mine = []
+      return
     }
+    // Périmée : on a cliqué entre-temps, ou une inscription est encore en route.
+    if (version !== this.#versionMine || this.#ecrituresInscription > 0) return
+    this.mine = lues
   }
 
-  /** Après une inscription : on relit l'occurrence concernée et « Mes inscriptions ». */
+  /**
+   * Après une inscription : on relit la séance concernée et « Mes inscriptions ».
+   *
+   * Personne n'attend cette relecture — l'écran a déjà changé d'état. Elle apporte le
+   * nombre de places à jour et la position exacte en liste d'attente, et rien d'autre.
+   */
   async refreshOccurrence(occurrenceId: string): Promise<void> {
+    const version = this.#versionMine
     const [updated, mine] = await Promise.all([
-      (await this.repo()).occurrences.get(occurrenceId),
-      (await this.repo()).registrations.listMine(),
+      (await this.repo()).occurrences.get(occurrenceId).catch(() => null),
+      (await this.repo()).registrations.listMine().catch(() => null),
     ])
+    if (version !== this.#versionMine || this.#ecrituresInscription > 0) return
     if (updated) {
       this.occurrences = this.occurrences.map((o) => (o.id === occurrenceId ? updated : o))
     }
-    this.mine = mine
+    if (mine !== null) this.mine = mine
   }
 
   myStatusFor(occurrenceId: string): MyRegistration | null {

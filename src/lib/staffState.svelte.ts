@@ -129,6 +129,7 @@ class StaffStore {
     this.identity = (await this.app$()).session.current()
     this.activities = []
     this.occurrences = []
+    this.#dejaAffiche = false
   }
 
   /** Rafraîchit la session au démarrage : Firebase la restaure de façon asynchrone. */
@@ -146,6 +147,8 @@ class StaffStore {
 
   /** Numéro de la dernière demande : une réponse plus ancienne n'écrase jamais l'écran. */
   #versionProgramme = 0
+  /** Vrai dès qu'une semaine a été affichée une fois. Volontairement non réactif. */
+  #dejaAffiche = false
 
   async refresh(): Promise<void> {
     const version = (this.#versionProgramme += 1)
@@ -156,7 +159,9 @@ class StaffStore {
       fréquent de l'écran principal. On ne vide donc que s'il n'y a rien à garder ; sinon
       la semaine d'avant reste lisible et se remplace à l'arrivée de la nouvelle.
     */
-    this.loading = this.occurrences.length === 0
+    // Non réactif, comme côté patient : `refresh()` peut être appelé depuis un effet, et
+    // y lire un état que l'on modifie ensuite ferait boucler la page. Voir `appState`.
+    this.loading = !this.#dejaAffiche
     this.rafraichit = true
     const jours = weekDays(this.date)
     const [activities, occurrences] = await Promise.all([
@@ -167,6 +172,7 @@ class StaffStore {
     if (version !== this.#versionProgramme) return
     this.activities = activities
     this.occurrences = occurrences
+    this.#dejaAffiche = occurrences.length > 0
     /*
       Le programme relu écrasait le nombre d'inscrits de la séance ouverte.
 

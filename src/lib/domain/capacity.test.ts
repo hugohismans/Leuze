@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   capacityOf,
+  likelyStatus,
   patientCapacityLabel,
   registrationActionLabel,
   registrationBlock,
@@ -99,5 +100,30 @@ describe('ce que lit le personnel', () => {
     expect(
       staffCapacityLabel(makeOccurrence({ registrationRequired: false, capacity: null, confirmedCount: 3 })),
     ).toBe('Sans inscription — 3 personnes notées')
+  })
+})
+
+describe('ce qui va se passer si l’on s’inscrit maintenant', () => {
+  it('est une place tant qu’il en reste', () => {
+    expect(likelyStatus(makeOccurrence({ capacity: 12, confirmedCount: 11 }))).toBe('confirmed')
+  })
+
+  it('est la liste d’attente quand c’est complet', () => {
+    expect(likelyStatus(makeOccurrence({ capacity: 12, confirmedCount: 12 }))).toBe('waitlist')
+  })
+
+  it('est une place quand il n’y a pas de limite', () => {
+    expect(likelyStatus(makeOccurrence({ capacity: null }))).toBe('confirmed')
+  })
+
+  it('dit la même chose que le bouton — c’est tout l’objet', () => {
+    /*
+      Le texte du bouton et ce que l'écran affiche pendant que la réponse voyage viennent
+      de la même prévision. S'ils dérivaient, on promettrait une place puis on la
+      reprendrait.
+    */
+    const complete = makeOccurrence({ capacity: 4, confirmedCount: 4 })
+    expect(registrationActionLabel(complete)).toContain("liste d'attente")
+    expect(likelyStatus(complete)).toBe('waitlist')
   })
 })

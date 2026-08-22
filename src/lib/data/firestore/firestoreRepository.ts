@@ -270,13 +270,17 @@ export function createFirestoreRepository(): AppRepository {
       },
 
       async warmRegistration(): Promise<void> {
-        // Un appel vide, sans attente et sans conséquence : la fonction se lève pendant
-        // qu'on lit la fiche. Une erreur ici ne regarde personne.
-        try {
-          await httpsCallable(functions, 'register')({ warm: true })
-        } catch {
-          /* rien : le réveil n'a pas abouti, l'inscription paiera le démarrage */
-        }
+        /*
+          Deux appels vides, sans conséquence : les deux fonctions se lèvent pendant qu'on
+          lit la fiche. « S'inscrire » et « se désinscrire » sont deux fonctions
+          distinctes, et l'on peut arriver sur la fiche pour l'une comme pour l'autre —
+          ne réveiller que la première laissait la seconde payer son démarrage.
+        */
+        await Promise.all(
+          ['register', 'unregister'].map((nom) =>
+            httpsCallable(functions, nom)({ warm: true }).catch(() => undefined),
+          ),
+        )
       },
     },
 

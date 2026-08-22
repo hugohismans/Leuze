@@ -184,6 +184,9 @@ export const register = onCall(async (request: CallableRequest) => {
 
 export const unregister = onCall(async (request: CallableRequest) => {
   const patient = requirePatient(request)
+  // Réveil : voir `register`. La fiche d'activité réveille les deux — on peut l'ouvrir
+  // pour s'inscrire comme pour se désinscrire.
+  if (request.data?.warm === true) return { ok: true, warmed: true }
   const occurrenceId = requireString(request.data?.occurrenceId, 'occurrenceId')
   return unregisterTx(db(), { occurrenceId, patientUid: patient.uid })
 })

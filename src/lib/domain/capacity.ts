@@ -55,12 +55,25 @@ export function patientCapacityLabel(occurrence: Occurrence): string {
 }
 
 /**
+ * Ce qui va se passer si l'on s'inscrit maintenant : une place, ou la liste d'attente.
+ *
+ * C'est une prévision, pas une décision : seul le serveur tranche, dans une transaction,
+ * et deux personnes peuvent viser la même dernière place. Elle sert à deux choses qui ne
+ * doivent jamais se contredire — le texte du bouton, et ce que l'écran affiche pendant la
+ * seconde où la réponse voyage. Les faire dériver reviendrait à promettre une place puis
+ * à la reprendre.
+ */
+export function likelyStatus(occurrence: Occurrence): 'confirmed' | 'waitlist' {
+  return capacityOf(occurrence).kind === 'full' ? 'waitlist' : 'confirmed'
+}
+
+/**
  * Ce que dit le bouton d'inscription. Sur une activité ouverte à tous, s'inscrire n'est
  * pas une condition d'accès mais une façon de la retrouver dans sa semaine : le mot
  * « inscription » y serait trompeur.
  */
 export function registrationActionLabel(occurrence: Occurrence): string {
-  if (capacityOf(occurrence).kind === 'full') return "Je m'inscris sur la liste d'attente"
+  if (likelyStatus(occurrence) === 'waitlist') return "Je m'inscris sur la liste d'attente"
   return occurrence.registrationRequired ? "Je m'inscris" : 'Je note que je viens'
 }
 
