@@ -32,6 +32,50 @@ AIDE
   exit 1
 fi
 
+# Journal de la dernière tentative : on y relit ce que Firebase a refusé de faire.
+JOURNAL="$(mktemp)"
+trap 'rm -f "$JOURNAL"' EXIT
+
+deployer() {
+  npx firebase deploy --only functions --project "$PROJET" 2>&1 | tee "$JOURNAL"
+  return "${PIPESTATUS[0]}"
+}
+
+# Une fonction retirée du code n'est pas supprimée toute seule.
+#
+# La publication ne se contente pas de l'ignorer : elle **s'arrête**, et rien ne part —
+# ni les autres fonctions, ni le site. C'est un garde-fou de Firebase, et il a raison sur
+# le principe : effacer une fonction en ligne parce qu'elle a disparu du code demande une
+# décision. Mais cette décision a déjà été prise, dans le commit qui l'a retirée.
+#
+# On ne passe donc pas « --force » à la publication entière — ce serait dire oui d'avance
+# à tout ce qu'elle voudra effacer. On lit les noms que Firebase vient d'écrire, on
+# supprime ceux-là et pas d'autres, puis on republie.
+#
+# Au-delà de trois, on s'arrête : trois fonctions retirées d'un coup est plausible, dix
+# ne l'est pas — c'est le signe qu'une construction a mal tourné, et l'on préfère une
+# publication ratée à un projet vidé.
+supprimer_les_disparues() {
+  local noms
+  noms=$(grep -oE 'functions:delete [A-Za-z0-9_-]+' "$JOURNAL" | awk '{print $2}' | sort -u | tr '\n' ' ')
+  noms="${noms% }"
+  [ -z "$noms" ] && return 1
+
+  local combien
+  combien=$(wc -w <<<"$noms")
+  if [ "$combien" -gt 3 ]; then
+    rouge "$combien fonctions ont disparu du code d'un coup — c'est trop pour être voulu."
+    rouge "Rien n'est supprimé. Vérifiez la construction avant de republier."
+    return 1
+  fi
+
+  rouge "Fonctions retirées du code, à effacer du projet : $noms"
+  # shellcheck disable=SC2086
+  npx firebase functions:delete $noms --region europe-west1 --project "$PROJET" --force
+  vert "Effacées. On republie."
+  return 0
+}
+
 ouvre() {
   # Une fonction reprise après un échec perd son droit d'être appelée depuis le
   # navigateur. On le repose systématiquement : c'est sans effet quand il est déjà là.
@@ -44,14 +88,24 @@ ouvre() {
   fi
 }
 
-if npx firebase deploy --only functions --project "$PROJET"; then
+if deployer; then
   ouvre
   vert "Fonctions déployées."
   exit 0
 fi
 
+# Cas particulier, et prioritaire : la publication s'est arrêtée sans rien tenter parce
+# qu'une fonction a disparu du code. Une seconde tentative échouerait pour la même raison.
+if supprimer_les_disparues; then
+  if deployer; then
+    ouvre
+    vert "Fonctions déployées après avoir effacé celles qui ont été retirées du code."
+    exit 0
+  fi
+fi
+
 rouge "Une partie des fonctions n'est pas passée — seconde tentative."
-if npx firebase deploy --only functions --project "$PROJET"; then
+if deployer; then
   ouvre
   vert "Fonctions déployées à la seconde tentative."
   exit 0
