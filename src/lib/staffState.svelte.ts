@@ -389,6 +389,7 @@ class StaffStore {
   ): Promise<string> {
     const repository = (await this.app$()).repository
     const avant = this.roster.find((ligne) => ligne.patientUid === patientUid) ?? null
+    const rangAvant = this.roster.findIndex((ligne) => ligne.patientUid === patientUid)
     const personne = this.patients.find((p) => p.uid === patientUid)
 
     // Une personne qui n'était pas sur la liste y entre : c'est le geste « quelqu'un
@@ -418,7 +419,7 @@ class StaffStore {
     if (!resultat.ok) {
       this.#versionRoster += 1
       if (avant === null) this.ajusterCompteur(occurrenceId, -1)
-      this.roster = undoToggle(this.roster, patientUid, avant)
+      this.roster = undoToggle(this.roster, patientUid, avant, rangAvant)
     }
 
     if (this.#ecrituresEnCours === 0) void this.openRoster(occurrenceId)
@@ -484,6 +485,8 @@ class StaffStore {
     */
     const personne = this.patients.find((p) => p.uid === patientUid)
     const ligneAvant = this.roster.find((ligne) => ligne.patientUid === patientUid) ?? null
+    // Son rang, pour la remettre à sa place si le serveur refuse.
+    const rangAvant = this.roster.findIndex((ligne) => ligne.patientUid === patientUid)
     // Toute modification locale périme les relectures déjà parties.
     this.#versionRoster += 1
     this.#ecrituresEnCours += 1
@@ -521,7 +524,7 @@ class StaffStore {
     if (!resultat.ok) {
       this.#versionRoster += 1
       this.ajusterCompteur(occurrenceId, inscrit ? 1 : -1)
-      this.roster = undoToggle(this.roster, patientUid, inscrit ? ligneAvant : null)
+      this.roster = undoToggle(this.roster, patientUid, inscrit ? ligneAvant : null, rangAvant)
     }
 
     /*

@@ -8,6 +8,9 @@ const ligne = (patientUid: string, status: 'confirmed' | 'waitlist' = 'confirmed
 
 const prenoms = (lines: RosterEntry[]): string[] => lines.map((l) => l.patientUid).sort()
 
+/** L'ordre tel qu'il est à l'écran, sans le trier : c'est justement lui qu'on vérifie. */
+const ordre = (lines: RosterEntry[]): string[] => lines.map((l) => l.patientUid)
+
 describe('le clic, affiché sans attendre le serveur', () => {
   it('ajoute la personne qui n’était pas inscrite', () => {
     expect(prenoms(withToggled([ligne('a')], ligne('b'), false))).toEqual(['a', 'b'])
@@ -20,6 +23,23 @@ describe('le clic, affiché sans attendre le serveur', () => {
   it('ne fait jamais figurer quelqu’un deux fois', () => {
     expect(prenoms(withToggled([ligne('a')], ligne('a'), false))).toEqual(['a'])
   })
+
+  it('ne fait changer personne de rang', () => {
+    /*
+      Le défaut vu sur la feuille d'appel : cocher « Présent » sur Amandine la faisait
+      descendre en bas de la liste, et la relecture du serveur la remontait une
+      demi-seconde plus tard. Deux prénoms semblaient s'échanger de place.
+    */
+    const liste = [ligne('bernard'), ligne('amandine'), ligne('camille')]
+    const apres = withToggled(liste, { ...ligne('amandine'), status: 'waitlist' }, false)
+    expect(ordre(apres)).toEqual(['bernard', 'amandine', 'camille'])
+    expect(apres[1]?.status).toBe('waitlist')
+  })
+
+  it('met la personne réellement nouvelle à la fin', () => {
+    const apres = withToggled([ligne('bernard'), ligne('camille')], ligne('hugo'), false)
+    expect(ordre(apres)).toEqual(['bernard', 'camille', 'hugo'])
+  })
 })
 
 describe('le refus arrivé en retard', () => {
@@ -30,6 +50,31 @@ describe('le refus arrivé en retard', () => {
 
   it('retire la personne que le serveur a refusé d’inscrire', () => {
     expect(prenoms(undoToggle([ligne('a'), ligne('b')], 'b', null))).toEqual(['a'])
+  })
+
+  it('remet la ligne à sa place, sans déplacer personne', () => {
+    const liste = [ligne('bernard'), { ...ligne('amandine'), status: 'waitlist' as const }, ligne('camille')]
+    const apres = undoToggle(liste, 'amandine', ligne('amandine'))
+    expect(ordre(apres)).toEqual(['bernard', 'amandine', 'camille'])
+    expect(apres[1]?.status).toBe('confirmed')
+  })
+
+  it('remet à son rang quelqu’un qui avait été retiré', () => {
+    const liste = [ligne('bernard'), ligne('camille')]
+    expect(ordre(undoToggle(liste, 'amandine', ligne('amandine'), 1))).toEqual([
+      'bernard',
+      'amandine',
+      'camille',
+    ])
+  })
+
+  it('le met à la fin quand on ne sait plus où il était', () => {
+    const liste = [ligne('bernard'), ligne('camille')]
+    expect(ordre(undoToggle(liste, 'amandine', ligne('amandine')))).toEqual([
+      'bernard',
+      'camille',
+      'amandine',
+    ])
   })
 
   it('ne défait pas les clics qu’il n’a pas vus', () => {

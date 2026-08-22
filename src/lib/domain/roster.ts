@@ -30,10 +30,19 @@ export type RosterEntry = {
  * `registered` dit l'état **avant** le clic : inscrit, on retire ; pas inscrit, on ajoute.
  * Une personne déjà présente n'est jamais ajoutée deux fois — deux clics rapides sur le
  * même prénom ne doivent pas la faire figurer en double.
+ *
+ * **Personne ne change de rang.** Une ligne déjà là est remplacée où elle est ; seule une
+ * personne réellement nouvelle s'ajoute à la fin. On retirait la ligne pour la remettre au
+ * bout, ce qui est le même contenu mais pas la même liste : sur la feuille d'appel, cocher
+ * « Présent » faisait descendre le prénom en bas, et la relecture du serveur le remontait
+ * une demi-seconde plus tard. Deux prénoms semblaient s'échanger de place. Un affichage
+ * immédiat doit montrer ce que le serveur va confirmer, pas une liste réarrangée.
  */
 export function withToggled<T extends RosterEntry>(lines: T[], entry: T, registered: boolean): T[] {
-  const sansElle = lines.filter((ligne) => ligne.patientUid !== entry.patientUid)
-  return registered ? sansElle : [...sansElle, entry]
+  if (registered) return lines.filter((ligne) => ligne.patientUid !== entry.patientUid)
+  const rang = lines.findIndex((ligne) => ligne.patientUid === entry.patientUid)
+  if (rang === -1) return [...lines, entry]
+  return lines.map((ligne, index) => (index === rang ? entry : ligne))
 }
 
 /**
@@ -42,10 +51,25 @@ export function withToggled<T extends RosterEntry>(lines: T[], entry: T, registe
  * `before` est la ligne telle qu'elle était avant le clic, ou `null` si la personne
  * n'était pas inscrite. Les autres prénoms restent où ils sont, quels que soient les
  * clics survenus depuis : une réponse ne peut pas défaire un geste qu'elle n'a pas vu.
+ *
+ * `at` est le rang qu'occupait la ligne. Défaire, c'est remettre les choses comme elles
+ * étaient — y compris l'ordre : quelqu'un qu'on a retiré par erreur doit revenir à sa
+ * place, pas en fin de liste.
  */
-export function undoToggle<T extends RosterEntry>(lines: T[], patientUid: string, before: T | null): T[] {
+export function undoToggle<T extends RosterEntry>(
+  lines: T[],
+  patientUid: string,
+  before: T | null,
+  at?: number,
+): T[] {
   const sansElle = lines.filter((ligne) => ligne.patientUid !== patientUid)
-  return before === null ? sansElle : [...sansElle, before]
+  if (before === null) return sansElle
+  const rang = lines.findIndex((ligne) => ligne.patientUid === patientUid)
+  // Encore présente : on la remet telle qu'elle était, sans la déplacer.
+  if (rang !== -1) return lines.map((ligne, index) => (index === rang ? before : ligne))
+  // Retirée : on la replace où elle était, ou à la fin si on ne le sait pas.
+  const place = at === undefined || at < 0 || at > sansElle.length ? sansElle.length : at
+  return [...sansElle.slice(0, place), before, ...sansElle.slice(place)]
 }
 
 /** Le nombre d'inscrits et celui de la liste d'attente, comptés sur la liste affichée. */
