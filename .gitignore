@@ -13,3 +13,10 @@ ui-debug.log
 
 # Code d’autorisation Firebase, déposé le temps d’une connexion. Jamais versionné.
 code-firebase.txt
+
+# Note de présentation destinée aux chefs de service, et les captures qui l'illustrent.
+# Le dépôt est public : ce document décrit l'organisation interne du service.
+# Il est produit à la demande et remis en main propre, jamais versionné ici.
+Les-activites-presentation.pdf
+courriel.md
+captures/
