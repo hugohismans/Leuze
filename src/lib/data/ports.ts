@@ -96,6 +96,13 @@ export interface AppointmentService {
     preference: AppointmentPreference,
   ): Promise<{ ok: boolean; message: string; scheduled?: boolean }>
   withdraw(appointmentId: string): Promise<{ ok: boolean; message: string }>
+
+  /**
+   * Réveille la fonction de demande, sans rien demander. L'écran le fait en s'affichant :
+   * on choisit un motif et un moment de la journée avant d'appuyer, ce qui laisse tout
+   * le temps. Sans effet sur la démonstration.
+   */
+  warmRequest(): Promise<void>
 }
 
 export type PatientSession = {

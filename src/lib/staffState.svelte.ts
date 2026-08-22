@@ -570,10 +570,31 @@ class StaffStore {
     return activityId
   }
 
+  /**
+   * Mettre au programme, ou en retirer.
+   *
+   * L'étiquette de l'activité change tout de suite. Le geste demandait jusqu'à cinq
+   * allers-retours — écrire, relire, régénérer les séances, puis relire tout le
+   * programme — pendant lesquels rien ne bougeait à l'écran et rien n'empêchait de
+   * recliquer. Le compte rendu détaillé (« 12 séances créées ») arrive derrière, quand
+   * la génération a fini : c'est une information, pas une confirmation.
+   */
   async setActive(activityId: string, isActive: boolean): Promise<void> {
-    const report = await (await this.app$()).repository.setActivityActive(activityId, isActive)
-    await this.refresh()
-    this.report(isActive ? 'Activité remise au programme.' : 'Activité retirée du programme.', report)
+    const avant = this.activities.find((a) => a.id === activityId)?.isActive
+    this.activities = this.activities.map((a) => (a.id === activityId ? { ...a, isActive } : a))
+    this.message = isActive ? 'Activité remise au programme.' : 'Activité retirée du programme.'
+    try {
+      const report = await (await this.app$()).repository.setActivityActive(activityId, isActive)
+      this.report(isActive ? 'Activité remise au programme.' : 'Activité retirée du programme.', report)
+    } catch (error) {
+      // Refusé : l'étiquette revient à ce qu'elle était, et l'on dit pourquoi.
+      if (avant !== undefined) {
+        this.activities = this.activities.map((a) => (a.id === activityId ? { ...a, isActive: avant } : a))
+      }
+      this.message = enClair(error)
+      return
+    }
+    void this.refresh()
   }
 
   async duplicate(activityId: string): Promise<string> {
@@ -583,10 +604,29 @@ class StaffStore {
     return nouvelId
   }
 
+  /**
+   * Annuler une séance, avec son motif. La séance est barrée à l'écran dans le geste.
+   *
+   * Le panneau du motif se refermait avant d'attendre le serveur : pendant une à deux
+   * secondes l'écran était revenu exactement à son état d'avant, comme si le clic n'avait
+   * rien fait — et rien n'empêchait de recommencer.
+   */
   async cancelOccurrence(occurrenceId: string, reason: string): Promise<void> {
-    await (await this.app$()).repository.cancelOccurrence(occurrenceId, reason)
-    await this.refresh()
+    const avant = this.occurrences.find((o) => o.id === occurrenceId) ?? null
+    this.occurrences = this.occurrences.map((o) =>
+      o.id === occurrenceId ? { ...o, status: 'cancelled' as const, cancellationReason: reason } : o,
+    )
     this.message = 'Séance annulée. Les patients la voient barrée, avec le motif.'
+    try {
+      await (await this.app$()).repository.cancelOccurrence(occurrenceId, reason)
+    } catch (error) {
+      if (avant !== null) {
+        this.occurrences = this.occurrences.map((o) => (o.id === occurrenceId ? avant : o))
+      }
+      this.message = enClair(error)
+      return
+    }
+    void this.refresh()
   }
 
   /** Les plannings de la semaine affichée, pour tout un service. */
@@ -595,10 +635,25 @@ class StaffStore {
     return (await this.app$()).repository.weekPlannings(jours[0]!, jours[6]!, serviceId)
   }
 
+  /** Rétablir une séance annulée. Même principe : elle cesse d'être barrée tout de suite. */
   async restoreOccurrence(occurrenceId: string): Promise<void> {
-    await (await this.app$()).repository.restoreOccurrence(occurrenceId)
-    await this.refresh()
+    const avant = this.occurrences.find((o) => o.id === occurrenceId) ?? null
+    this.occurrences = this.occurrences.map((o) => {
+      if (o.id !== occurrenceId) return o
+      const { cancellationReason: _motif, ...sansMotif } = o
+      return { ...sansMotif, status: 'scheduled' as const }
+    })
     this.message = 'Séance rétablie.'
+    try {
+      await (await this.app$()).repository.restoreOccurrence(occurrenceId)
+    } catch (error) {
+      if (avant !== null) {
+        this.occurrences = this.occurrences.map((o) => (o.id === occurrenceId ? avant : o))
+      }
+      this.message = enClair(error)
+      return
+    }
+    void this.refresh()
   }
 
   async saveLocation(location: {

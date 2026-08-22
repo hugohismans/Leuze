@@ -265,9 +265,17 @@ export function createFirestoreStaffApp(): StaffApp {
       },
 
       async setActivityActive(activityId: string, isActive: boolean): Promise<GenerationReport> {
-        await updateDoc(doc(db, 'activities', activityId), { isActive })
-        const activity = await getDoc(doc(db, 'activities', activityId))
-        return regenerate(activityId, activity.exists() ? toActivity(activity) : null)
+        /*
+          L'écriture et la lecture partent ensemble.
+
+          On écrivait le champ, puis on relisait le document qu'on venait d'écrire pour
+          connaître la récurrence — deux allers-retours pour un seul booléen. La lecture
+          ne dépend pas de l'écriture : ce qu'elle rapporte peut être la version d'avant,
+          mais on sait exactement ce qui a changé, et on l'applique nous-mêmes.
+        */
+        const reference = doc(db, 'activities', activityId)
+        const [, avant] = await Promise.all([updateDoc(reference, { isActive }), getDoc(reference)])
+        return regenerate(activityId, avant.exists() ? { ...toActivity(avant), isActive } : null)
       },
 
       async duplicateActivity(activityId: string): Promise<string> {

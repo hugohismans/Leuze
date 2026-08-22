@@ -350,6 +350,11 @@ export function createFirestoreRepository(): AppRepository {
           return { ok: false, message: "Cette demande n'a pas pu être retirée." }
         }
       },
+
+      async warmRequest(): Promise<void> {
+        // Voir `warmRegistration` : un appel vide pendant qu'on choisit son motif.
+        await httpsCallable(functions, 'requestAppointment')({ warm: true }).catch(() => undefined)
+      },
     },
 
     session: {

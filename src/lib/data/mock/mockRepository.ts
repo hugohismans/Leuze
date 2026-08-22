@@ -315,6 +315,10 @@ export function createMockRepository(options: { now?: () => Date } = {}): MockRe
         )
         return { ok: true, message: 'Votre demande est retirée.' }
       },
+
+      async warmRequest(): Promise<void> {
+        // Rien à réveiller : la démonstration ne parle à aucun serveur.
+      },
     },
 
     session: {

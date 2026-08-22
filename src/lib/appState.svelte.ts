@@ -155,7 +155,19 @@ class AppStore {
   async signInWithCode(code: string): Promise<{ ok: boolean; message?: string }> {
     const result = await (await this.repo()).session.signInWithCode(code)
     this.syncSession()
-    if (result.ok) await this.refresh()
+    /*
+      On n'attend pas le programme pour rendre la main.
+
+      `syncSession` vient d'écrire le service du patient, ce qui relance de toute façon la
+      lecture du calendrier depuis `App.svelte`. On attendait donc ici une lecture
+      complète, puis une seconde partait derrière : le bouton « Valider mon code » restait
+      enfoncé le temps des deux, après un échange de code qui prend déjà son temps.
+
+      La relecture est tout de même lancée ici, pour le cas où le service ne changerait
+      pas — sur la démonstration, par exemple. Les deux sont numérotées : la plus récente
+      gagne, et l'autre ne touche à rien.
+    */
+    if (result.ok) void this.refresh()
     return result.ok ? { ok: true } : { ok: false, message: result.message }
   }
 
@@ -334,14 +346,25 @@ class AppStore {
     preference: AppointmentPreference,
   ): Promise<{ ok: boolean; message: string }> {
     const resultat = await (await this.repo()).appointments.request(kindId, preference)
-    await this.loadAppointments()
+    // La réponse dit déjà tout ce que la personne attend — « c'est noté », ou la date si
+    // la place a été trouvée toute seule. La liste se met à jour derrière.
+    void this.loadAppointments()
     return resultat
   }
 
+  /** Retirer une demande. Elle disparaît de la liste tout de suite, et revient si le serveur refuse. */
   async withdrawAppointment(appointmentId: string): Promise<{ ok: boolean; message: string }> {
+    const avant = this.appointments
+    this.appointments = this.appointments.filter((a) => a.id !== appointmentId)
     const resultat = await (await this.repo()).appointments.withdraw(appointmentId)
-    await this.loadAppointments()
+    if (!resultat.ok) this.appointments = avant
+    void this.loadAppointments()
     return resultat
+  }
+
+  /** Réveille la fonction de demande de rendez-vous, sans rien demander. */
+  async warmAppointment(): Promise<void> {
+    await (await this.repo()).appointments.warmRequest().catch(() => undefined)
   }
 
   async loadCatalog(force = false): Promise<void> {

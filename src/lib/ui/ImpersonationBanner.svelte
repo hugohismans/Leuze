@@ -14,7 +14,15 @@
   async function revenir(): Promise<void> {
     if (busy) return
     busy = true
-    await impersonation.stop()
+    try {
+      await impersonation.stop()
+    } catch {
+      // Le retour n'a pas abouti : le bouton doit redevenir cliquable, sinon la seule
+      // sortie de la peau de quelqu'un d'autre est de recharger la page.
+      busy = false
+    }
+    // Pas de `finally` : quand le retour réussit, la page est rechargée dans la foulée
+    // et le bouton doit rester inerte jusque-là.
   }
 </script>
 
