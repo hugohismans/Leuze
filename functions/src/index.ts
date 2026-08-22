@@ -131,17 +131,6 @@ export const extendOccurrenceWindow = onSchedule(
   },
 )
 
-/**
- * Régénération forcée après une modification « cette occurrence et les suivantes » :
- * à partir de la date indiquée, les exceptions saisies sont écrasées.
- */
-export const regenerateSeries = onCall(async (request: CallableRequest) => {
-  requireStaff(request)
-  const activityId = requireString(request.data?.activityId, 'activityId')
-  const overrideFrom = request.data?.overrideFrom as LocalDate | undefined
-  return regenerateActivity(db(), activityId, overrideFrom ? { overrideFrom } : {})
-})
-
 // ---------------------------------------------------------------------------
 // Inscriptions — toujours dans une transaction
 // ---------------------------------------------------------------------------
@@ -564,18 +553,6 @@ export const endPatientStay = onCall(async (request: CallableRequest) => {
   await auth().revokeRefreshTokens(uid).catch(() => undefined)
 
   return { ok: true, message: 'Le séjour est clôturé. Le code ne fonctionne plus.' }
-})
-
-/** Fin de séjour, code égaré : le code cesse de fonctionner, les inscriptions restent. */
-export const revokePatientCode = onCall(async (request: CallableRequest) => {
-  requireAdmin(request)
-  const uid = requireString(request.data?.patientUid, 'patientUid')
-  const codes = await db().collection(COLLECTIONS.patientCodes).where('uid', '==', uid).get()
-  const batch = db().batch()
-  codes.docs.forEach((document) => batch.delete(document.ref))
-  await batch.commit()
-  await auth().revokeRefreshTokens(uid).catch(() => undefined)
-  return { revoked: codes.size }
 })
 
 /**

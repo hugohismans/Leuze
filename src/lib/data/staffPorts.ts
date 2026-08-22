@@ -207,6 +207,17 @@ export interface StaffRepository {
   unregisterPatient(occurrenceId: string, patientUid: string): Promise<{ ok: boolean; message: string }>
 
   /**
+   * Donner sa place à quelqu'un de la liste d'attente, sans attendre qu'une place se
+   * libère toute seule.
+   *
+   * La liste d'attente n'avance d'elle-même que si quelqu'un se désinscrit **dans
+   * l'application**. Un désistement dit de vive voix — « finalement je ne viens pas »,
+   * à la réunion ou dans le couloir — ne fait rien avancer : la place reste vide et la
+   * personne suivante reste en attente sans le savoir. Ce geste-là existe pour ça.
+   */
+  promotePatient(occurrenceId: string, patientUid: string): Promise<{ ok: boolean; message: string }>
+
+  /**
    * Réveille la fonction d'inscription, sans rien inscrire.
    *
    * Une fonction endormie met plusieurs secondes à repartir, et ce retard tombe toujours

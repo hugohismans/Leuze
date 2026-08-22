@@ -337,8 +337,28 @@
   async function desinscrire(patientUid: string): Promise<void> {
     if (seance === null || retirant !== null) return
     retirant = patientUid
-    await staffStore.togglePatient(seance.id, patientUid)
-    retirant = null
+    try {
+      await staffStore.togglePatient(seance.id, patientUid)
+    } finally {
+      retirant = null
+    }
+  }
+
+  /**
+   * Donner sa place à quelqu'un de la liste d'attente, sans attendre qu'elle se libère.
+   *
+   * C'est le cas du désistement annoncé de vive voix : la personne inscrite dit qu'elle
+   * ne viendra pas, mais ne se désinscrit pas dans l'application. Sans ce bouton, la
+   * place restait vide et la suivante attendait sans le savoir.
+   */
+  async function donnerLaPlace(patientUid: string): Promise<void> {
+    if (seance === null || retirant !== null) return
+    retirant = patientUid
+    try {
+      await staffStore.promotePatient(seance.id, patientUid)
+    } finally {
+      retirant = null
+    }
   }
 </script>
 
@@ -431,14 +451,32 @@
                 {#if attente && ligne.position !== null} · {ligne.position}ᵉ sur la liste d'attente{/if}
               </span>
             </span>
-            <button
-              type="button"
-              class="btn btn-secondary"
-              disabled={retirant !== null}
-              onclick={() => desinscrire(ligne.patientUid)}
-            >
-              {retirant === ligne.patientUid ? 'Un instant…' : 'Désinscrire'}
-            </button>
+            <span class="flex flex-wrap gap-2">
+              {#if attente}
+                <!--
+                  Le désistement dit de vive voix. La liste d'attente n'avance d'elle-même
+                  que si quelqu'un se désinscrit dans l'application ; « finalement je ne
+                  viens pas », dit à la réunion, ne fait rien avancer. Ce bouton comble ce
+                  trou-là — il donne la place sans attendre.
+                -->
+                <button
+                  type="button"
+                  class="btn btn-primary"
+                  disabled={retirant !== null}
+                  onclick={() => donnerLaPlace(ligne.patientUid)}
+                >
+                  {retirant === ligne.patientUid ? 'Un instant…' : 'Donner la place'}
+                </button>
+              {/if}
+              <button
+                type="button"
+                class="btn btn-secondary"
+                disabled={retirant !== null}
+                onclick={() => desinscrire(ligne.patientUid)}
+              >
+                {retirant === ligne.patientUid ? 'Un instant…' : 'Désinscrire'}
+              </button>
+            </span>
           </li>
         {/snippet}
 
@@ -469,6 +507,12 @@
           Désinscrire quelqu'un libère sa place : la première personne en attente y passe
           aussitôt. Prévenez-la, elle ne le saura pas autrement.
         </p>
+        {#if enAttente.length > 0}
+          <p class="mt-1 text-base text-ink-soft">
+            Quelqu'un vous a dit qu'il ne viendrait pas, sans se désinscrire ?
+            « Donner la place » inscrit la personne en attente sans attendre.
+          </p>
+        {/if}
       {/if}
     </div>
   {/if}

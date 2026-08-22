@@ -36,12 +36,27 @@ export function canMarkAttendance(actor: Marker, occurrence: { facilitatorId?: s
   return actor.practitionerId === occurrence.facilitatorId
 }
 
-/** Ce que l'écran dit quand le bouton n'est pas proposé. Toujours dire pourquoi. */
+/**
+ * Ce que l'écran dit quand le bouton n'est pas proposé. Toujours dire pourquoi.
+ *
+ * Une activité porte deux choses différentes : le **nom** de qui l'anime, écrit à la main
+ * et affiché sur le programme, et le **compte** auquel cette personne est reliée. L'appel
+ * exige le second — cocher « présent » engage quelqu'un, et il faut donc savoir qui.
+ *
+ * On disait « personne n'anime cette activité » dans les deux cas. Sur une séance qui
+ * affiche « avec Fatima » trois lignes plus haut, c'était faux, et deux phrases qui se
+ * contredisent à l'écran font douter de tout le reste. On distingue donc : il n'y a
+ * personne, ou il y a quelqu'un mais sans compte — et l'on dit quoi faire dans les deux cas.
+ */
 export function attendanceRefusal(occurrence: {
   facilitator?: string
   facilitatorId?: string
 }): string {
   if (!hasFacilitator(occurrence)) {
+    const nomme = occurrence.facilitator
+    if (nomme !== undefined && nomme !== '') {
+      return `${nomme} n'a pas de compte dans l'application : l'appel n'est pas possible. Créez son compte dans « Le personnel », puis rattachez cette personne à l'activité.`
+    }
     return "Personne n'anime cette activité : l'appel n'est pas possible. Modifiez l'activité pour désigner quelqu'un."
   }
   const qui = occurrence.facilitator

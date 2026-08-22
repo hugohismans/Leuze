@@ -28,6 +28,7 @@ import {
 } from './state'
 import { registrationBlockMessage } from '../../domain/capacity'
 import {
+  promote as domainPromote,
   register as domainRegister,
   unregister as domainUnregister,
   rosterOf,
@@ -619,6 +620,15 @@ export function createMockStaffApp(): StaffApp {
         if (!outcome.ok) return { ok: false, message: "Cette personne n'était pas inscrite." }
         applyBoard(outcome.board)
         return { ok: true, message: 'Retiré de la liste.' }
+      },
+
+      async promotePatient(occurrenceId: string, patientUid: string) {
+        const board = boardOf(occurrenceId)
+        if (board === null) return { ok: false, message: "Cette activité n'a pas été trouvée." }
+        const outcome = domainPromote(board, patientUid)
+        if (!outcome.ok) return { ok: false, message: "Cette personne n'est pas sur la liste d'attente." }
+        applyBoard(outcome.board)
+        return { ok: true, message: 'La personne est inscrite.' }
       },
     },
 

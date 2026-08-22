@@ -3,7 +3,7 @@
   import { store } from '../../lib/appState.svelte'
   import { audienceLabelForStaff } from '../../lib/domain/audience'
   import { staffCapacityLabel } from '../../lib/domain/capacity'
-  import { hasFacilitator } from '../../lib/domain/attendance'
+  import { attendanceRefusal, hasFacilitator } from '../../lib/domain/attendance'
   import { formatLongDayLabel, formatTimeRange, todayLocalDate } from '../../lib/domain/time'
   import { navigate } from '../../lib/router.svelte'
   import CancelButton from './CancelButton.svelte'
@@ -64,10 +64,14 @@
           <p class="mt-1 text-base text-ink">{staffCapacityLabel(occurrence)}</p>
 
           {#if !hasFacilitator(occurrence)}
-            <!-- Proposer un bouton qui mène à un refus serait une promesse en l'air. -->
+            <!--
+              Proposer un bouton qui mène à un refus serait une promesse en l'air. La
+              phrase vient du domaine : elle distingue « personne n'anime » de « quelqu'un
+              anime, mais sans compte », et l'écran affiche le nom juste au-dessus.
+            -->
             <p class="mt-2 text-base font-semibold text-ink">
               <span aria-hidden="true">⚠️</span>
-              Personne n'anime cette activité : l'appel n'est pas possible.
+              {attendanceRefusal(occurrence)}
             </p>
           {/if}
 

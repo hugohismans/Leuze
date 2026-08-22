@@ -65,3 +65,30 @@ describe('le compte de l’appel', () => {
     expect(attendanceLabel({ present: 0, absent: 0, unmarked: 0 })).toBe('Personne d’inscrit')
   })
 })
+
+describe('ce que l’écran dit quand l’appel n’est pas possible', () => {
+  it('nomme la personne quand elle n’a pas de compte', () => {
+    /*
+      Le cas signalé : la séance affiche « La cafétéria — Fatima », et l'application
+      répondait « personne n'anime cette activité » trois lignes plus bas.
+    */
+    const phrase = attendanceRefusal({ facilitator: 'Fatima' })
+    expect(phrase).toContain('Fatima')
+    expect(phrase).not.toContain("Personne n'anime")
+    expect(phrase).toContain('Le personnel')
+  })
+
+  it('dit qu’il n’y a personne quand il n’y a vraiment personne', () => {
+    expect(attendanceRefusal({})).toContain("Personne n'anime")
+  })
+
+  it('renvoie à la personne qui anime quand elle a bien un compte', () => {
+    expect(attendanceRefusal({ facilitator: 'Marc', facilitatorId: 'marc' })).toBe(
+      "L'appel de cette activité est fait par Marc.",
+    )
+  })
+
+  it('reste compréhensible quand le compte existe mais pas le nom', () => {
+    expect(attendanceRefusal({ facilitatorId: 'marc' })).toContain('réservé à la personne')
+  })
+})

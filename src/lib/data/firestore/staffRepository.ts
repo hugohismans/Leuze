@@ -667,6 +667,19 @@ export function createFirestoreStaffApp(): StaffApp {
           return { ok: false, message: messageDErreur(error) }
         }
       },
+
+      async promotePatient(occurrenceId: string, patientUid: string) {
+        try {
+          const call = httpsCallable<
+            { occurrenceId: string; patientUid: string },
+            { ok: boolean; message?: string }
+          >(functions, 'staffPromote')
+          const resultat = (await call({ occurrenceId, patientUid })).data
+          return { ok: resultat.ok, message: resultat.message ?? 'La personne est inscrite.' }
+        } catch (error) {
+          return { ok: false, message: messageDErreur(error) }
+        }
+      },
     },
 
     catalogAdmin: {

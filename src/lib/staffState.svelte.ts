@@ -543,6 +543,44 @@ class StaffStore {
     return { message: resultat.message, ...(conflits === undefined ? {} : { conflicts: conflits }) }
   }
 
+  /**
+   * Donner sa place à quelqu'un de la liste d'attente.
+   *
+   * La liste n'avance d'elle-même que si quelqu'un se désinscrit dans l'application. Un
+   * désistement dit de vive voix ne fait rien avancer : la place reste vide, et la
+   * personne suivante attend sans le savoir. Ce geste comble ce trou-là.
+   *
+   * Comme partout ailleurs, la ligne change d'état tout de suite et revient à sa place
+   * si le serveur refuse.
+   */
+  async promotePatient(occurrenceId: string, patientUid: string): Promise<string> {
+    const avant = this.roster.find((ligne) => ligne.patientUid === patientUid) ?? null
+    const rangAvant = this.roster.findIndex((ligne) => ligne.patientUid === patientUid)
+    if (avant === null) return "Cette personne n'est pas sur la liste d'attente."
+
+    this.#versionRoster += 1
+    this.#ecrituresEnCours += 1
+    this.ajusterCompteur(occurrenceId, 1)
+    this.roster = withToggled(this.roster, { ...avant, status: 'confirmed', position: null }, false)
+
+    let resultat
+    try {
+      resultat = await (await this.app$()).repository.promotePatient(occurrenceId, patientUid)
+    } finally {
+      this.#ecrituresEnCours -= 1
+    }
+
+    if (!resultat.ok) {
+      this.#versionRoster += 1
+      this.ajusterCompteur(occurrenceId, -1)
+      this.roster = undoToggle(this.roster, patientUid, avant, rangAvant)
+    }
+
+    if (this.#ecrituresEnCours === 0) void this.openRoster(occurrenceId)
+    this.message = resultat.message
+    return resultat.message
+  }
+
   /** Appelé à chaque changement d'écran par `StaffApp`. */
   clearMessageOnNavigation(): void {
     if (this.#survitAuProchainChangement) {
