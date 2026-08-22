@@ -10,6 +10,7 @@
  */
 import { isVisibleToService } from '../../domain/audience'
 import { patientConflictNotice } from '../../domain/conflicts'
+import { isAllowed, refusalFor, type PatientPermissions } from '../../domain/permissions'
 import {
   alreadyWaiting,
   cleanProposal,
@@ -197,6 +198,10 @@ export function createMockRepository(options: { now?: () => Date } = {}): MockRe
         if (!board || uid === null || !isVisibleToService(board.occurrence, world.session.serviceId)) {
           return { ok: false, reason: 'unknown', message: "Cette activité n'a pas été trouvée." }
         }
+        // Le service a-t-il ouvert ce geste ? Même refus que le serveur, au mot près.
+        if (!isAllowed(world.patientPermissions, 'register')) {
+          return { ok: false, reason: 'closed', message: refusalFor('register') }
+        }
         // Un rendez-vous déjà fixé interdit de s'inscrire par-dessus ; une autre
         // activité au même moment ne fait que prévenir. Même règle que sur le serveur.
         const avis = patientConflictNotice(conflictsFor(uid, occurrenceId))
@@ -223,6 +228,9 @@ export function createMockRepository(options: { now?: () => Date } = {}): MockRe
         const board = boardOf(occurrenceId)
         const uid = world.session.patientUid
         if (!board || uid === null) return { ok: false, message: "Cette activité n'a pas été trouvée." }
+        if (!isAllowed(world.patientPermissions, 'unregister')) {
+          return { ok: false, message: refusalFor('unregister') }
+        }
         const outcome = domainUnregister(board, uid)
         if (!outcome.ok) return { ok: false, message: "Vous n'étiez pas inscrit à cette activité." }
         applyBoard(outcome.board)
@@ -231,6 +239,13 @@ export function createMockRepository(options: { now?: () => Date } = {}): MockRe
 
       async warmRegistration(): Promise<void> {
         // Rien à réveiller : la démonstration ne parle à aucun serveur.
+      },
+    },
+
+    /** Les réglages de la démonstration : tout est ouvert, et modifiable en mémoire. */
+    settings: {
+      async patientPermissions(): Promise<PatientPermissions> {
+        return { ...world.patientPermissions }
       },
     },
 
@@ -247,6 +262,11 @@ export function createMockRepository(options: { now?: () => Date } = {}): MockRe
       async submit(draft: ProposalDraft): Promise<{ ok: boolean; message: string }> {
         const uid = world.session.patientUid
         if (uid === null) return { ok: false, message: 'Saisissez votre code pour proposer une activité.' }
+        // Le même refus que le serveur, au mot près : la démonstration doit montrer ce
+        // que les patients auront réellement.
+        if (!isAllowed(world.patientPermissions, 'proposeActivity')) {
+          return { ok: false, message: refusalFor('proposeActivity') }
+        }
         const propre = cleanProposal(draft)
         const valide = validateProposal(propre)
         if (!valide.ok) return { ok: false, message: valide.message }
@@ -293,6 +313,9 @@ export function createMockRepository(options: { now?: () => Date } = {}): MockRe
       async request(kindId: string, preference: AppointmentPreference) {
         const uid = world.session.patientUid
         if (uid === null) return { ok: false, message: 'Saisissez votre code pour demander un rendez-vous.' }
+        if (!isAllowed(world.patientPermissions, 'requestAppointment')) {
+          return { ok: false, message: refusalFor('requestAppointment') }
+        }
         /*
           Une seule demande à la fois pour un même professionnel — en attente comme déjà
           fixée. Sans cela, quelqu'un d'inquiet qui appuie trois fois prendrait trois

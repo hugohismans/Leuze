@@ -5,6 +5,7 @@
 import { addLocalDays, addMinutes, instantOf, todayLocalDate } from '../../domain/time'
 import { agendaWeek, suggestSlot } from '../../domain/agenda'
 import { blockingConflicts, type BusyEntry } from '../../domain/conflicts'
+import type { PatientPermissions } from '../../domain/permissions'
 import type { ActivityProposal } from '../../domain/proposals'
 import type { Activity, Appointment, LocalDate, LocalTime, Occurrence } from '../../domain/types'
 import { generationWindow, planGeneration } from '../generation'
@@ -621,6 +622,16 @@ export function createMockStaffApp(): StaffApp {
         if (!outcome.ok) return { ok: false, message: "Cette personne n'était pas inscrite." }
         applyBoard(outcome.board)
         return { ok: true, message: 'Retiré de la liste.' }
+      },
+
+      async readPatientPermissions(): Promise<PatientPermissions> {
+        return { ...world.patientPermissions }
+      },
+
+      async savePatientPermissions(permissions: PatientPermissions) {
+        exigeAdministrateur()
+        world.patientPermissions = { ...permissions }
+        return { ok: true, message: 'Réglage enregistré.' }
       },
 
       async listProposals(): Promise<ActivityProposal[]> {

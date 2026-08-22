@@ -177,3 +177,41 @@ describe('répondre à une idée', () => {
     expect(resultat.ok).toBe(false)
   })
 })
+
+describe('quand l’administration a fermé un geste', () => {
+  /*
+    Le réglage vit dans la configuration du service. La démonstration doit refuser
+    exactement ce que le serveur refuse : sans cela, montrer l'application en réunion ne
+    montrerait pas ce que les patients auront réellement.
+  */
+  beforeEach(() => {
+    resetWorld()
+    mockCatalog.reset()
+    world.proposals = []
+  })
+
+  it('le patient ne peut plus proposer d’activité', async () => {
+    world.patientPermissions = { ...world.patientPermissions, proposeActivity: false }
+    const patient = createMockRepository()
+    const resultat = await patient.proposals.submit(IDEE)
+    expect(resultat.ok).toBe(false)
+    expect(resultat.message).toContain('soignant')
+    expect(world.proposals).toHaveLength(0)
+  })
+
+  it('mais il relit toujours celles qu’il avait déposées', async () => {
+    const patient = createMockRepository()
+    await patient.proposals.submit(IDEE)
+    world.patientPermissions = { ...world.patientPermissions, proposeActivity: false }
+    expect(await patient.proposals.listMine()).toHaveLength(1)
+  })
+
+  it('et l’administrateur continue de répondre à celles qui attendent', async () => {
+    const patient = createMockRepository()
+    await patient.proposals.submit(IDEE)
+    world.patientPermissions = { ...world.patientPermissions, proposeActivity: false }
+    const admin = await ouvrirSoignant('admin@exemple.test')
+    const resultat = await admin.repository.decideProposal(world.proposals[0]!.id, 'accepted')
+    expect(resultat.ok).toBe(true)
+  })
+})

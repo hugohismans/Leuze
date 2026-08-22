@@ -3,6 +3,7 @@
  * Deux adapters les implémentent — `mock/` (écran de démonstration, tests)
  * et, au lot L1, `firestore/`. Aucun composant n'importe `firebase/*`.
  */
+import type { PatientPermissions } from '../domain/permissions'
 import type { ActivityProposal, ProposalDraft } from '../domain/proposals'
 import type {
   Appointment,
@@ -125,6 +126,19 @@ export interface ProposalService {
   warmProposal(): Promise<void>
 }
 
+/**
+ * Les réglages que l'application lit sans les modifier.
+ *
+ * Un seul pour l'instant : ce que les patients ont le droit de faire. C'est une décision
+ * d'organisation, prise par l'administration, et l'écran patient s'y conforme — mais ce
+ * n'est pas lui qui la garantit : les fonctions appelables la vérifient aussi, parce
+ * qu'un écran se contourne.
+ */
+export interface SettingsService {
+  /** Tout ouvert par défaut, y compris quand la lecture échoue. Voir `domain/permissions`. */
+  patientPermissions(): Promise<PatientPermissions>
+}
+
 export type PatientSession = {
   patientUid: string | null
   firstName: string | null
@@ -155,5 +169,6 @@ export type AppRepository = {
   registrations: RegistrationService
   appointments: AppointmentService
   proposals: ProposalService
+  settings: SettingsService
   session: SessionService
 }

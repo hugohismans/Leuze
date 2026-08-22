@@ -46,6 +46,11 @@ const httpsCallable: typeof httpsCallableSansLimite = ((...args: Parameters<type
 import { audienceQueryKeys } from '../../domain/audience'
 import { enClair } from '../../erreurs'
 import { patientIdentityOf } from '../../domain/session'
+import {
+  OPEN_TO_PATIENTS,
+  readPermissions,
+  type PatientPermissions,
+} from '../../domain/permissions'
 import type { ActivityProposal, ProposalDraft } from '../../domain/proposals'
 import { versProposition } from './propositions'
 import type {
@@ -283,6 +288,22 @@ export function createFirestoreRepository(): AppRepository {
             httpsCallable(functions, nom)({ warm: true }).catch(() => undefined),
           ),
         )
+      },
+    },
+
+    /**
+     * Les réglages, lus tels quels. Le document est minuscule et lisible par toute
+     * personne connectée : c'est une lecture directe, sans fonction appelable.
+     */
+    settings: {
+      async patientPermissions(): Promise<PatientPermissions> {
+        try {
+          const snapshot = await getDoc(doc(db, 'config', 'app'))
+          return readPermissions(snapshot.data()?.['patientActions'])
+        } catch {
+          // Un réglage illisible ne ferme jamais rien : voir `domain/permissions`.
+          return { ...OPEN_TO_PATIENTS }
+        }
       },
     },
 

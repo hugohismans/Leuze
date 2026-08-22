@@ -218,9 +218,22 @@
           {/if}
         </div>
 
-        <button type="button" class="btn btn-secondary" disabled={busy} onclick={desinscrire}>
-          {mine.status === 'confirmed' ? 'Me désinscrire' : "Me retirer de la liste d'attente"}
-        </button>
+        {#if store.may('unregister')}
+          <button type="button" class="btn btn-secondary" disabled={busy} onclick={desinscrire}>
+            {mine.status === 'confirmed' ? 'Me désinscrire' : "Me retirer de la liste d'attente"}
+          </button>
+        {:else}
+          <!--
+            Fermer n'est pas cacher : un bouton disparu sans explication se lit comme une
+            panne, et la question qu'on se pose alors n'est pas « pourquoi » mais
+            « comment je fais ».
+          -->
+          <p class="rounded-xl bg-surface-soft p-4 text-lg text-ink">
+            {store.refusal('unregister')}
+          </p>
+        {/if}
+      {:else if !store.may('register')}
+        <p class="rounded-xl bg-surface-soft p-4 text-lg text-ink">{store.refusal('register')}</p>
       {:else if block === null}
         <button type="button" class="btn btn-primary btn-huge" disabled={busy} onclick={inscrire}>
           {registrationActionLabel(occurrence)}

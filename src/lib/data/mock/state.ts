@@ -12,6 +12,7 @@ import { config } from '../../config'
 import { conflictsWith, type BusyEntry } from '../../domain/conflicts'
 import { expand } from '../../domain/recurrence'
 import { addLocalDays, instantOf, startOfIsoWeek, todayLocalDate } from '../../domain/time'
+import { OPEN_TO_PATIENTS, type PatientPermissions } from '../../domain/permissions'
 import type { ActivityProposal } from '../../domain/proposals'
 import type { Appointment, Occurrence, Registration } from '../../domain/types'
 import { recount, type Board } from '../../domain/waitlist'
@@ -42,6 +43,8 @@ export type MockWorld = {
   appointments: Appointment[]
   /** Les idées déposées par les patients, en attente d'une réponse ou déjà décidées. */
   proposals: ActivityProposal[]
+  /** Ce que les patients ont le droit de faire. Tout ouvert dans la démonstration. */
+  patientPermissions: PatientPermissions
   patients: (SeedPatient & { expiresAt?: Date })[]
   session: PatientSession
   /**
@@ -189,6 +192,7 @@ function build(now: Date): MockWorld {
         createdAt: addLocalDays(today, -2) === today ? now : instantOf(addLocalDays(today, -2), '10:00'),
       },
     ],
+    patientPermissions: { ...OPEN_TO_PATIENTS },
     patients,
     session:
       aLaPlaceDe === undefined

@@ -124,7 +124,17 @@
     {/if}
   </div>
 
-  {#if store.hasWaitingProposal}
+  {#if !store.may('proposeActivity')}
+    <!--
+      Le bouton du calendrier a disparu, mais l'adresse peut se garder en favori : on dit
+      ici aussi ce qu'il faut faire à la place, plutôt que d'afficher un formulaire qui
+      serait refusé.
+    -->
+    <p role="status" class="card p-5 text-lg text-ink">
+      <span aria-hidden="true">💬</span>
+      {store.refusal('proposeActivity')}
+    </p>
+  {:else if store.hasWaitingProposal}
     <!--
       Une seule idée en attente à la fois. Ce n'est pas une brimade, et on le dit : une
       file où la même personne dépose dix idées cesse d'être lue, et ce sont les idées

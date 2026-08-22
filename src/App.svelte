@@ -44,6 +44,17 @@
     store.refresh()
   })
 
+  /*
+    Ce que les patients ont le droit de faire peut changer pendant qu'une tablette reste
+    allumée. On relit en changeant d'écran, au plus une fois toutes les dix secondes :
+    le document est minuscule, et un réglage qui met une journée à s'appliquer ne sert
+    à rien.
+  */
+  $effect(() => {
+    void router.path
+    if (!router.path.startsWith('/soignant')) void store.loadPatientPermissions()
+  })
+
   /** Vrai quand « Un instant… » s'éternise : voir le bouton de secours plus bas. */
   let attenteLongue = $state(false)
   $effect(() => {

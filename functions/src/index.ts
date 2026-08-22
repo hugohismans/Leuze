@@ -23,6 +23,14 @@ import {
 } from './lib/registration'
 import { patientConflictNotice, type BusyEntry } from './domain/conflicts'
 import {
+  isAllowed,
+  readPermissions,
+  refusalFor,
+  OPEN_TO_PATIENTS,
+  type PatientAction,
+  type PatientPermissions,
+} from './domain/permissions'
+import {
   alreadyWaiting,
   cleanProposal,
   validateProposal,
@@ -107,6 +115,51 @@ async function readConfig<T>(field: string, fallback: T): Promise<T> {
   return (value as T) ?? fallback
 }
 
+/**
+ * Le réglage, gardé une demi-minute en mémoire.
+ *
+ * Il est consulté avant chacun des quatre gestes du patient, et il change une ou deux
+ * fois par an : le relire à chaque inscription reviendrait à payer un aller-retour pour
+ * une réponse qu'on connaît déjà. Une instance chaude sert ainsi vingt clics sans une
+ * seule lecture.
+ *
+ * Le prix est une demi-minute de retard sur un changement de réglage. C'est un réglage
+ * d'organisation, pas un verrou de sécurité : personne ne le modifie en espérant qu'il
+ * prenne effet dans la seconde, et l'écran d'administration le dit.
+ */
+const DUREE_DU_REGLAGE_MS = 30_000
+let reglageEnCache: { lu: number; permissions: PatientPermissions } | null = null
+
+async function patientPermissions(): Promise<PatientPermissions> {
+  const maintenant = Date.now()
+  if (reglageEnCache !== null && maintenant - reglageEnCache.lu < DUREE_DU_REGLAGE_MS) {
+    return reglageEnCache.permissions
+  }
+  try {
+    const brut = (await db().collection(COLLECTIONS.config).doc('app').get()).data()?.['patientActions']
+    const permissions = readPermissions(brut)
+    reglageEnCache = { lu: maintenant, permissions }
+    return permissions
+  } catch (error) {
+    // Un réglage qu'on n'arrive pas à lire ne doit jamais fermer une porte : une base
+    // momentanément injoignable priverait tout le monde de tout, sans que personne ne
+    // l'ait décidé. On ne met pas ce repli en cache — la prochaine tentative réessaiera.
+    logger.warn('Réglage des gestes du patient illisible : tout reste ouvert', { error })
+    return { ...OPEN_TO_PATIENTS }
+  }
+}
+
+/**
+ * Ce que les patients ont le droit de faire, tel que l'administration l'a réglé.
+ *
+ * C'est ici que le réglage mord. L'écran cache les boutons fermés, mais un écran se
+ * contourne : si la vérification ne vivait que là, le réglage serait un décor.
+ */
+async function patientMay(action: PatientAction): Promise<{ ok: true } | { ok: false; message: string }> {
+  const permissions = await patientPermissions()
+  return isAllowed(permissions, action) ? { ok: true } : { ok: false, message: refusalFor(action) }
+}
+
 // ---------------------------------------------------------------------------
 // Génération des occurrences
 // ---------------------------------------------------------------------------
@@ -163,7 +216,15 @@ export const register = onCall(async (request: CallableRequest) => {
     concurrence. Le risque assumé est mince : deux écritures simultanées pourraient créer
     un chevauchement, ce qu'un soignant corrigera d'un geste.
   */
-  const avis = patientConflictNotice(await conflictsFor(db(), patient.uid, occurrenceId))
+  // Le service a-t-il ouvert ce geste aux patients ? La question part avec la recherche
+  // de chevauchement : elles ne s'apprennent rien l'une à l'autre.
+  const [ouvert, conflits] = await Promise.all([
+    patientMay('register'),
+    conflictsFor(db(), patient.uid, occurrenceId),
+  ])
+  if (!ouvert.ok) return { ok: false, reason: 'closed', message: ouvert.message }
+
+  const avis = patientConflictNotice(conflits)
   if (avis !== null && avis.blocking) {
     return { ok: false, reason: 'conflict', message: avis.message }
   }
@@ -185,6 +246,8 @@ export const unregister = onCall(async (request: CallableRequest) => {
   // pour s'inscrire comme pour se désinscrire.
   if (request.data?.warm === true) return { ok: true, warmed: true }
   const occurrenceId = requireString(request.data?.occurrenceId, 'occurrenceId')
+  const ouvert = await patientMay('unregister')
+  if (!ouvert.ok) return { ok: false, message: ouvert.message }
   return unregisterTx(db(), { occurrenceId, patientUid: patient.uid })
 })
 
@@ -701,6 +764,8 @@ export const requestAppointment = onCall(async (request: CallableRequest) => {
     throw new HttpsError('invalid-argument', 'Choisissez un moment de la journée.')
   }
 
+
+
   /*
     Trois questions indépendantes, posées ensemble : le motif existe-t-il, la personne
     a-t-elle déjà une demande en cours, et reste-t-il une place quelque part ?
@@ -711,7 +776,8 @@ export const requestAppointment = onCall(async (request: CallableRequest) => {
     lectures ; faire attendre quelqu'un d'inquiet coûte plus cher.
   */
   const aujourdHui = todayLocalDate()
-  const [motif, deja, place] = await Promise.all([
+  const [ouvert, motif, deja, place] = await Promise.all([
+    patientMay('requestAppointment'),
     db().collection(COLLECTIONS.appointmentKinds).doc(kindId).get(),
     db()
       .collection(COLLECTIONS.appointments)
@@ -720,6 +786,7 @@ export const requestAppointment = onCall(async (request: CallableRequest) => {
       .get(),
     premierePlaceLibre(kindId, preference),
   ])
+  if (!ouvert.ok) return { ok: false, scheduled: false, message: ouvert.message }
 
   const kind = motif.data()
   if (!motif.exists || kind?.['isActive'] !== true) {
@@ -905,10 +972,12 @@ export const proposeActivity = onCall(async (request: CallableRequest) => {
   if (!valide.ok) return { ok: false, message: valide.message }
 
   // Les idées de cette personne, et sa fiche : deux lectures indépendantes.
-  const [siennes, fiche] = await Promise.all([
+  const [ouvert, siennes, fiche] = await Promise.all([
+    patientMay('proposeActivity'),
     db().collection(COLLECTIONS.proposals).where('patientUid', '==', patient.uid).get(),
     db().collection(COLLECTIONS.patients).doc(patient.uid).get(),
   ])
+  if (!ouvert.ok) return { ok: false, message: ouvert.message }
   const dejaEnAttente = alreadyWaiting(
     siennes.docs.map((d) => ({
       ...(d.data() as Omit<ActivityProposal, 'id' | 'createdAt'>),

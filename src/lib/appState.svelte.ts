@@ -4,6 +4,13 @@
  */
 import { upcomingScheduled } from './domain/appointments'
 import { capacityOf, likelyStatus } from './domain/capacity'
+import {
+  OPEN_TO_PATIENTS,
+  isAllowed,
+  refusalFor,
+  type PatientAction,
+  type PatientPermissions,
+} from './domain/permissions'
 import type { ActivityProposal, ProposalDraft } from './domain/proposals'
 import { monthGrid, todayLocalDate, weekDays } from './domain/time'
 import type {
@@ -306,6 +313,48 @@ class AppStore {
     return resultat
   }
 
+  /**
+   * Ce que les patients ont le droit de faire, tel que l'administration l'a réglé.
+   *
+   * Tout ouvert tant qu'on n'a rien lu : l'écran ne doit jamais faire disparaître un
+   * bouton parce qu'une lecture est en retard. Le serveur vérifie de son côté — cette
+   * copie sert à ne pas proposer un geste qui serait refusé, et à dire pourquoi.
+   */
+  patientPermissions = $state<PatientPermissions>({ ...OPEN_TO_PATIENTS })
+
+  /**
+   * Dernière lecture du réglage. Il change une ou deux fois par an : le relire à chaque
+   * changement d'écran coûterait une lecture pour une réponse qu'on connaît déjà.
+   */
+  #reglageLuA = 0
+
+  /**
+   * Relit ce que les patients ont le droit de faire.
+   *
+   * `force` sert quand on sait que le réglage vient de changer — c'est le cas dans
+   * l'écran d'administration, qui vit dans la même page que l'écran patient : sans cela,
+   * on montrerait en réunion un bouton qu'on vient de fermer sous les yeux de tout le
+   * monde.
+   */
+  async loadPatientPermissions(force = false): Promise<void> {
+    const maintenant = Date.now()
+    if (!force && maintenant - this.#reglageLuA < 10_000) return
+    this.#reglageLuA = maintenant
+    this.patientPermissions = await (await this.repo()).settings
+      .patientPermissions()
+      .catch(() => ({ ...OPEN_TO_PATIENTS }))
+  }
+
+  /** Vrai quand ce geste est ouvert aux patients. */
+  may(action: PatientAction): boolean {
+    return isAllowed(this.patientPermissions, action)
+  }
+
+  /** Ce qu'on lit à la place du bouton, quand le geste est fermé. */
+  refusal(action: PatientAction): string {
+    return refusalFor(action)
+  }
+
   /** Réveille la fonction des idées, sans rien déposer. */
   async warmProposal(): Promise<void> {
     await (await this.repo()).proposals.warmProposal().catch(() => undefined)
@@ -504,6 +553,7 @@ class AppStore {
     // Ce qui suit complète l'écran sans jamais le bloquer.
     void this.loadMine()
     void this.loadAppointments()
+    void this.loadPatientPermissions(true)
   }
 
   /** Les inscriptions du patient, en arrière-plan : leur absence ne cache pas le programme. */
