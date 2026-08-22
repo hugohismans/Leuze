@@ -148,6 +148,11 @@ export const regenerateSeries = onCall(async (request: CallableRequest) => {
 
 export const register = onCall(async (request: CallableRequest) => {
   const patient = requirePatient(request)
+
+  // Réveil : voir `staffRegister`. La fiche d'activité le demande en s'affichant — on la
+  // lit bien avant d'appuyer sur « Je m'inscris », et le bouton ne paie plus le démarrage.
+  if (request.data?.warm === true) return { ok: true, warmed: true }
+
   const occurrenceId = requireString(request.data?.occurrenceId, 'occurrenceId')
 
   /*

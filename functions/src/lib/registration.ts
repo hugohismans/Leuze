@@ -88,12 +88,30 @@ export async function busyOn(
     .filter((r) => r.status !== 'cancelled' && r.occurrenceId !== ignoreOccurrenceId)
     .filter((r) => localDateOfOccurrenceId(r.occurrenceId) === localDate)
 
-  const seances =
+  /*
+    Les séances du jour et les motifs de rendez-vous se lisent en même temps.
+
+    Ils ne dépendent pas l'un de l'autre, et pourtant on les attendait l'un après l'autre :
+    deux allers-retours là où un suffit. Sur un téléphone en 4G, cela se compte en dixièmes
+    de seconde, et cela tombe juste avant que le bouton ne réponde.
+
+    Les motifs ne sont lus que si un rendez-vous du jour n'a personne d'attitré : un
+    rendez-vous fixé porte le nom de la personne, et « Rendez-vous avec Docteur Lemaire »
+    n'a besoin d'aucune lecture de plus.
+  */
+  const aNommer = rendezVous.docs.some(
+    (d) => d.data()['status'] === 'scheduled' && typeof d.data()['withWhom'] !== 'string',
+  )
+  const [seances, motifsBruts] = await Promise.all([
     memeJour.length === 0
-      ? []
-      : await database.getAll(
+      ? Promise.resolve([] as FirebaseFirestore.DocumentSnapshot[])
+      : database.getAll(
           ...memeJour.map((r) => database.collection(COLLECTIONS.occurrences).doc(r.occurrenceId)),
-        )
+        ),
+    aNommer
+      ? database.collection(COLLECTIONS.appointmentKinds).get()
+      : Promise.resolve(null),
+  ])
 
   const occupe: BusyEntry[] = []
   for (const document of seances) {
@@ -109,14 +127,12 @@ export async function busyOn(
     })
   }
 
-  const motifs = rendezVous.empty
-    ? []
-    : (await database.collection(COLLECTIONS.appointmentKinds).get()).docs.map((d) => ({
-        id: d.id,
-        name: (d.data()['name'] as string) ?? '',
-        icon: '',
-        isActive: true,
-      }))
+  const motifs = (motifsBruts?.docs ?? []).map((d) => ({
+    id: d.id,
+    name: (d.data()['name'] as string) ?? '',
+    icon: '',
+    isActive: true,
+  }))
 
   for (const document of rendezVous.docs) {
     const data = document.data()
@@ -216,11 +232,25 @@ export async function conflictsFor(
   patientUid: string,
   occurrenceId: string,
 ): Promise<BusyEntry[]> {
-  const snapshot = await database.collection(COLLECTIONS.occurrences).doc(occurrenceId).get()
+  /*
+    On lisait la séance, puis on regardait la journée de la personne — deux temps, alors
+    qu'il n'y a rien à attendre : le jour se lit dans l'identifiant de la séance, qui est
+    déterministe. Les deux partent donc ensemble.
+
+    C'est le contrôle que paie le bouton « Je m'inscris » du patient, avant même que
+    l'inscription ne commence. Chaque aller-retour économisé ici se voit à l'écran.
+  */
+  const jour = localDateOfOccurrenceId(occurrenceId)
+  // Forme d'identifiant inattendue : on n'invente pas d'avertissement. La transaction
+  // dira, elle, si la séance existe.
+  if (jour === null) return []
+
+  const [snapshot, occupe] = await Promise.all([
+    database.collection(COLLECTIONS.occurrences).doc(occurrenceId).get(),
+    busyOn(database, patientUid, jour, occurrenceId),
+  ])
   if (!snapshot.exists) return []
   const occurrence = docToOccurrence(snapshot)
-  const jour = occurrence.localDate
-  const occupe = await busyOn(database, patientUid, jour, occurrenceId)
   return conflictsWith({ start: occurrence.start, end: occurrence.end }, occupe)
 }
 

@@ -31,6 +31,17 @@
     })
   })
 
+  /*
+    Réveiller la fonction d'inscription pendant qu'on lit la fiche.
+
+    Elle s'arrête au bout d'un quart d'heure sans usage, et le premier appel suivant paie
+    son démarrage — plusieurs secondes, exactement au moment où l'on appuie sur « Je
+    m'inscris ». On lit la fiche bien avant de décider : le réveil a tout le temps.
+  */
+  $effect(() => {
+    void store.warmRegistration()
+  })
+
   const category = $derived(occurrence ? store.categoryOf(occurrence.categoryId) : null)
   const location = $derived(occurrence ? store.locationOf(occurrence.locationId) : null)
   const mine = $derived(occurrence ? store.myStatusFor(occurrence.id) : null)

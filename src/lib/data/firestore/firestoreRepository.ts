@@ -268,6 +268,16 @@ export function createFirestoreRepository(): AppRepository {
         mineCache = null
         return result as { ok: boolean; message: string }
       },
+
+      async warmRegistration(): Promise<void> {
+        // Un appel vide, sans attente et sans conséquence : la fonction se lève pendant
+        // qu'on lit la fiche. Une erreur ici ne regarde personne.
+        try {
+          await httpsCallable(functions, 'register')({ warm: true })
+        } catch {
+          /* rien : le réveil n'a pas abouti, l'inscription paiera le démarrage */
+        }
+      },
     },
 
     /**

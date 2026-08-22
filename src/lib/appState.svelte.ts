@@ -186,6 +186,11 @@ class AppStore {
     return (await this.repo()).registrations.unregister(occurrenceId)
   }
 
+  /** Réveille la fonction d'inscription, sans rien inscrire. Voir le port. */
+  async warmRegistration(): Promise<void> {
+    await (await this.repo()).registrations.warmRegistration().catch(() => undefined)
+  }
+
   /**
    * Le catalogue ne change quasiment jamais : il n'est chargé qu'une fois. L'écran
    * d'administration, lui, doit forcer la relecture après avoir ajouté un lieu.
