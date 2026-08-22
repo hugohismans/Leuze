@@ -3,6 +3,7 @@
  * Deux adapters les implémentent — `mock/` (écran de démonstration, tests)
  * et, au lot L1, `firestore/`. Aucun composant n'importe `firebase/*`.
  */
+import type { ActivityProposal, ProposalDraft } from '../domain/proposals'
 import type {
   Appointment,
   AppointmentKind,
@@ -105,6 +106,25 @@ export interface AppointmentService {
   warmRequest(): Promise<void>
 }
 
+/**
+ * Les idées d'activité, côté patient.
+ *
+ * On dépose, on relit la sienne, c'est tout. Aucune modification, aucune suppression :
+ * une idée déposée appartient à la file, et la retirer ferait disparaître une réponse
+ * déjà écrite par quelqu'un.
+ */
+export interface ProposalService {
+  /** Mes idées, la plus récente d'abord. Jamais celles des autres. */
+  listMine(): Promise<ActivityProposal[]>
+  /**
+   * Déposer une idée. Le serveur revérifie ce que l'écran a déjà vérifié — longueur des
+   * textes, une seule idée en attente — parce qu'un écran peut être contourné.
+   */
+  submit(draft: ProposalDraft): Promise<{ ok: boolean; message: string }>
+  /** Réveille la fonction, sans rien déposer. Voir `warmRegistration`. */
+  warmProposal(): Promise<void>
+}
+
 export type PatientSession = {
   patientUid: string | null
   firstName: string | null
@@ -134,5 +154,6 @@ export type AppRepository = {
   occurrences: OccurrenceRepository
   registrations: RegistrationService
   appointments: AppointmentService
+  proposals: ProposalService
   session: SessionService
 }

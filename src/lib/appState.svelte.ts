@@ -4,6 +4,7 @@
  */
 import { upcomingScheduled } from './domain/appointments'
 import { capacityOf, likelyStatus } from './domain/capacity'
+import type { ActivityProposal, ProposalDraft } from './domain/proposals'
 import { monthGrid, todayLocalDate, weekDays } from './domain/time'
 import type {
   Appointment,
@@ -283,6 +284,40 @@ class AppStore {
     if (this.#ecrituresInscription === 0) void this.refreshOccurrence(occurrenceId)
     return resultat
   }
+
+  /**
+   * Mes idées d'activité. Les miennes seules — les règles Firestore ne rendent pas les
+   * autres, et l'écran n'en demande pas.
+   */
+  proposals = $state<ActivityProposal[]>([])
+
+  async loadProposals(): Promise<void> {
+    this.proposals = await (await this.repo()).proposals.listMine().catch(() => [])
+  }
+
+  /**
+   * Déposer une idée. L'écran a déjà vérifié le texte avec les mêmes fonctions du
+   * domaine que le serveur ; ce qui revient ici est donc presque toujours un « oui ».
+   */
+  async proposeActivity(draft: ProposalDraft): Promise<{ ok: boolean; message: string }> {
+    const resultat = await (await this.repo()).proposals.submit(draft)
+    // La liste se met à jour derrière : la réponse dit déjà ce que la personne attend.
+    if (resultat.ok) void this.loadProposals()
+    return resultat
+  }
+
+  /** Réveille la fonction des idées, sans rien déposer. */
+  async warmProposal(): Promise<void> {
+    await (await this.repo()).proposals.warmProposal().catch(() => undefined)
+  }
+
+  /**
+   * Vrai quand une idée attend déjà une réponse : on n'en dépose qu'une à la fois.
+   *
+   * La liste ne contient que les miennes — les règles n'en rendent pas d'autres — donc
+   * la question se pose sur elle seule, sans avoir à comparer d'identifiant.
+   */
+  readonly hasWaitingProposal = $derived(this.proposals.some((p) => p.status === 'proposed'))
 
   /** Réveille la fonction d'inscription, sans rien inscrire. Voir le port. */
   async warmRegistration(): Promise<void> {

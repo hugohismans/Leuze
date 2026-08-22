@@ -63,6 +63,8 @@
   let busy = $state(false)
 
   const nouvelle = $derived(activityId === 'nouvelle')
+  /** L'idée dont cette activité est issue, quand on arrive depuis « Les idées ». */
+  const venuDUneIdee = $derived(nouvelle ? staffStore.propositionAConvertir : null)
   /**
    * On revient d'où l'on vient : posée depuis la semaine, l'activité y ramène ;
    * ouverte depuis la liste, elle ramène à la liste.
@@ -80,6 +82,28 @@
       locationId = lieux[0]!.id
       // La date vient de la case de la semaine sur laquelle le soignant a cliqué.
       if (date !== undefined) dateUnique = date
+
+      /*
+        L'activité née d'une idée de patient arrive avec son titre et sa description.
+
+        Les recopier à la main serait long et fautif — et surtout, la personne qui a
+        proposé doit retrouver ses mots.
+
+        L'animateur, en revanche, n'est pas pré-rempli, même quand la personne s'est
+        proposée pour animer. Ce champ désigne un compte du personnel : c'est lui qui
+        donne le droit de faire l'appel, et il doit rester porté par quelqu'un de
+        responsable. Que le patient anime avec lui est une chose à convenir de vive voix,
+        pas un champ à remplir — l'écran le rappelle plus bas.
+      */
+      const idee = staffStore.propositionAConvertir
+      if (idee !== null) {
+        titre = idee.title
+        description = idee.description
+        // Une activité née d'une idée n'est pas au programme d'emblée : il lui manque un
+        // jour, une heure et un lieu, et c'est ce formulaire qui les demande.
+        auProgramme = false
+      }
+
       chargee = true
       return
     }
@@ -209,7 +233,7 @@
     }
     busy = true
     try {
-      await staffStore.saveActivity({
+      const nouvelIdentifiant = await staffStore.saveActivity({
         ...(nouvelle ? {} : { id: activityId }),
         ...(seriesId === undefined ? {} : { seriesId }),
         title: titre.trim(),
@@ -243,6 +267,17 @@
             }),
         isActive: auProgramme,
       })
+      /*
+        L'idée et l'activité se rejoignent ici.
+
+        Sans ce rattachement, l'idée resterait dans « l'activité reste à créer » alors
+        qu'elle vient de l'être, et quelqu'un la créerait une seconde fois.
+      */
+      const idee = staffStore.propositionAConvertir
+      if (idee !== null && nouvelle) {
+        staffStore.propositionAConvertir = null
+        void staffStore.decideProposal(idee.id, 'accepted', { activityId: nouvelIdentifiant })
+      }
       navigate(retour)
     } catch {
       erreur = "L'enregistrement n'a pas abouti. Réessayez dans un instant."
@@ -521,6 +556,37 @@
     <p role="status" class="mb-5 rounded-xl bg-surface-soft p-4 text-lg text-ink">
       <span aria-hidden="true">🔒</span> {refusDeModifier}
     </p>
+  {/if}
+
+  <!--
+    Cette activité vient d'une idée de patient : le dire, et dire ce qu'il reste à faire.
+
+    Le titre et la description sont ceux de la personne — elle doit y retrouver ses mots.
+    L'animateur, lui, reste un compte du personnel : c'est ce compte qui donne le droit de
+    faire l'appel, et quelqu'un doit en être responsable. Qu'un patient anime avec lui se
+    convient de vive voix ; ce n'est pas un champ de ce formulaire.
+  -->
+  {#if venuDUneIdee !== null}
+    <div role="status" class="mb-5 rounded-xl border-2 border-brand-500 bg-brand-100 p-4">
+      <p class="text-lg font-semibold text-ink">
+        <span aria-hidden="true">💡</span>
+        Cette activité vient d'une idée{venuDUneIdee.patientFirstName
+          ? ` de ${venuDUneIdee.patientFirstName}`
+          : ' de patient'}.
+      </p>
+      <p class="mt-1 text-lg text-ink">
+        Le titre et la description sont les siens : gardez-les autant que possible.
+        Il reste à choisir le jour, l'heure et le lieu.
+      </p>
+      {#if venuDUneIdee.wantsToLead}
+        <p class="mt-2 text-lg text-ink">
+          <span aria-hidden="true">🙋</span>
+          {venuDUneIdee.patientFirstName ?? 'La personne'} s'est proposé{venuDUneIdee.patientFirstName ? '' : 'e'}
+          pour l'animer. Désignez tout de même un soignant responsable — c'est lui qui fera
+          l'appel — puis parlez-en avec {venuDUneIdee.patientFirstName ?? 'la personne'}.
+        </p>
+      {/if}
+    </div>
   {/if}
 
   <form onsubmit={enregistrer} class="grid gap-5">

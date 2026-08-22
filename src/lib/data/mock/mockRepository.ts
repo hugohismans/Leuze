@@ -11,6 +11,13 @@
 import { isVisibleToService } from '../../domain/audience'
 import { patientConflictNotice } from '../../domain/conflicts'
 import {
+  alreadyWaiting,
+  cleanProposal,
+  validateProposal,
+  type ActivityProposal,
+  type ProposalDraft,
+} from '../../domain/proposals'
+import {
   AUTO_DURATION_MIN,
   AUTO_HORIZON_DAYS,
   autoAcceptMessage,
@@ -223,6 +230,48 @@ export function createMockRepository(options: { now?: () => Date } = {}): MockRe
       },
 
       async warmRegistration(): Promise<void> {
+        // Rien à réveiller : la démonstration ne parle à aucun serveur.
+      },
+    },
+
+    /** Les idées d'activité, en mémoire. Mêmes refus que le serveur, aux mêmes endroits. */
+    proposals: {
+      async listMine(): Promise<ActivityProposal[]> {
+        const uid = world.session.patientUid
+        if (uid === null) return []
+        return world.proposals
+          .filter((p) => p.patientUid === uid)
+          .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+      },
+
+      async submit(draft: ProposalDraft): Promise<{ ok: boolean; message: string }> {
+        const uid = world.session.patientUid
+        if (uid === null) return { ok: false, message: 'Saisissez votre code pour proposer une activité.' }
+        const propre = cleanProposal(draft)
+        const valide = validateProposal(propre)
+        if (!valide.ok) return { ok: false, message: valide.message }
+        if (alreadyWaiting(world.proposals, uid)) {
+          return {
+            ok: false,
+            message:
+              'Vous avez déjà une idée en attente. Un soignant va la lire, puis vous pourrez en proposer une autre.',
+          }
+        }
+        world.proposals = [
+          ...world.proposals,
+          {
+            id: `idee-${uid}-${clock().getTime()}`,
+            patientUid: uid,
+            patientFirstName: world.session.firstName ?? 'Prénom inconnu',
+            ...propre,
+            status: 'proposed',
+            createdAt: clock(),
+          },
+        ]
+        return { ok: true, message: 'Votre idée est envoyée. Un soignant va la lire.' }
+      },
+
+      async warmProposal(): Promise<void> {
         // Rien à réveiller : la démonstration ne parle à aucun serveur.
       },
     },

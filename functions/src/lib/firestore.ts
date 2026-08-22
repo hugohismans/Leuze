@@ -57,6 +57,8 @@ export const COLLECTIONS = {
   categories: 'categories',
   practitioners: 'practitioners',
   appointments: 'appointments',
+  /** Les activités proposées par les patients, avant validation. */
+  proposals: 'proposals',
   appointmentKinds: 'appointmentKinds',
   config: 'config',
 } as const

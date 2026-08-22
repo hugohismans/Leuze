@@ -12,6 +12,7 @@ import { config } from '../../config'
 import { conflictsWith, type BusyEntry } from '../../domain/conflicts'
 import { expand } from '../../domain/recurrence'
 import { addLocalDays, instantOf, startOfIsoWeek, todayLocalDate } from '../../domain/time'
+import type { ActivityProposal } from '../../domain/proposals'
 import type { Appointment, Occurrence, Registration } from '../../domain/types'
 import { recount, type Board } from '../../domain/waitlist'
 import { activitiesSeed } from '../seed/activities.seed'
@@ -39,6 +40,8 @@ export type MockWorld = {
   attendance: Map<string, 'present' | 'absent'>
   registrations: Registration[]
   appointments: Appointment[]
+  /** Les idées déposées par les patients, en attente d'une réponse ou déjà décidées. */
+  proposals: ActivityProposal[]
   patients: (SeedPatient & { expiresAt?: Date })[]
   session: PatientSession
   /**
@@ -168,6 +171,24 @@ function build(now: Date): MockWorld {
     attendance: new Map(),
     registrations,
     appointments,
+    /*
+      Une idée déjà déposée, pour que la démonstration montre l'onglet plein plutôt
+      qu'une file vide. Elle vient d'un patient qui n'est pas celui de la démonstration :
+      la personne qui essaie l'application doit pouvoir en proposer une à son tour.
+    */
+    proposals: [
+      {
+        id: 'idee-demonstration',
+        patientUid: patients[1]?.uid ?? 'p_2',
+        patientFirstName: patients[1]?.firstName ?? 'Bernard',
+        title: 'Tournoi d’échecs',
+        description:
+          'Je joue depuis longtemps et je peux apprendre les règles à ceux qui ne savent pas. Il faudrait deux ou trois échiquiers et une table.',
+        wantsToLead: true,
+        status: 'proposed',
+        createdAt: addLocalDays(today, -2) === today ? now : instantOf(addLocalDays(today, -2), '10:00'),
+      },
+    ],
     patients,
     session:
       aLaPlaceDe === undefined

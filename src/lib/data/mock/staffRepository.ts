@@ -5,6 +5,7 @@
 import { addLocalDays, addMinutes, instantOf, todayLocalDate } from '../../domain/time'
 import { agendaWeek, suggestSlot } from '../../domain/agenda'
 import { blockingConflicts, type BusyEntry } from '../../domain/conflicts'
+import type { ActivityProposal } from '../../domain/proposals'
 import type { Activity, Appointment, LocalDate, LocalTime, Occurrence } from '../../domain/types'
 import { generationWindow, planGeneration } from '../generation'
 import { activitiesSeed } from '../seed/activities.seed'
@@ -620,6 +621,52 @@ export function createMockStaffApp(): StaffApp {
         if (!outcome.ok) return { ok: false, message: "Cette personne n'était pas inscrite." }
         applyBoard(outcome.board)
         return { ok: true, message: 'Retiré de la liste.' }
+      },
+
+      async listProposals(): Promise<ActivityProposal[]> {
+        // Les règles Firestore ne rendent ces idées qu'à l'administrateur : la
+        // démonstration doit refuser exactement ce que le serveur refuse, sans quoi
+        // prendre la place d'un soignant ne montrerait pas ce qu'il voit vraiment.
+        exigeAdministrateur()
+        return [...world.proposals].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+      },
+
+      async decideProposal(
+        proposalId: string,
+        decision: 'accepted' | 'declined',
+        options: { declineReason?: string; activityId?: string } = {},
+      ) {
+        exigeAdministrateur()
+        const idee = world.proposals.find((p) => p.id === proposalId)
+        if (idee === undefined) return { ok: false, message: "Cette idée n'existe plus." }
+        const motif = (options.declineReason ?? '').trim()
+        if (decision === 'declined' && motif.length < 3) {
+          return {
+            ok: false,
+            message: 'Dites en une phrase pourquoi cette idée n’est pas retenue. Elle sera lue telle quelle.',
+          }
+        }
+        if (idee.status !== 'proposed' && idee.status !== decision) {
+          return { ok: false, message: 'Cette idée a déjà reçu une réponse.' }
+        }
+        world.proposals = world.proposals.map((p) =>
+          p.id === proposalId
+            ? {
+                ...p,
+                status: decision,
+                decidedAt: new Date(),
+                ...(decision === 'declined' ? { declineReason: motif } : {}),
+                ...(options.activityId === undefined ? {} : { activityId: options.activityId }),
+              }
+            : p,
+        )
+        return {
+          ok: true,
+          message:
+            decision === 'accepted'
+              ? 'Idée retenue. Créez l’activité : le titre et la description sont recopiés.'
+              : 'Réponse enregistrée. La personne lira votre phrase.',
+        }
       },
 
       async promotePatient(occurrenceId: string, patientUid: string) {

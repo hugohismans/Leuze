@@ -46,6 +46,8 @@ const httpsCallable: typeof httpsCallableSansLimite = ((...args: Parameters<type
 import { audienceQueryKeys } from '../../domain/audience'
 import { enClair } from '../../erreurs'
 import { patientIdentityOf } from '../../domain/session'
+import type { ActivityProposal, ProposalDraft } from '../../domain/proposals'
+import { versProposition } from './propositions'
 import type {
   Appointment,
   AppointmentKind,
@@ -281,6 +283,48 @@ export function createFirestoreRepository(): AppRepository {
             httpsCallable(functions, nom)({ warm: true }).catch(() => undefined),
           ),
         )
+      },
+    },
+
+    /**
+     * Les idées d'activité. Les règles laissent chacun lire les siennes — c'est une
+     * lecture directe, sans fonction, donc sans démarrage à froid. Déposer, en revanche,
+     * passe par une fonction : la longueur des textes et la règle « une seule idée en
+     * attente » ne peuvent pas être garanties par un navigateur.
+     */
+    proposals: {
+      async listMine(): Promise<ActivityProposal[]> {
+        await sessionReady
+        if (session.patientUid === null) return []
+        try {
+          // `getDocs` est déjà borné dans le temps ici (voir en haut du fichier) : le
+          // réenvelopper poserait deux minuteries sur la même lecture.
+          const snapshot = await getDocs(
+            query(collection(db, 'proposals'), where('patientUid', '==', session.patientUid)),
+          )
+          return snapshot.docs
+            .map((d) => versProposition(d.id, d.data() as Record<string, unknown>))
+            .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+        } catch {
+          // Une idée qu'on n'arrive pas à relire ne doit pas condamner l'écran.
+          return []
+        }
+      },
+
+      async submit(draft: ProposalDraft): Promise<{ ok: boolean; message: string }> {
+        const resultat = await callAndMap<{ ok: boolean; message?: string }>(
+          'proposeActivity',
+          { ...draft },
+          "Votre idée n'a pas pu être envoyée. Réessayez dans un instant.",
+        )
+        return {
+          ok: resultat.ok === true,
+          message: resultat.message ?? 'Votre idée est envoyée. Un soignant va la lire.',
+        }
+      },
+
+      async warmProposal(): Promise<void> {
+        await httpsCallable(functions, 'proposeActivity')({ warm: true }).catch(() => undefined)
       },
     },
 

@@ -17,6 +17,7 @@ import { describeGeneration } from './data/generation'
 import type { Account } from './domain/impersonation'
 import type { PatientPlanning } from './data/staffPorts'
 import type { CatalogKind, CatalogRemoval } from './domain/catalog'
+import type { ActivityProposal } from './domain/proposals'
 import { store } from './appState.svelte'
 import { countsOf, undoToggle, withToggled } from './domain/roster'
 import { todayLocalDate, weekDays } from './domain/time'
@@ -109,6 +110,9 @@ class StaffStore {
       void store.loadAppointmentKinds()
       void this.loadPatients()
       void this.loadAppointments()
+      // Les idées ne concernent que l'administrateur : lui seul les lit, et lui seul
+      // porte le compteur de l'onglet.
+      if (this.identity.role === 'admin') void this.loadProposals()
       await this.refresh()
     }
     return result.ok ? { ok: true } : { ok: false, message: result.message }
@@ -142,6 +146,7 @@ class StaffStore {
       void store.loadAppointmentKinds()
       void this.loadPatients()
       void this.loadAppointments()
+      if (this.identity.role === 'admin') void this.loadProposals()
     }
   }
 
@@ -579,6 +584,56 @@ class StaffStore {
     if (this.#ecrituresEnCours === 0) void this.openRoster(occurrenceId)
     this.message = resultat.message
     return resultat.message
+  }
+
+  // --- les idées des patients ------------------------------------------------
+
+  /** Toutes les idées déposées, les plus anciennes d'abord : c'est l'ordre à traiter. */
+  proposals = $state<ActivityProposal[]>([])
+
+  /**
+   * L'idée retenue dont l'activité reste à créer.
+   *
+   * Elle voyage ici plutôt que dans l'adresse : accepter une idée mène droit au
+   * formulaire d'activité, qui s'en sert pour recopier le titre et la description. Si la
+   * page est rechargée entre-temps, on la perd — l'idée reste alors « à créer » dans la
+   * liste, et le bouton la propose à nouveau. Rien n'est perdu, seulement à refaire.
+   */
+  propositionAConvertir = $state<ActivityProposal | null>(null)
+
+  async loadProposals(): Promise<void> {
+    this.proposals = await (await this.app$()).repository.listProposals().catch(() => [])
+  }
+
+  /** Le nombre d'idées qui attendent une réponse — c'est lui que porte l'onglet. */
+  readonly proposalsWaiting = $derived(this.proposals.filter((p) => p.status === 'proposed').length)
+
+  /**
+   * Répondre à une idée. La liste change d'état tout de suite, comme partout ailleurs,
+   * et revient à ce qu'elle était si le serveur refuse.
+   */
+  async decideProposal(
+    proposalId: string,
+    decision: 'accepted' | 'declined',
+    options: { declineReason?: string; activityId?: string } = {},
+  ): Promise<{ ok: boolean; message: string }> {
+    const avant = this.proposals
+    this.proposals = this.proposals.map((p) =>
+      p.id === proposalId
+        ? {
+            ...p,
+            status: decision,
+            decidedAt: new Date(),
+            ...(options.declineReason === undefined ? {} : { declineReason: options.declineReason }),
+            ...(options.activityId === undefined ? {} : { activityId: options.activityId }),
+          }
+        : p,
+    )
+    const resultat = await (await this.app$()).repository.decideProposal(proposalId, decision, options)
+    if (!resultat.ok) this.proposals = avant
+    this.message = resultat.message
+    void this.loadProposals()
+    return resultat
   }
 
   /** Appelé à chaque changement d'écran par `StaffApp`. */

@@ -55,6 +55,12 @@
     ...(staffStore.isAdmin ? [{ chemin: '/soignant/plannings', libelle: 'Les plannings' }] : []),
     ...(monPlanning === null ? [] : [{ chemin: `/soignant/intervenant/${monPlanning}`, libelle: 'Mon planning' }]),
     { chemin: '/soignant/rendez-vous', libelle: 'Rendez-vous', enAttente },
+    // Les idées des patients : c'est l'administrateur qui construit le programme, donc
+    // c'est lui qui répond. Le nombre en attente se voit — une idée oubliée décourage
+    // plus sûrement qu'un refus.
+    ...(staffStore.isAdmin
+      ? [{ chemin: '/soignant/idees', libelle: 'Les idées', enAttente: staffStore.proposalsWaiting }]
+      : []),
   ])
 
   // « Voir à leur place » est un outil de mise au point, réservé à l'administrateur :

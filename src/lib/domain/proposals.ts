@@ -27,6 +27,14 @@ export type ActivityProposal = {
   id: string
   /** UID Firebase Auth du patient. Aucun nom de famille, ici comme ailleurs. */
   patientUid: string
+  /**
+   * Le prénom, recopié au moment du dépôt.
+   *
+   * La collection des patients n'est lisible par aucun client, pas même par
+   * l'administrateur : sans cette copie, il répondrait à un identifiant. Un prénom, et
+   * rien d'autre — comme partout ailleurs dans l'application.
+   */
+  patientFirstName?: string
   title: string
   description: string
   /** La personne se propose de l'animer elle-même. L'équipe reste seule à en décider. */

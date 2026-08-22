@@ -106,7 +106,8 @@ const COLLECTIONS = [
   'occurrences',
   'registrations',
   'appointments',
-  'activityProposals',
+  // Les idées des patients : texte libre et prénom. Elles doivent partir avec le reste.
+  'proposals',
   'patients',
   'patientCodes',
   'practitioners',

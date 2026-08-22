@@ -22,6 +22,14 @@ import {
   unregisterTx,
 } from './lib/registration'
 import { patientConflictNotice, type BusyEntry } from './domain/conflicts'
+import {
+  alreadyWaiting,
+  cleanProposal,
+  validateProposal,
+  DESCRIPTION_MAX,
+  TITLE_MAX,
+  type ActivityProposal,
+} from './domain/proposals'
 import { agendaWeek, suggestSlot } from './domain/agenda'
 import { attendanceRefusal, canMarkAttendance } from './domain/attendance'
 import {
@@ -861,6 +869,131 @@ async function premierePlaceLibre(
   }
   return null
 }
+
+// ---------------------------------------------------------------------------
+// Les idées des patients
+// ---------------------------------------------------------------------------
+
+/**
+ * Proposer une activité.
+ *
+ * Le programme se construit pour les patients ; rien n'oblige à ce qu'il se construise
+ * sans eux. Quelqu'un qui sait jouer aux échecs, qui tricote ou qui connaît un jeu peut
+ * proposer une séance, et l'animer s'il s'en sent capable et si l'équipe est d'accord.
+ *
+ * L'écriture ne peut pas venir du navigateur. Deux raisons, et les règles Firestore
+ * l'interdisent : la longueur des textes se vérifie ici — un champ libre est le
+ * réceptacle naturel du contenu clinique, et on le tient court — et l'on ne dépose
+ * qu'une idée à la fois, sans quoi une file où la même personne en met dix cesse d'être
+ * lue, aux dépens des autres.
+ *
+ * Le prénom est recopié sur l'idée : la collection des patients n'est lisible par aucun
+ * client, pas même par l'administrateur, et il doit pourtant savoir à qui il répond.
+ */
+export const proposeActivity = onCall(async (request: CallableRequest) => {
+  const patient = requirePatient(request)
+  // Réveil : voir `register`. L'écran le demande en s'affichant — on écrit deux phrases
+  // avant d'appuyer, ce qui laisse tout le temps.
+  if (request.data?.warm === true) return { ok: true, warmed: true }
+
+  const brouillon = cleanProposal({
+    title: requireString(request.data?.title, 'title', TITLE_MAX),
+    description: requireString(request.data?.description, 'description', DESCRIPTION_MAX),
+    wantsToLead: request.data?.wantsToLead === true,
+  })
+  const valide = validateProposal(brouillon)
+  if (!valide.ok) return { ok: false, message: valide.message }
+
+  // Les idées de cette personne, et sa fiche : deux lectures indépendantes.
+  const [siennes, fiche] = await Promise.all([
+    db().collection(COLLECTIONS.proposals).where('patientUid', '==', patient.uid).get(),
+    db().collection(COLLECTIONS.patients).doc(patient.uid).get(),
+  ])
+  const dejaEnAttente = alreadyWaiting(
+    siennes.docs.map((d) => ({
+      ...(d.data() as Omit<ActivityProposal, 'id' | 'createdAt'>),
+      id: d.id,
+      createdAt: new Date(0),
+    })),
+    patient.uid,
+  )
+  if (dejaEnAttente) {
+    return {
+      ok: false,
+      message: 'Vous avez déjà une idée en attente. Un soignant va la lire, puis vous pourrez en proposer une autre.',
+    }
+  }
+
+  const reference = db().collection(COLLECTIONS.proposals).doc()
+  await reference.set({
+    patientUid: patient.uid,
+    patientFirstName: (fiche.data()?.['firstName'] as string | undefined) ?? 'Prénom inconnu',
+    serviceId: patient.serviceId ?? '',
+    title: brouillon.title,
+    description: brouillon.description,
+    wantsToLead: brouillon.wantsToLead,
+    status: 'proposed',
+    createdAt: Timestamp.now(),
+  })
+
+  return { ok: true, id: reference.id, message: 'Votre idée est envoyée. Un soignant va la lire.' }
+})
+
+/**
+ * Répondre à une idée : la retenir, ou non.
+ *
+ * Réservé à l'administrateur — c'est lui qui construit le programme. Un refus demande un
+ * motif : « non » sans raison décourage plus sûrement que le refus lui-même, et la
+ * personne qui a proposé lira cette phrase telle quelle.
+ *
+ * La même idée peut être décidée deux fois avec le même verdict : c'est ainsi que
+ * l'activité créée à partir d'une idée acceptée vient s'y rattacher, une fois qu'elle
+ * existe. Changer d'avis après coup, en revanche, ne se fait pas ici.
+ */
+export const decideProposal = onCall(async (request: CallableRequest) => {
+  const staff = requireAdmin(request)
+  const proposalId = requireString(request.data?.proposalId, 'proposalId')
+  const decision = request.data?.decision
+  if (decision !== 'accepted' && decision !== 'declined') {
+    throw new HttpsError('invalid-argument', 'Répondez « accepted » ou « declined ».')
+  }
+  const activityId = typeof request.data?.activityId === 'string' ? request.data.activityId : null
+  const motif =
+    typeof request.data?.declineReason === 'string' ? request.data.declineReason.trim().slice(0, 300) : ''
+  if (decision === 'declined' && motif.length < 3) {
+    return {
+      ok: false,
+      message: 'Dites en une phrase pourquoi cette idée n’est pas retenue. Elle sera lue telle quelle.',
+    }
+  }
+
+  const reference = db().collection(COLLECTIONS.proposals).doc(proposalId)
+  const snapshot = await reference.get()
+  if (!snapshot.exists) return { ok: false, message: "Cette idée n'existe plus." }
+  const dejaDecidee = snapshot.data()?.['status'] as string | undefined
+  if (dejaDecidee !== 'proposed' && dejaDecidee !== decision) {
+    return { ok: false, message: 'Cette idée a déjà reçu une réponse.' }
+  }
+
+  await reference.set(
+    {
+      status: decision,
+      decidedAt: Timestamp.now(),
+      decidedBy: staff.uid,
+      ...(decision === 'declined' ? { declineReason: motif } : {}),
+      ...(activityId === null ? {} : { activityId }),
+    },
+    { merge: true },
+  )
+
+  return {
+    ok: true,
+    message:
+      decision === 'accepted'
+        ? 'Idée retenue. Créez l’activité : le titre et la description sont recopiés.'
+        : 'Réponse enregistrée. La personne lira votre phrase.',
+  }
+})
 
 /**
  * Échange d'un code contre une session. Le code n'est jamais comparé en clair et
