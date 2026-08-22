@@ -43,13 +43,28 @@
   let plannings = $state<PatientPlanning[]>([])
   let maintenant = $state(new Date())
 
+  /*
+    Les plannings affichés sont ceux de la semaine demandée en dernier.
+
+    Deux appuis rapprochés sur « Semaine suivante » lancent deux lectures ; sans
+    précaution, la première peut revenir après la seconde et remplir l'écran avec la
+    semaine d'avant, sous le bon titre. On jette ce qui est périmé.
+  */
   $effect(() => {
     const debut = staffStore.week[0]
     if (debut === undefined) return
+    let perimee = false
     void staffStore
       .weekPlannings()
-      .then((valeur) => (plannings = valeur))
-      .catch(() => (plannings = []))
+      .then((valeur) => {
+        if (!perimee) plannings = valeur
+      })
+      .catch(() => {
+        if (!perimee) plannings = []
+      })
+    return () => {
+      perimee = true
+    }
   })
 
   $effect(() => {

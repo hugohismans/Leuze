@@ -41,10 +41,17 @@
 
   $effect(() => {
     if (!staffStore.isAdmin || comptes.length > 0) return
+    // Une réponse qui arrive après qu'on a quitté l'écran n'a rien à y écrire.
+    let perimee = false
     void staffStore
       .listAccounts()
-      .then((valeur) => (comptes = valeur))
+      .then((valeur) => {
+        if (!perimee) comptes = valeur
+      })
       .catch(() => undefined)
+    return () => {
+      perimee = true
+    }
   })
 
   const compteDe = (practitionerId: string): Account | undefined =>

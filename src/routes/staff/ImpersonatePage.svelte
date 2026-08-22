@@ -32,13 +32,22 @@
   $effect(() => {
     if (!staffStore.isAdmin) return
     chargement = true
+    // Une réponse qui arrive après qu'on a quitté l'écran n'a rien à y écrire.
+    let perimee = false
     void staffStore
       .listAccounts()
-      .then((valeur) => (comptes = valeur))
-      .catch((error: unknown) => {
-        erreur = enClair(error)
+      .then((valeur) => {
+        if (!perimee) comptes = valeur
       })
-      .finally(() => (chargement = false))
+      .catch((error: unknown) => {
+        if (!perimee) erreur = enClair(error)
+      })
+      .finally(() => {
+        if (!perimee) chargement = false
+      })
+    return () => {
+      perimee = true
+    }
   })
 
   const acteur = $derived({ uid: staffStore.identity.uid, role: staffStore.identity.role })

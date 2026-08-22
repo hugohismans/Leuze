@@ -206,6 +206,14 @@
     if (clef === '' || clef === planningPour || !formulaireOuvert) return
     planningPour = clef
     chargementPlanning = true
+    /*
+      L'agenda affiché est celui du dernier choix, jamais celui d'un choix d'avant.
+
+      On change d'intervenant, puis de patient, puis de durée : trois lectures partent, et
+      rien ne garantit qu'elles reviennent dans l'ordre. Poser un rendez-vous d'après la
+      disponibilité de quelqu'un d'autre, c'est exactement ce que cet écran doit empêcher.
+    */
+    let perimee = false
     void staffStore
       .appointmentPlanning({
         practitionerId: intervenantDirect,
@@ -213,8 +221,15 @@
         preference: preferenceSouhaitee,
         durationMin: dureeDirecte,
       })
-      .then((valeur) => (planning = valeur))
-      .finally(() => (chargementPlanning = false))
+      .then((valeur) => {
+        if (!perimee) planning = valeur
+      })
+      .finally(() => {
+        if (!perimee) chargementPlanning = false
+      })
+    return () => {
+      perimee = true
+    }
   })
 
   /** Le créneau proposé, posé dans le formulaire d'un clic. */

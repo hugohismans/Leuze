@@ -22,13 +22,35 @@
   /** Un message d'erreur reste visible ; une confirmation est déjà affichée par le panneau. */
   let messageIsError = $state(false)
 
+  /*
+    La fiche affichée est toujours celle qu'on a demandée en dernier.
+
+    Cet effet se rejoue à chaque relecture du programme, et l'on ouvre parfois deux fiches
+    coup sur coup. Sans précaution, la réponse la plus lente arrive après la plus récente
+    et l'écrase : on lit alors la fiche d'une autre activité, sous le bon titre. C'est le
+    même défaut que celui qui décochait les prénoms en réunion — il vaut partout où l'on
+    attend une réponse.
+
+    Quand le programme contient déjà la séance, on la prend telle quelle : la relire
+    coûtait une lecture réseau à chaque rafraîchissement, pour la même valeur.
+  */
   $effect(() => {
     const id = occurrenceId
-    void store.occurrences
-    store.getOccurrence(id).then((found) => {
+    const dejaLa = store.occurrences.find((o) => o.id === id) ?? null
+    if (dejaLa !== null) {
+      occurrence = dejaLa
+      notFound = false
+      return
+    }
+    let perimee = false
+    void store.getOccurrence(id).then((found) => {
+      if (perimee) return
       occurrence = found
       notFound = found === null
     })
+    return () => {
+      perimee = true
+    }
   })
 
   /*
