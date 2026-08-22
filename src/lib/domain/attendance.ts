@@ -27,7 +27,45 @@ export function hasFacilitator(occurrence: { facilitatorId?: string }): boolean 
   return occurrence.facilitatorId !== undefined && occurrence.facilitatorId !== ''
 }
 
-export function canMarkAttendance(actor: Marker, occurrence: { facilitatorId?: string }): boolean {
+/**
+ * L'activité est animée par un patient, seul.
+ *
+ * Il n'y a alors pas d'appel, et ce n'est pas un manque : c'est une décision. Un patient
+ * qui anime une partie d'échecs n'a pas à noter qui était là — personne ne le lui a
+ * demandé, et lui confier la présence de ses camarades serait lui confier autre chose
+ * que l'activité.
+ *
+ * À ne pas confondre avec une activité dont l'animateur n'est qu'un nom écrit à la main :
+ * là, quelqu'un du personnel anime mais n'a pas de compte, et il faut le lui créer.
+ */
+export function isLedByPatient(occurrence: { ledByPatient?: boolean }): boolean {
+  return occurrence.ledByPatient === true
+}
+
+/**
+ * L'appel est-il possible sur cette séance, quel qu'en soit l'auteur ?
+ *
+ * C'est la question que pose l'écran avant de proposer un bouton : proposer un geste qui
+ * mènera à un refus est une promesse en l'air. Elle vaut aussi comme garde-fou contre une
+ * donnée incohérente — un intervenant resté renseigné sur une activité animée par un
+ * patient ne doit pas rouvrir un appel dont personne n'a voulu.
+ */
+export function attendanceOpen(occurrence: { facilitatorId?: string; ledByPatient?: boolean }): boolean {
+  return hasFacilitator(occurrence) && !isLedByPatient(occurrence)
+}
+
+export function canMarkAttendance(
+  actor: Marker,
+  occurrence: { facilitatorId?: string; ledByPatient?: boolean },
+): boolean {
+  /*
+    Une activité animée par un patient n'a pas d'appel, pour personne — pas même pour
+    l'administrateur. Le contrôle passe avant tous les autres, et il ne regarde pas si un
+    intervenant est par ailleurs désigné : si les deux étaient renseignés, la décision
+    « c'est un patient qui anime » l'emporte. Un appel dont personne n'a voulu ne doit
+    pas pouvoir se rouvrir par une donnée oubliée.
+  */
+  if (isLedByPatient(occurrence)) return false
   // L'administrateur reste le recours : sans lui, l'absence de la personne qui anime
   // laisserait la feuille inachevée jusqu'à son retour.
   if (actor.role === 'admin') return hasFacilitator(occurrence)
@@ -51,7 +89,15 @@ export function canMarkAttendance(actor: Marker, occurrence: { facilitatorId?: s
 export function attendanceRefusal(occurrence: {
   facilitator?: string
   facilitatorId?: string
+  ledByPatient?: boolean
 }): string {
+  if (isLedByPatient(occurrence)) {
+    // Ni un manque ni une erreur : on ne propose pas de « corriger » quoi que ce soit.
+    const qui = occurrence.facilitator
+    return qui === undefined || qui === ''
+      ? "Cette activité est animée par un patient. Il n'y a pas d'appel, et c'est voulu."
+      : `${qui} anime cette activité. Il n'y a pas d'appel, et c'est voulu.`
+  }
   if (!hasFacilitator(occurrence)) {
     const nomme = occurrence.facilitator
     if (nomme !== undefined && nomme !== '') {

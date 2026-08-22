@@ -142,3 +142,29 @@ describe('modifier une activité', () => {
     )
   })
 })
+
+describe('une activité animée par un patient', () => {
+  /*
+    Personne du personnel ne l'anime : elle n'appartient donc à aucun intervenant, et
+    c'est l'administrateur qui la pose — la même règle que pour une activité sans
+    personne désignée. Un soignant qui la créerait s'attribuerait une activité qui n'est
+    pas la sienne, ou en poserait une dont personne ne répond.
+  */
+  const animeeParUnPatient = activite({ ledByPatient: true, facilitator: 'Bernard' })
+
+  it('se crée par l’administrateur', async () => {
+    await assertSucceeds(
+      setDoc(doc(asAdmin(env), 'activities', 'echecs-de-bernard'), animeeParUnPatient),
+    )
+  })
+
+  it('ne se crée pas par un intervenant : elle n’est pas la sienne', async () => {
+    await assertFails(
+      setDoc(doc(asPractitioner(env, 'marc'), 'activities', 'echecs-de-bernard'), animeeParUnPatient),
+    )
+  })
+
+  it('ne se crée pas par un soignant sans intervenant attitré', async () => {
+    await assertFails(setDoc(doc(asStaff(env), 'activities', 'echecs-de-bernard'), animeeParUnPatient))
+  })
+})

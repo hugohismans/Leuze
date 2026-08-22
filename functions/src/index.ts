@@ -382,7 +382,7 @@ export const staffRoster = onCall(async (request: CallableRequest) => {
   const staff = requireStaff(request)
   const occurrenceId = requireString(request.data?.occurrenceId, 'occurrenceId')
   const snapshot = await db().collection(COLLECTIONS.occurrences).doc(occurrenceId).get()
-  const occurrence = snapshot.data() as { facilitatorId?: string } | undefined
+  const occurrence = snapshot.data() as { facilitatorId?: string; ledByPatient?: boolean } | undefined
   // L'appel n'est renvoyé qu'à qui a le droit de le faire : voir `canMarkAttendance`.
   const peutFaireAppel = occurrence !== undefined && canMarkAttendance(staff, occurrence)
   // La séance vient d'être lue : on la passe, plutôt que de la relire aussitôt.
@@ -431,7 +431,7 @@ export const markAttendance = onCall(async (request: CallableRequest) => {
       .get(),
   ])
   const occurrence = occurrenceSnapshot.data() as
-    | { facilitatorId?: string; facilitator?: string }
+    | { facilitatorId?: string; facilitator?: string; ledByPatient?: boolean }
     | undefined
   if (occurrence === undefined) throw new HttpsError('not-found', "Cette activité n'a pas été trouvée.")
   if (!canMarkAttendance(staff, occurrence)) {
