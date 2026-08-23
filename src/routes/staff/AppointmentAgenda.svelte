@@ -62,19 +62,42 @@
   */
   let luePour = ''
 
+  /**
+   * Au-delà de ce délai, on cesse d'attendre et l'on rend la main.
+   *
+   * Un agenda qu'on ne peut pas lire n'a jamais empêché de fixer un rendez-vous : le
+   * message de repli le dit déjà, et le soignant choisit son heure. Une attente sans fin,
+   * elle, bloque — et ne se distingue pas d'une panne.
+   */
+  const PATIENCE_MS = 12_000
+
   $effect(() => {
     const demandee = clef
     if (demandee === '' || demandee === luePour) return
     luePour = demandee
     chargement = true
+
     /*
-      L'agenda affiché est celui du dernier choix, jamais celui d'un choix d'avant.
+      La réponse retenue est celle du dernier choix, jamais celle d'un choix d'avant.
 
       On change d'intervenant, puis de durée : deux lectures partent, et rien ne garantit
       qu'elles reviennent dans l'ordre. Poser un rendez-vous d'après la disponibilité de
       quelqu'un d'autre, c'est exactement ce que cet écran doit empêcher.
+
+      La comparaison se fait sur la clef, et non sur un drapeau posé par le nettoyage de
+      l'effet : un effet relancé pour une raison sans rapport abandonnerait alors la
+      lecture en cours sans en repartir aucune, et l'écran resterait sur « Un instant… »
+      pour toujours. C'est exactement ce que cet écran a fait en production.
     */
-    let perimee = false
+    const aJour = () => luePour === demandee
+
+    const abandon = setTimeout(() => {
+      if (aJour() && chargement) {
+        planning = null
+        chargement = false
+      }
+    }, PATIENCE_MS)
+
     void staffStore
       .appointmentPlanning({
         practitionerId,
@@ -83,14 +106,12 @@
         durationMin,
       })
       .then((valeur) => {
-        if (!perimee) planning = valeur
+        if (aJour()) planning = valeur
       })
       .finally(() => {
-        if (!perimee) chargement = false
+        if (aJour()) chargement = false
+        clearTimeout(abandon)
       })
-    return () => {
-      perimee = true
-    }
   })
 
   const message = $derived(

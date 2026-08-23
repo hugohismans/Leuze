@@ -365,3 +365,25 @@ body {
     print-color-adjust: exact;
   }
 }
+
+/*
+  Champs « date » et « heure » : leur retirer l'apparence native.
+
+  Sur iPhone, Safari leur donne l'apparence du système, et le contrôle réclame alors une
+  largeur intrinsèque supérieure à sa colonne. Ni « width: 100% » ni « min-width: 0 » sur
+  le parent ne l'en empêchent : il pousse la grille, et le formulaire déborde de son cadre
+  vers la droite. Mesuré sur l'écran des rendez-vous, en simulant un contrôle qui réclame
+  420 pixels : sans cette règle le document passe à 478 pixels de large pour une fenêtre
+  de 390 ; avec elle, il retombe à 390.
+
+  Le sélecteur natif s'ouvre toujours au toucher — c'est l'apparence qui change, pas le
+  comportement. Chromium n'est pas concerné, son contrôle étant déjà étroit : ce défaut ne
+  se voit que sur un vrai iPhone.
+*/
+input[type='date'],
+input[type='time'] {
+  appearance: none;
+  -webkit-appearance: none;
+  min-width: 0;
+  max-width: 100%;
+}
