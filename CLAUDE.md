@@ -145,6 +145,18 @@ L'UI n'importe **jamais** `firebase/*` directement : elle consomme les interface
 - Toute logique testable est extraite dans `domain/` avant d'être branchée à un composant.
 - Pas de `any`. Pas de `!` non-null sans commentaire justifiant.
 - Les identifiants d'occurrence sont **déterministes** : `{activityId}_{yyyyMMddTHHmm}`.
+- **Ne jamais lire *et* écrire le même `$state` dans un `$effect`.** Le lire en fait une
+  dépendance de l'effet ; l'écrire relance l'effet. C'est bénin pour une simple valeur par
+  défaut, et cela devient un bug dès que l'effet lit quelque chose de façon asynchrone :
+  le second passage déclenche le nettoyage du premier, la réponse attendue est jetée, et
+  l'écran reste sur « Un instant… » pour toujours. Variante : une réponse vide qui
+  réécrit l'état sans le faire changer de forme relance l'effet en boucle. Aucune erreur
+  en console, `svelte-check` ne voit rien, les tests du domaine non plus.
+  Pour tout drapeau interne (« déjà lu », « déjà affiché », « déjà demandé »), utiliser un
+  `let` ordinaire, **non réactif**, avec un commentaire disant pourquoi. Ce piège a déjà
+  coûté trois bugs.
+- Un écran qui lit quelque chose de façon asynchrone se vérifie **dans un navigateur**
+  avant d'être publié. C'est le seul filet contre le point précédent.
 
 ---
 
