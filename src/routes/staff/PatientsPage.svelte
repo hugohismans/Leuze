@@ -145,7 +145,7 @@
   <h1 class="mb-2 text-3xl font-bold text-ink">Les patients</h1>
   <p class="mb-4 text-lg text-ink-soft">
     Un prénom et un service, rien d'autre. Chaque personne reçoit un code, qui lui permet
-    de voir son programme et de s'inscrire depuis une tablette.
+    de voir son programme et de s'inscrire.
   </p>
 
   {#if !staffStore.isAdmin}

@@ -129,7 +129,7 @@
         {#if store.firstName}
           Vous êtes connecté sous le prénom {store.firstName}.
         {/if}
-        Si vous utilisez une tablette partagée, fermez votre accès avant de la laisser :
+        Si cet appareil n'est pas le vôtre, fermez votre accès avant de le laisser :
         la personne suivante devra entrer son propre code.
       </p>
       <button type="button" class="btn btn-secondary" disabled={fermeture} onclick={fermer}>

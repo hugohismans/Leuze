@@ -100,8 +100,7 @@
     {/if}
 
     <footer class="mt-4 border-t-2 border-line pt-3 text-base text-ink">
-      Pour vous inscrire à une activité à places limitées, demandez votre code à un soignant,
-      puis connectez-vous sur la tablette de l'unité.
+      Pour vous inscrire à une activité à places limitées, adressez-vous à un soignant.
     </footer>
   </article>
 </section>
