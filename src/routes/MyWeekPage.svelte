@@ -153,8 +153,13 @@
       Vous pouvez aussi faire une capture d'écran de cette page pour la garder dans votre
       téléphone.
     </p>
+    <!--
+      « Voir », et non « Retour » : on arrive maintenant ici depuis le calendrier aussi,
+      et un retour qui ramène ailleurs que d'où l'on vient désoriente. Le vrai bouton
+      « Retour » est en haut, toujours au même endroit, et il ramène au calendrier.
+    -->
     <button type="button" class="btn btn-secondary" onclick={() => navigate('/mes-inscriptions')}>
-      <span aria-hidden="true">←</span> Retour à mes inscriptions
+      <span aria-hidden="true">📋</span> Voir mes inscriptions
     </button>
   </div>
 </section>

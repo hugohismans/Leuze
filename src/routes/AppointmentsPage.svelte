@@ -111,7 +111,7 @@
     </p>
 
     <button type="button" class="btn btn-secondary mt-5" onclick={() => navigate('/mes-inscriptions')}>
-      <span aria-hidden="true">←</span> Retour à mes inscriptions
+      <span aria-hidden="true">📋</span> Voir mes inscriptions
     </button>
   {:else}
   <h2 class="mb-2 text-2xl font-bold text-ink">Qui souhaitez-vous voir ?</h2>
@@ -174,7 +174,7 @@
   </p>
 
   <button type="button" class="btn btn-secondary mt-5" onclick={() => navigate('/mes-inscriptions')}>
-    <span aria-hidden="true">←</span> Retour à mes inscriptions
+    <span aria-hidden="true">📋</span> Voir mes inscriptions
   </button>
   {/if}
 </section>

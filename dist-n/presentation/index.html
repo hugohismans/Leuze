@@ -1,0 +1,1222 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Hodie — une proposition</title>
+    <meta name="description" content="Présentation d'une application de gestion des activités et des rendez-vous, proposée à l'hôpital Saint-Jean-de-Dieu de Leuze-en-Hainaut." />
+    <!--
+      Présentation autonome, servie depuis /presentation/.
+      Elle ne dépend en rien de l'application : ni script, ni police, ni image venue
+      d'ailleurs. On l'ouvre dans un navigateur, on avance avec les flèches ou le doigt.
+      Les captures d'écran viennent de la démonstration : les prénoms y sont fictifs.
+    -->
+    <style>
+      :root {
+        --nuit: #1a1a38;
+        --bleu: #1c5296;
+        --bleu-clair: #236bc3;
+        --brume: #d9e6f7;
+        --encre: #16202b;
+        --encre-douce: #45535f;
+        --papier: #ffffff;
+        --papier-doux: #f4f7f9;
+        --trait: #c9d3da;
+        --miel: #f6c344;
+        --menthe: #2f8f6b;
+        --rouge: #b3261e;
+      }
+
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+
+      html { font-size: 100%; scroll-behavior: smooth; }
+
+      body {
+        font-family: 'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif;
+        color: var(--encre);
+        background: var(--nuit);
+        line-height: 1.5;
+        -webkit-text-size-adjust: 100%;
+      }
+
+      /* --- Le rail de slides : une par écran, on s'y accroche au défilement --- */
+      .pont {
+        height: 100dvh;
+        overflow-y: auto;
+        scroll-snap-type: y mandatory;
+        scroll-behavior: smooth;
+      }
+
+      .slide {
+        position: relative;
+        min-height: 100dvh;
+        scroll-snap-align: start;
+        scroll-snap-stop: always;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        padding: 4rem 1.5rem 5.5rem;
+        background: var(--papier-doux);
+        overflow: hidden;
+      }
+
+      .dedans {
+        width: 100%;
+        max-width: 68rem;
+        margin: 0 auto;
+      }
+
+      .slide.sombre { background: var(--nuit); color: #fff; }
+      .slide.bleu { background: linear-gradient(160deg, #1c5296, #1a1a38 70%); color: #fff; }
+
+      /* --- Typographie --- */
+      .oeil {
+        font-size: clamp(0.85rem, 1.4vw, 1rem);
+        font-weight: 700;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: var(--bleu);
+        margin-bottom: 0.9rem;
+      }
+      .sombre .oeil, .bleu .oeil { color: var(--miel); }
+
+      h1 {
+        font-size: clamp(2.2rem, 6vw, 4.4rem);
+        line-height: 1.05;
+        letter-spacing: -0.02em;
+        margin-bottom: 1.2rem;
+      }
+      h2 {
+        font-size: clamp(1.8rem, 4.2vw, 3rem);
+        line-height: 1.1;
+        letter-spacing: -0.015em;
+        margin-bottom: 1rem;
+      }
+      h3 {
+        font-size: clamp(1.15rem, 2.1vw, 1.45rem);
+        margin-bottom: 0.4rem;
+      }
+      p, li {
+        font-size: clamp(1.05rem, 1.65vw, 1.3rem);
+        color: var(--encre-douce);
+      }
+      .sombre p, .sombre li, .bleu p, .bleu li { color: #dfe6ee; }
+      .grand { font-size: clamp(1.2rem, 2.1vw, 1.6rem); color: var(--encre); }
+      .sombre .grand, .bleu .grand { color: #fff; }
+      strong { color: var(--encre); font-weight: 700; }
+      .sombre strong, .bleu strong { color: #fff; }
+      em { font-style: normal; color: var(--bleu); font-weight: 600; }
+      .sombre em, .bleu em { color: var(--miel); }
+
+      .mesure { max-width: 44rem; }
+      .mesure + .mesure { margin-top: 1rem; }
+
+      /* --- Listes --- */
+      ul.points { list-style: none; display: grid; gap: 0.9rem; margin-top: 1.5rem; }
+      ul.points li { position: relative; padding-left: 2rem; }
+      ul.points li::before {
+        content: '';
+        position: absolute;
+        left: 0; top: 0.6em;
+        width: 0.75rem; height: 0.75rem;
+        border-radius: 50%;
+        background: var(--bleu-clair);
+      }
+      .sombre ul.points li::before, .bleu ul.points li::before { background: var(--miel); }
+
+      /* --- Cartes --- */
+      .cartes { display: grid; gap: 1rem; margin-top: 1.8rem; }
+      @media (min-width: 48rem) { .cartes.trois { grid-template-columns: repeat(3, 1fr); } }
+      @media (min-width: 48rem) { .cartes.deux { grid-template-columns: repeat(2, 1fr); } }
+      .carte {
+        background: var(--papier);
+        border: 2px solid var(--trait);
+        border-radius: 1rem;
+        padding: 1.25rem;
+      }
+      .sombre .carte, .bleu .carte {
+        background: rgb(255 255 255 / 8%);
+        border-color: rgb(255 255 255 / 22%);
+      }
+      .carte .pastille { font-size: 1.8rem; line-height: 1; display: block; margin-bottom: 0.6rem; }
+      .carte p { font-size: 1.02rem; }
+
+      /* --- Écrans : cadres téléphone et ordinateur --- */
+      .ecrans { display: grid; gap: 1.6rem; align-items: start; margin-top: 1.6rem; }
+      @media (min-width: 60rem) { .ecrans.cote { grid-template-columns: 1.55fr 1fr; align-items: center; } }
+      @media (min-width: 60rem) { .ecrans.paire { grid-template-columns: 1fr 1fr; } }
+
+      figure { margin: 0; }
+      figcaption {
+        margin-top: 0.7rem;
+        font-size: 0.95rem;
+        color: var(--encre-douce);
+        text-align: center;
+      }
+      .sombre figcaption, .bleu figcaption { color: #b9c6d4; }
+
+      .telephone {
+        width: min(15rem, 62vw);
+        margin: 0 auto;
+        border: 0.65rem solid #101024;
+        border-radius: 2rem;
+        overflow: hidden;
+        background: #101024;
+        box-shadow: 0 1.2rem 2.4rem rgb(16 16 36 / 28%);
+      }
+      .telephone img { display: block; width: 100%; height: auto; }
+
+      .portable {
+        border: 0.55rem solid #101024;
+        border-radius: 0.9rem;
+        overflow: hidden;
+        background: #101024;
+        box-shadow: 0 1.2rem 2.4rem rgb(16 16 36 / 28%);
+      }
+      .portable img { display: block; width: 100%; height: auto; }
+
+      .feuille-cadre {
+        background: #fff;
+        border: 1px solid var(--trait);
+        box-shadow: 0 1rem 2rem rgb(16 16 36 / 16%);
+        border-radius: 0.35rem;
+        overflow: hidden;
+      }
+      .feuille-cadre img { display: block; width: 100%; height: auto; }
+
+      /* --- Étiquette « mobile d'abord » --- */
+      .puces { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 1.2rem; }
+      .puce {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        padding: 0.35rem 0.8rem;
+        border-radius: 999px;
+        background: var(--brume);
+        color: var(--bleu);
+        font-size: 0.95rem;
+        font-weight: 700;
+      }
+      .sombre .puce, .bleu .puce { background: rgb(246 195 68 / 18%); color: var(--miel); }
+
+      /* --- Le désordre de papier, sur la deuxième slide --- */
+      .desordre { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+      /*
+        Les post-it vivent dans les marges de la colonne de texte. Sous 1100 points il
+        n'y a plus de marges : ils recouvriraient les phrases, et une blague qui empêche
+        de lire n'est plus une blague. Ils quittent alors les coins et reviennent dans le
+        fil du texte, en petit, sous le paragraphe : la plaisanterie tient, la phrase se
+        lit encore.
+      */
+      .postits-tel { display: none; }
+      @media (max-width: 68rem) {
+        .desordre .postit { display: none; }
+        .postits-tel {
+          display: flex;
+          flex-wrap: wrap;
+          justify-content: center;
+          gap: 0.9rem;
+          /* De quoi laisser flotter les post-it sans qu'ils frôlent le paragraphe. */
+          margin: 1.75rem 0 1.5rem;
+        }
+        .postits-tel .postit {
+          position: static;
+          /* Trois de front sur un téléphone : au-delà, ils mangent la slide entière. */
+          width: 5.8rem;
+          height: 5.8rem;
+          padding: 0.5rem;
+          font-size: 0.7rem;
+          box-shadow: 0 0.4rem 0.8rem rgb(16 16 36 / 20%);
+        }
+      }
+      .postit {
+        position: absolute;
+        width: 8.5rem;
+        height: 8.5rem;
+        padding: 0.9rem;
+        font-size: 0.92rem;
+        font-weight: 600;
+        color: #4a3a06;
+        background: var(--miel);
+        box-shadow: 0 0.6rem 1.2rem rgb(16 16 36 / 22%);
+        font-family: 'Segoe UI', system-ui, sans-serif;
+        animation: flotte 6s ease-in-out infinite;
+      }
+      .postit.rose { background: #f7a6b6; color: #5a1424; }
+      .postit.vert { background: #a9e0b6; color: #14432a; }
+      .postit.bleu-clair { background: #a8cdf5; color: #10365f; }
+
+      .feuille-volante {
+        position: absolute;
+        width: 5.5rem;
+        height: 7.2rem;
+        background: #fff;
+        border: 1px solid #dfe6ee;
+        box-shadow: 0 0.5rem 1rem rgb(16 16 36 / 18%);
+        animation: envole 14s linear infinite;
+      }
+      .feuille-volante::before,
+      .feuille-volante::after {
+        content: '';
+        position: absolute;
+        left: 0.7rem; right: 0.7rem;
+        height: 2px;
+        background: #e4eaf0;
+      }
+      .feuille-volante::before { top: 1.2rem; box-shadow: 0 0.6rem 0 #e4eaf0, 0 1.2rem 0 #e4eaf0, 0 1.8rem 0 #e4eaf0; }
+      .feuille-volante::after { bottom: 1.2rem; right: 2.4rem; }
+
+      @keyframes flotte {
+        0%, 100% { transform: translateY(0) rotate(var(--tilt, -4deg)); }
+        50% { transform: translateY(-0.9rem) rotate(calc(var(--tilt, -4deg) * -0.6)); }
+      }
+      @keyframes envole {
+        0%   { transform: translate(-12vw, 108vh) rotate(0deg); opacity: 0; }
+        8%   { opacity: 1; }
+        92%  { opacity: 1; }
+        100% { transform: translate(112vw, -28vh) rotate(680deg); opacity: 0; }
+      }
+
+      /* Une animation qui gêne ne s'impose pas. */
+      @media (prefers-reduced-motion: reduce) {
+        .postit, .feuille-volante { animation: none; }
+        .feuille-volante { opacity: 0.5; }
+        html, .pont { scroll-behavior: auto; }
+      }
+
+      /* --- La ligne du temps de la mise en place --- */
+      .chrono {
+        display: grid;
+        gap: 1rem;
+        margin: 1.4rem 0 0;
+        counter-reset: etape;
+      }
+      @media (min-width: 60rem) {
+        .chrono { grid-template-columns: repeat(4, 1fr); }
+      }
+      .etape {
+        position: relative;
+        padding: 1.1rem 1.1rem 1.1rem 3.6rem;
+        border: 2px solid var(--trait);
+        border-radius: 0.9rem;
+        background: #fff;
+      }
+      @media (min-width: 60rem) {
+        .etape { padding: 3.2rem 1.1rem 1.1rem; }
+      }
+      .etape::before {
+        counter-increment: etape;
+        content: counter(etape);
+        position: absolute;
+        top: 1.1rem; left: 1.1rem;
+        display: flex; align-items: center; justify-content: center;
+        width: 2rem; height: 2rem;
+        border-radius: 999px;
+        background: var(--bleu);
+        color: #fff;
+        font-weight: 700;
+        font-size: 1rem;
+      }
+      .etape h3 { margin: 0 0 0.4rem; }
+      .etape p { font-size: 1rem; }
+      .etape .quand {
+        display: block;
+        margin-top: 0.6rem;
+        font-size: 0.9rem;
+        font-weight: 700;
+        color: var(--encre-douce);
+      }
+
+      /* --- En-tête et pied de page --- */
+      .marque {
+        position: fixed;
+        top: 1.1rem; left: 1.4rem;
+        z-index: 5;
+        display: flex; align-items: center; gap: 0.6rem;
+        opacity: 0.9;
+      }
+      .marque img { height: 2rem; width: auto; }
+      .marque span { font-size: 0.85rem; font-weight: 700; color: var(--encre-douce); }
+      /*
+        Sur une slide sombre, un logo bleu marine et un texte gris disparaissent dans le
+        fond. On garde donc les deux versions du logo et l'on montre celle qui se voit —
+        le script pose « fonce » sur le corps quand la slide affichée est sombre.
+      */
+      .marque .blanc { display: none; }
+      body.fonce .marque .blanc { display: block; }
+      body.fonce .marque .bleu { display: none; }
+      body.fonce .marque span { color: rgb(255 255 255 / 82%); }
+
+      /*
+        Sur un téléphone, une slide plus haute que l'écran défile sous ce coin : le logo
+        se poserait alors au milieu d'une phrase. La marque cède la place au texte, elle
+        reste sur la première slide, qui la porte dans son contenu.
+      */
+      @media (max-width: 48rem) {
+        .marque { display: none; }
+        /*
+          Une slide plus haute que l'écran doit pouvoir se lire jusqu'au bout : un
+          accrochage impératif la ramènerait au début à chaque relâchement du doigt.
+        */
+        .pont { scroll-snap-type: y proximity; }
+      }
+
+      .barre {
+        position: fixed;
+        left: 0; right: 0; bottom: 0;
+        z-index: 5;
+        display: flex; align-items: center; justify-content: space-between;
+        gap: 1rem;
+        padding: 0.7rem 1.4rem;
+        background: rgb(255 255 255 / 88%);
+        backdrop-filter: blur(8px);
+        border-top: 1px solid var(--trait);
+      }
+      .barre .compte { font-size: 0.95rem; font-weight: 700; color: var(--encre-douce); font-variant-numeric: tabular-nums; }
+      .fleches { display: flex; gap: 0.5rem; }
+      .fleche {
+        min-width: 3rem; min-height: 2.6rem;
+        border: 2px solid var(--trait);
+        border-radius: 0.6rem;
+        background: #fff;
+        color: var(--encre);
+        font-size: 1.1rem;
+        cursor: pointer;
+      }
+      .fleche:hover { border-color: var(--bleu); }
+      .fleche:focus-visible { outline: 3px solid var(--bleu-clair); outline-offset: 2px; }
+      .jauge { flex: 1; height: 0.3rem; background: var(--trait); border-radius: 999px; overflow: hidden; max-width: 22rem; }
+      .jauge span { display: block; height: 100%; width: 0; background: var(--bleu-clair); transition: width 240ms ease; }
+
+      a { color: inherit; }
+      .lien-demo {
+        display: inline-block;
+        margin-top: 1.6rem;
+        padding: 0.8rem 1.4rem;
+        border-radius: 0.7rem;
+        background: var(--miel);
+        color: #3b2c02;
+        font-weight: 700;
+        font-size: 1.1rem;
+        text-decoration: none;
+      }
+      .lien-demo:hover { background: #ffd66b; }
+
+      .signature {
+        margin-top: 2rem;
+        padding-top: 1.2rem;
+        border-top: 1px solid rgb(255 255 255 / 25%);
+        font-size: 1.05rem;
+      }
+
+      .encadre {
+        margin-top: 1.6rem;
+        padding: 1.1rem 1.3rem;
+        border-left: 6px solid var(--bleu-clair);
+        background: var(--papier);
+        border-radius: 0 0.8rem 0.8rem 0;
+      }
+      .sombre .encadre, .bleu .encadre { background: rgb(255 255 255 / 8%); border-left-color: var(--miel); }
+      .encadre.reserve { border-left-color: var(--miel); }
+
+      .deux-colonnes { display: grid; gap: 1.4rem; margin-top: 1.6rem; }
+      @media (min-width: 52rem) { .deux-colonnes { grid-template-columns: 1fr 1fr; } }
+
+      .avant-apres { display: grid; gap: 0.8rem; margin-top: 1.5rem; }
+      @media (min-width: 46rem) { .avant-apres { grid-template-columns: 1fr auto 1fr; align-items: center; } }
+      .avant-apres .fleche-milieu { font-size: 2rem; text-align: center; color: var(--bleu-clair); }
+      .bloc-avant, .bloc-apres { border-radius: 1rem; padding: 1.1rem 1.3rem; }
+      .bloc-avant { background: #fdf3d6; border: 2px dashed #d9b03c; }
+      .bloc-apres { background: var(--brume); border: 2px solid var(--bleu-clair); }
+      .bloc-avant h3, .bloc-apres h3 { color: var(--encre); }
+
+      @media print {
+        .pont { height: auto; overflow: visible; }
+        .slide { min-height: auto; break-after: page; padding: 2rem 0; }
+        .barre, .marque, .desordre { display: none; }
+      }
+    </style>
+  </head>
+
+  <body>
+    <div class="marque">
+      <img class="bleu" src="acis-logo-bleu.svg" alt="" />
+      <img class="blanc" src="acis-logo-blanc.svg" alt="" />
+      <span>Saint-Jean-de-Dieu · Leuze-en-Hainaut</span>
+    </div>
+
+    <main class="pont" id="pont">
+      <!-- ================= 1. Ouverture ================= -->
+      <section class="slide bleu" id="s1">
+        <div class="dedans">
+          <p class="oeil">Une proposition, rien de plus</p>
+          <h1>Hodie</h1>
+          <p class="grand mesure">
+            « Aujourd'hui », en latin. Une application pour construire le programme des
+            activités, inscrire les personnes, imprimer les plannings et suivre les
+            rendez-vous.
+          </p>
+
+          <div class="cartes trois">
+            <div class="carte">
+              <span class="pastille" aria-hidden="true">👋</span>
+              <h3>Qui vous parle</h3>
+              <p>
+                Hugo. Je suis ici <strong>en tant que patient</strong>. Je fais ça
+                bénévolement, sur mon temps, parce que ça me détend.
+              </p>
+            </div>
+            <div class="carte">
+              <span class="pastille" aria-hidden="true">🎁</span>
+              <h3>Ce que ça coûte</h3>
+              <p>
+                Rien. C'est <strong>offert</strong>, comme on montre un beau dessin.
+                Regardez, et si ça ne vous dit rien, ça s'arrête là.
+              </p>
+            </div>
+            <div class="carte">
+              <span class="pastille" aria-hidden="true">🗺️</span>
+              <h3>Ce qu'on va voir</h3>
+              <p>
+                Ce que j'ai observé · Ce que voit un patient · Ce que voit l'équipe ·
+                Ce qu'on pourrait ajouter plus tard.
+              </p>
+            </div>
+          </div>
+
+          <p class="signature">
+            <strong>Ça n'engage à rien.</strong> L'application existe déjà et tourne.
+            Si elle vous plaît, on en discute ; sinon, vous aurez perdu dix minutes.
+          </p>
+        </div>
+      </section>
+
+      <!-- ================= 2. Le papier ================= -->
+      <section class="slide" id="s2">
+        <!-- Le désordre est décoratif : il ne porte aucune information. -->
+        <div class="desordre" aria-hidden="true">
+          <div class="postit" style="--tilt: -6deg; top: 7%; left: 1.5%; animation-delay: -0.4s;">Marie → ergo jeudi 14h ?</div>
+          <div class="postit vert" style="--tilt: -3deg; top: 9%; right: 1.5%; animation-delay: -1.3s;">Salle sport occupée</div>
+          <div class="postit rose" style="--tilt: 5deg; bottom: 12%; left: 1.5%; animation-delay: -2.1s;">Annulé !! prévenir</div>
+          <div class="postit bleu-clair" style="--tilt: 7deg; bottom: 10%; right: 1.5%; animation-delay: -3.2s;">Refaire planning Mazurel</div>
+          <div class="postit" style="--tilt: 3deg; top: 42%; right: 1.5%; animation-delay: -4.4s;">8 places — 9 inscrits ?</div>
+          <div class="feuille-volante" style="animation-delay: -1s; animation-duration: 15s;"></div>
+          <div class="feuille-volante" style="animation-delay: -6s; animation-duration: 19s; top: -14vh;"></div>
+          <div class="feuille-volante" style="animation-delay: -11s; animation-duration: 13s; top: 12vh;"></div>
+          <div class="feuille-volante" style="animation-delay: -3.5s; animation-duration: 21s; top: -6vh;"></div>
+        </div>
+
+        <div class="dedans" style="position: relative;">
+          <p class="oeil">Ce que j'ai observé</p>
+          <h2>Ici, tout tient sur du papier</h2>
+          <div class="mesure">
+            <p class="grand">
+              Des feuilles, des post-it, des plannings recopiés à la main, des tableaux
+              qu'on refait chaque semaine. Ça marche — <em>c'est même remarquable que
+              ça marche</em> — mais ça tient sur beaucoup de recopiage.
+            </p>
+          </div>
+
+          <!-- Les mêmes post-it, mais dans le fil du texte : sur un téléphone, les coins
+               de l'écran appartiennent aux phrases. -->
+          <div class="postits-tel" aria-hidden="true">
+            <div class="postit" style="--tilt: -6deg; animation-delay: -0.4s;">Marie → ergo jeudi 14h ?</div>
+            <div class="postit vert" style="--tilt: 4deg; animation-delay: -1.3s;">Salle sport occupée</div>
+            <div class="postit rose" style="--tilt: -3deg; animation-delay: -2.1s;">Annulé !! prévenir</div>
+          </div>
+
+          <div class="avant-apres">
+            <div class="bloc-avant">
+              <h3>Aujourd'hui</h3>
+              <p>
+                On note l'activité. On recopie qui s'inscrit. On refait la feuille de
+                présence. On réécrit le planning de chacun. Et quand une séance est
+                annulée, il faut retrouver tout le monde.
+              </p>
+            </div>
+            <div class="fleche-milieu" aria-hidden="true">→</div>
+            <div class="bloc-apres">
+              <h3>Avec l'application</h3>
+              <p>
+                On note l'activité <strong>une fois</strong>. Les inscriptions, les
+                feuilles de présence et les plannings de chacun en découlent — et
+                s'impriment.
+              </p>
+            </div>
+          </div>
+
+          <div class="encadre">
+            <p>
+              <strong>Le papier ne disparaît pas.</strong> Il sort de l'imprimante au lieu
+              d'être recopié. C'est tout ce que je propose de changer.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= 3. Mobile d'abord ================= -->
+      <section class="slide sombre" id="s3">
+        <div class="dedans">
+          <p class="oeil">Sur quoi ça tourne</p>
+          <h2>Pensé pour le téléphone, à l'aise sur l'ordinateur</h2>
+
+          <div class="ecrans paire">
+            <div>
+              <p class="grand mesure">
+                Un patient l'ouvre sur un téléphone : gros boutons, peu de texte, deux
+                niveaux de profondeur au maximum. Sur une tablette, si l'établissement en
+                met une à disposition un jour, c'est le même écran.
+              </p>
+              <p class="mesure" style="margin-top: 1rem;">
+                Un membre de l'équipe travaille sur son ordinateur : la semaine entière
+                s'affiche, le menu reste ouvert sur le côté, et l'impression sort en A4.
+              </p>
+              <div class="puces">
+                <span class="puce">Aucune installation</span>
+                <span class="puce">Une adresse web</span>
+                <span class="puce">Rien à mettre à jour</span>
+              </div>
+            </div>
+            <div class="ecrans" style="gap: 1rem;">
+              <figure>
+                <div class="telephone">
+                  <img src="captures/patient-semaine-mobile.png" alt="La semaine d'un patient sur téléphone" loading="lazy" />
+                </div>
+                <figcaption>Le téléphone d'un patient</figcaption>
+              </figure>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= 4. La vue patient ================= -->
+      <section class="slide" id="s4">
+        <div class="dedans">
+          <p class="oeil">Ce que voit un patient</p>
+          <h2>Simple, parce que ça doit l'être</h2>
+
+          <div class="ecrans cote">
+            <div>
+              <p class="grand mesure">
+                Les personnes qui séjournent ici peuvent être fatiguées, ralenties,
+                désorientées. L'écran en tient compte, et ce n'est pas de la décoration.
+              </p>
+              <ul class="points mesure">
+                <li><strong>Gros caractères</strong> — jamais moins de 18 pixels, jamais d'abréviation.</li>
+                <li><strong>Grands boutons</strong> — au moins 56 pixels de haut, difficiles à rater.</li>
+                <li><strong>Deux niveaux</strong> — le calendrier, la fiche de l'activité. C'est tout.</li>
+                <li><strong>Un bouton « Retour »</strong> toujours à la même place.</li>
+                <li><strong>Des phrases, pas du jargon</strong> — « Vous êtes inscrit », pas « Inscription confirmée ».</li>
+              </ul>
+            </div>
+            <figure>
+              <div class="telephone">
+                <img src="captures/patient-activite-mobile.png" alt="La fiche d'une activité : le titre, l'horaire, le lieu et comment s'y rendre" loading="lazy" />
+              </div>
+              <figcaption>La fiche d'une activité — jusqu'à « comment s'y rendre »</figcaption>
+            </figure>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= 5. Rien ne change pour eux ================= -->
+      <section class="slide bleu" id="s5">
+        <div class="dedans">
+          <p class="oeil">Le point important</p>
+          <h2>Pour les patients, rien n'est obligé de changer</h2>
+
+          <div class="ecrans cote">
+            <div>
+              <p class="grand mesure">
+                Je me suis inspiré du fonctionnement actuel plutôt que d'en inventer un
+                autre. Pour une personne <strong>qui n'a pas de téléphone</strong>, ou qui
+                ne sait pas s'en servir, ou qui n'en veut pas :
+                <strong>rien ne change du tout</strong>.
+              </p>
+              <div class="encadre">
+                <p>
+                  Elle continue à recevoir <strong>sa feuille</strong>, après la réunion
+                  du lundi, exactement comme aujourd'hui. Elle n'a pas de compte à créer,
+                  pas de mot de passe à retenir, rien à apprendre. La seule différence
+                  qu'elle verra, c'est que la feuille est <strong>plus lisible et plus
+                  jolie</strong> — et qu'elle est juste, parce que personne ne l'a
+                  recopiée à la main.
+                </p>
+              </div>
+              <p class="mesure" style="margin-top: 1.2rem;">
+                L'application peut lui être <strong>totalement transparente</strong> :
+                elle travaille du côté de l'équipe. Elle sert ensuite à ceux qui sont à
+                l'aise avec un écran, et il y en a — beaucoup d'entre eux travaillent
+                déjà sur ordinateur. Mais c'est une possibilité offerte, jamais un
+                passage obligé.
+              </p>
+            </div>
+            <figure>
+              <div class="feuille-cadre">
+                <img src="captures/feuille-imprimee.png" alt="Une feuille de semaine imprimée, avec la grille horaire" loading="lazy" />
+              </div>
+              <figcaption>La feuille remise en main propre — une page par personne</figcaption>
+            </figure>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= 6. L'équipe : la semaine ================= -->
+      <section class="slide" id="s6">
+        <div class="dedans">
+          <p class="oeil">Ce que voit l'équipe</p>
+          <h2>Le programme de la semaine, d'un coup d'œil</h2>
+          <p class="grand mesure">
+            Sept colonnes, une par jour. On pose une activité en cliquant sous le jour
+            voulu. On filtre par service. On imprime le programme pour l'afficher au mur.
+          </p>
+          <figure style="margin-top: 1.4rem;">
+            <div class="portable">
+              <img src="captures/soignant-semaine.png" alt="La semaine du personnel : sept colonnes de jours avec les activités" loading="lazy" />
+            </div>
+            <figcaption>L'écran principal de l'équipe, sur ordinateur</figcaption>
+          </figure>
+        </div>
+      </section>
+
+      <!-- ================= 7. Un compte par personne ================= -->
+      <section class="slide sombre" id="s7">
+        <div class="dedans">
+          <p class="oeil">Les comptes</p>
+          <h2>Chacun le sien, et chacun ne voit que ce qui le concerne</h2>
+
+          <div class="ecrans cote">
+            <div>
+              <p class="grand mesure">
+                Chaque membre du personnel en contact avec les patients a son compte :
+                il crée ses activités, les anime, voit son planning et fait ses présences.
+              </p>
+              <ul class="points mesure">
+                <li>Une activité créée par quelqu'un est <strong>la sienne</strong> : il l'anime.</li>
+                <li>Un intervenant voit <strong>son agenda</strong>, pas celui de ses collègues.</li>
+                <li>Les plannings des patients ne sont ouverts qu'à <strong>l'administrateur</strong>.</li>
+                <li>Ce cloisonnement est <strong>tenu par le serveur</strong>, pas par l'affichage.</li>
+              </ul>
+            </div>
+            <figure>
+              <div class="portable">
+                <img src="captures/soignant-personnel.png" alt="L'écran du personnel : les intervenants, leur poste et leurs disponibilités" loading="lazy" />
+              </div>
+              <figcaption>Le personnel — nom, poste, disponibilités</figcaption>
+            </figure>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= 8. La réunion du lundi ================= -->
+      <section class="slide" id="s8">
+        <div class="dedans">
+          <p class="oeil">Le geste central</p>
+          <h2>La réunion du lundi, en quelques clics</h2>
+
+          <div class="ecrans cote">
+            <div>
+              <p class="grand mesure">
+                On parcourt les séances de la semaine, on clique sur les prénoms.
+                Inscrit. Cliqué à nouveau : retiré. Rien d'autre à faire.
+              </p>
+              <ul class="points mesure">
+                <li>Le patient retrouve l'activité dans son calendrier, <strong>sans rien demander</strong>.</li>
+                <li>L'activité est complète ? On peut <strong>dépasser</strong> — l'écran demande confirmation.</li>
+                <li>À la fin, un bouton imprime <strong>toutes les feuilles du service</strong>.</li>
+              </ul>
+            </div>
+            <figure>
+              <div class="portable">
+                <img src="captures/soignant-reunion.png" alt="La réunion du lundi : la liste des prénoms à cocher" loading="lazy" />
+              </div>
+              <figcaption>On clique un prénom : c'est inscrit</figcaption>
+            </figure>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= 9. Les présences ================= -->
+      <section class="slide bleu" id="s9">
+        <div class="dedans">
+          <p class="oeil">Sur place</p>
+          <h2>La feuille de présence, sans la feuille</h2>
+
+          <div class="ecrans cote">
+            <div>
+              <p class="grand mesure">
+                Pendant l'activité, la personne qui l'anime coche présent ou absent.
+                Quelqu'un se présente sans être inscrit et elle l'accepte ? Un bouton,
+                et il est inscrit et noté présent du même geste.
+              </p>
+              <div class="encadre">
+                <p>
+                  <strong>Visible seulement par la personne qui anime</strong>, et par
+                  l'administrateur. Ce n'est pas une liste qui circule.
+                </p>
+              </div>
+            </div>
+            <figure>
+              <div class="portable">
+                <img src="captures/soignant-appel.png" alt="L'appel : chaque prénom avec un bouton présent et un bouton absent" loading="lazy" />
+              </div>
+              <figcaption>L'appel d'une séance</figcaption>
+            </figure>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= 10. Les plannings imprimés ================= -->
+      <section class="slide" id="s10">
+        <div class="dedans">
+          <p class="oeil">La fin de la réunion</p>
+          <h2>Un bouton, et la pile sort de l'imprimante</h2>
+
+          <div class="ecrans cote">
+            <div>
+              <p class="grand mesure">
+                Une feuille par personne du service, dans une grille horaire lisible à un
+                mètre. Y compris pour ceux qui ne sont inscrits à rien : une grille vide
+                se remplit à la main.
+              </p>
+              <ul class="points mesure">
+                <li>Les rendez-vous individuels y figurent — c'est ce qui évite de les manquer.</li>
+                <li>Une page par personne, jamais deux feuilles sur la même.</li>
+              </ul>
+            </div>
+            <figure>
+              <div class="portable">
+                <img src="captures/soignant-plannings.png" alt="L'écran des plannings : un bouton pour imprimer toutes les feuilles du service" loading="lazy" />
+              </div>
+              <figcaption>« Imprimer les 6 plannings »</figcaption>
+            </figure>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= 11. Les rendez-vous ================= -->
+      <section class="slide sombre" id="s11">
+        <div class="dedans">
+          <p class="oeil">Les rendez-vous individuels</p>
+          <h2>Demander à voir quelqu'un, et savoir quand</h2>
+
+          <div class="ecrans cote">
+            <div>
+              <p class="grand mesure">
+                Un patient demande à voir le psychiatre, le kinésithérapeute, l'assistant
+                social. Il dit <strong>qui</strong> il veut voir — jamais pourquoi.
+              </p>
+              <ul class="points mesure">
+                <li>Beaucoup ne se serviront jamais de l'application : un soignant note le rendez-vous pour eux.</li>
+                <li>Chaque intervenant déclare <strong>ses plages</strong> : « mardi de 09h00 à 12h00 ».</li>
+                <li>Fixer un rendez-vous en dehors ? L'écran prévient, mais n'interdit pas.</li>
+                <li>Chacun choisit : <strong>acceptation automatique</strong>, ou <strong>je valide moi-même</strong>.</li>
+              </ul>
+            </div>
+            <figure>
+              <div class="telephone">
+                <img src="captures/patient-rendez-vous-mobile.png" alt="La demande de rendez-vous côté patient" loading="lazy" />
+              </div>
+              <figcaption>La demande, côté patient</figcaption>
+            </figure>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= 12. Les patients proposent ================= -->
+      <section class="slide" id="s12">
+        <div class="dedans">
+          <p class="oeil">Une idée, à discuter</p>
+          <h2>Et si les patients proposaient des activités ?</h2>
+          <div class="mesure">
+            <p class="grand">
+              Quelqu'un veut lancer un tournoi d'échecs, un atelier tricot, une balade.
+              Il la propose depuis l'application ; elle n'apparaît au programme
+              <strong>qu'une fois validée par un membre de l'équipe</strong>.
+            </p>
+          </div>
+
+          <div class="cartes deux">
+            <div class="carte">
+              <span class="pastille" aria-hidden="true">🌱</span>
+              <h3>Ce que ça change</h3>
+              <p>
+                Une personne qui propose son activité n'est plus seulement destinataire
+                du programme : elle y contribue. C'est un petit levier, mais réel.
+              </p>
+            </div>
+            <div class="carte">
+              <span class="pastille" aria-hidden="true">🔒</span>
+              <h3>Ce que ça ne change pas</h3>
+              <p>
+                Rien ne s'affiche sans validation. L'équipe garde la main sur ce qui
+                entre au programme, et sur qui l'anime.
+              </p>
+            </div>
+          </div>
+
+          <div class="encadre">
+            <p>
+              Ce n'est pas encore construit. Je le mets sur la table parce que ça me
+              semble l'idée la plus intéressante du lot — mais c'est à vous de dire si
+              elle a sa place ici.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= 13. Ce que je n'ai pas fait ================= -->
+      <section class="slide" id="s13">
+        <div class="dedans">
+          <p class="oeil">Plus tard, si vous le voulez</p>
+          <h2>Les statistiques — et pourquoi je ne les ai pas faites</h2>
+
+          <div class="deux-colonnes">
+            <div>
+              <p class="grand">Techniquement, tout est là pour produire :</p>
+              <ul class="points">
+                <li>Le <strong>taux de présence</strong> par activité, par service.</li>
+                <li>Les inscriptions <strong>non suivies d'une présence</strong>.</li>
+                <li>Le <strong>nombre d'activités</strong> faites par personne sur un mois.</li>
+                <li>Le repérage de quelqu'un qui <strong>ne participe à rien</strong>.</li>
+              </ul>
+            </div>
+            <div>
+              <div class="encadre reserve">
+                <h3>Ma réserve, dite franchement</h3>
+                <p style="margin-top: 0.5rem;">
+                  Je n'aime pas ficher les gens, et je ne l'ai donc pas construit.
+                  Compter les présences de quelqu'un, ce n'est pas anodin.
+                </p>
+                <p style="margin-top: 0.8rem;">
+                  Mais si vous m'expliquez en quoi c'est <strong>thérapeutiquement
+                  utile</strong> — repérer un repli, mesurer l'effet d'un
+                  accompagnement — je le ferai. Et si vous tenez déjà ces chiffres à la
+                  main, autant qu'ils soient justes.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <p class="mesure" style="margin-top: 1.4rem;">
+            <strong>C'est votre décision, pas la mienne.</strong> Je voulais juste que
+            vous sachiez que c'est possible, et à quel prix.
+          </p>
+        </div>
+      </section>
+
+      <!-- ================= 13 bis. La borne ================= -->
+      <section class="slide" id="s13b">
+        <div class="dedans">
+          <p class="oeil">Plus tard, si vous le voulez</p>
+          <h2>Et pour ceux qui n'ont pas d'écran à eux ?</h2>
+
+          <div class="mesure">
+            <p class="grand">
+              Une <strong>borne</strong> — une tablette fixée dans le couloir ou dans la
+              salle commune — et la question ne se pose plus : plus besoin d'avoir un
+              téléphone pour consulter quelque chose. On s'approche, on regarde, on
+              repart. Rien à installer, rien à posséder.
+            </p>
+          </div>
+
+          <div class="cartes trois">
+            <div class="carte">
+              <span class="pastille" aria-hidden="true">📅</span>
+              <h3>Le programme du jour</h3>
+              <p>
+                Les activités de la semaine, ce qui a lieu cet après-midi, ce qui est
+                annulé. La même information que sur la feuille, mais toujours à jour.
+              </p>
+            </div>
+            <div class="carte">
+              <span class="pastille" aria-hidden="true">🍽️</span>
+              <h3>Le menu, et le reste</h3>
+              <p>
+                Les repas de la semaine, les horaires, les informations pratiques de la
+                maison. Rien de tout cela n'est médical, et rien n'est personnel.
+              </p>
+            </div>
+            <div class="carte">
+              <span class="pastille" aria-hidden="true">🧭</span>
+              <h3>Un point de repère</h3>
+              <p>
+                Un endroit unique où l'on trouve « ce qui se passe ici », plutôt que
+                trois affiches à trois étages différents.
+              </p>
+            </div>
+          </div>
+
+          <div class="encadre">
+            <p>
+              <strong>Pas pour les rendez-vous :</strong> ce sont les soignants qui les
+              posent, et cela doit le rester. La borne informe, elle ne demande rien et
+              n'affiche rien qui concerne une personne en particulier.
+            </p>
+          </div>
+
+          <p class="signature">
+            Ce n'est qu'un exemple. Une fois que l'information est propre quelque part,
+            <strong>la seule limite est l'imagination</strong> — l'afficher sur un écran
+            de couloir, l'imprimer autrement, la donner à un autre outil : ce n'est
+            plus qu'une question d'envie.
+          </p>
+        </div>
+      </section>
+
+      <!-- ================= 14. Ce que l'application ne fera jamais ================= -->
+      <section class="slide sombre" id="s14">
+        <div class="dedans">
+          <p class="oeil">Les garde-fous</p>
+          <h2>Ce qu'elle ne contient pas, et ne contiendra pas</h2>
+          <p class="grand mesure">
+            J'ai posé ces limites dès le début, avant d'écrire la première ligne. Elles
+            ne sont pas négociables de mon côté.
+          </p>
+
+          <div class="cartes trois">
+            <div class="carte">
+              <span class="pastille" aria-hidden="true">🚫</span>
+              <h3>Aucune donnée de santé</h3>
+              <p>
+                Pas de diagnostic, pas de note clinique, pas de dossier. Un rendez-vous
+                dit avec qui, jamais pourquoi.
+              </p>
+            </div>
+            <div class="carte">
+              <span class="pastille" aria-hidden="true">✍️</span>
+              <h3>Le minimum sur les personnes</h3>
+              <p>
+                Un prénom et un service. Ni nom de famille, ni date de naissance, ni
+                numéro de dossier — l'écran ne propose même pas de champ pour en saisir.
+              </p>
+            </div>
+            <div class="carte">
+              <span class="pastille" aria-hidden="true">💬</span>
+              <h3>Pas de messagerie</h3>
+              <p>
+                Aucun échange écrit entre patient et soignant. Ce n'est pas un outil de
+                soin, c'est un tableau d'activités.
+              </p>
+            </div>
+          </div>
+
+          <div class="encadre">
+            <p>
+              Un patient ne voit jamais les inscriptions d'un autre, ni la liste des
+              participants d'une activité. Ce n'est pas une politesse d'affichage :
+              le serveur refuse la demande.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= 14 bis. Le RGPD ================= -->
+      <section class="slide" id="s14b">
+        <div class="dedans">
+          <p class="oeil">À soumettre à votre délégué à la protection des données</p>
+          <h2>Le RGPD — ce qui est fait, et ce qui ne l'est pas</h2>
+
+          <p class="mesure">
+            Je préfère le dire avant qu'on me le demande : personne dont c'est le métier
+            n'a encore regardé ce projet, et la sécurité n'a fait l'objet d'aucun audit.
+            Voici de quoi en juger.
+          </p>
+
+          <div class="deux-colonnes">
+            <div>
+              <h3>Ce qui est déjà en place</h3>
+              <ul class="points">
+                <li>Un <strong>compte par personne</strong> ; le serveur refuse ce qui ne le concerne pas, ce n'est pas un affichage filtré.</li>
+                <li>Données <strong>hébergées en Europe</strong> (Belgique), en HTTPS.</li>
+                <li><strong>Purge automatique</strong> chaque nuit : rien ne traîne au-delà de trois mois.</li>
+                <li>Site <strong>non indexé</strong> par les moteurs de recherche.</li>
+                <li>Code <strong>ouvert et vérifiable</strong> — le code, pas les données.</li>
+              </ul>
+            </div>
+            <div>
+              <h3>Ce qui manque, honnêtement</h3>
+              <ul class="points">
+                <li>Le projet tourne sur <strong>mon compte personnel</strong>. C'est le point le plus gênant : il faut que l'hôpital en devienne propriétaire.</li>
+                <li>Ni <strong>contrat de sous-traitance</strong>, ni <strong>analyse d'impact</strong>, ni durée de conservation validée par un professionnel.</li>
+                <li>Le site est <strong>invisible, pas secret</strong> : l'obscurité n'est pas une sécurité.</li>
+                <li>Aucun test d'intrusion. Les règles d'accès sont vérifiées à chaque modification — ce n'est pas un audit.</li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="encadre">
+            <p>
+              <strong>Mon avis, et il vaut ce qu'il vaut :</strong> un prénom, un
+              service, des inscriptions, le métier de la personne qu'on va voir. C'est
+              peu — mais ce n'est pas rien : ici, savoir que <em>Marie du Mazurel voit le
+              psychiatre mardi</em> en dit déjà long. Ce sont bien des données
+              personnelles, et sans doute des données de santé au sens du règlement,
+              même sans nom de famille. <strong>C'est à votre délégué de trancher</strong>,
+              et je m'aligne sur ce qu'il dira.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= 14 ter. La mise en place ================= -->
+      <section class="slide" id="s14c">
+        <div class="dedans">
+          <p class="oeil">Si vous voulez essayer</p>
+          <h2>Ce que ça demande, concrètement</h2>
+
+          <p class="mesure">
+            Pas grand-chose, et surtout pas un projet informatique. Une heure de votre
+            temps, un service pour commencer, et on regarde ce que ça donne.
+          </p>
+
+          <div class="chrono">
+            <div class="etape">
+              <h3>L'avis du délégué</h3>
+              <p>
+                Rien ne commence avant que votre délégué à la protection des données ait
+                regardé et donné son accord. S'il dit non, on s'arrête là.
+              </p>
+              <span class="quand">D'abord, et sans négociation</span>
+            </div>
+            <div class="etape">
+              <h3>Une heure de paramétrage</h3>
+              <p>
+                Avec moi, et avec <strong>quelqu'un qui connaît bien la maison</strong> :
+                les services, les lieux, les activités, qui anime quoi, qui reçoit quand.
+                Une heure suffit — c'est du remplissage, pas de la programmation.
+              </p>
+              <span class="quand">Une heure, une seule fois</span>
+            </div>
+            <div class="etape">
+              <h3>Un essai sur La Couturelle</h3>
+              <p>
+                Un seul service, quelques semaines. Le papier continue en parallèle : si
+                l'application déçoit, on arrête sans que personne n'ait rien perdu.
+              </p>
+              <span class="quand">Quelques semaines</span>
+            </div>
+            <div class="etape">
+              <h3>Ensuite, si ça sert</h3>
+              <p>
+                Un deuxième service, puis les autres, au rythme que vous voulez. Chaque
+                service garde ses activités et ses habitudes.
+              </p>
+              <span class="quand">Seulement si l'essai convainc</span>
+            </div>
+          </div>
+
+          <div class="encadre">
+            <p>
+              Je ne demande <strong>ni budget, ni matériel, ni formation</strong>. Ce qui
+              coûte vraiment, c'est l'heure de la personne qui connaît le fonctionnement
+              de l'hôpital — je ne peux pas la remplacer, et c'est elle qui fera que
+              l'outil ressemble à ce que vous faites déjà.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= 15. Et maintenant ================= -->
+      <section class="slide bleu" id="s15">
+        <div class="dedans">
+          <p class="oeil">La suite, si suite il y a</p>
+          <h2>Vous en faites ce que vous voulez</h2>
+
+          <div class="ecrans cote">
+            <div>
+              <p class="grand mesure">
+                L'application fonctionne aujourd'hui. Elle est testable en cinq minutes,
+                avec des données inventées : aucun vrai patient, aucun risque.
+              </p>
+              <ul class="points mesure">
+                <li><strong>Si ça ne vous dit rien</strong> — on en reste là, sans rancune.</li>
+                <li><strong>Si vous voulez essayer</strong> — un service, quelques semaines, on regarde.</li>
+                <li><strong>Si ça devait servir pour de vrai</strong> — il faudra que l'établissement en devienne propriétaire, avec son propre hébergement. Ce n'est pas à moi de porter ça.</li>
+              </ul>
+              <a class="lien-demo" href="../#/soignant">Ouvrir la démonstration →</a>
+            </div>
+            <figure>
+              <div class="telephone">
+                <img src="captures/soignant-menu-mobile.png" alt="Le menu de l'espace soignant sur téléphone" loading="lazy" />
+              </div>
+              <figcaption>Le même outil, dans une poche</figcaption>
+            </figure>
+          </div>
+
+          <p class="signature">
+            Merci d'avoir regardé. — <strong>Hugo</strong>
+          </p>
+        </div>
+      </section>
+    </main>
+
+    <nav class="barre" aria-label="Navigation de la présentation">
+      <span class="compte" id="compte">1 / 18</span>
+      <div class="jauge" aria-hidden="true"><span id="jauge"></span></div>
+      <div class="fleches">
+        <button type="button" class="fleche" id="precedent" aria-label="Slide précédente">←</button>
+        <button type="button" class="fleche" id="suivant" aria-label="Slide suivante">→</button>
+      </div>
+    </nav>
+
+    <script>
+      // Navigation : les flèches du clavier, les boutons, ou simplement le défilement.
+      const pont = document.getElementById('pont')
+      const slides = [...document.querySelectorAll('.slide')]
+      const compte = document.getElementById('compte')
+      const jauge = document.getElementById('jauge')
+      let courante = 0
+
+      function afficher(index) {
+        courante = Math.max(0, Math.min(slides.length - 1, index))
+        compte.textContent = `${courante + 1} / ${slides.length}`
+        jauge.style.width = `${((courante + 1) / slides.length) * 100}%`
+        // La marque est posée par-dessus la slide : elle prend sa couleur du fond.
+        const slide = slides[courante]
+        const sombre = slide.classList.contains('sombre') || slide.classList.contains('bleu')
+        document.body.classList.toggle('fonce', sombre)
+      }
+
+      function aller(index) {
+        const cible = slides[Math.max(0, Math.min(slides.length - 1, index))]
+        if (cible) cible.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }
+
+      // On suit le défilement plutôt que de compter les clics : la molette et le doigt
+      // comptent autant que les boutons.
+      const observateur = new IntersectionObserver(
+        (entrees) => {
+          for (const entree of entrees) {
+            if (entree.isIntersecting) afficher(slides.indexOf(entree.target))
+          }
+        },
+        { root: pont, threshold: 0.55 },
+      )
+      slides.forEach((slide) => observateur.observe(slide))
+
+      document.getElementById('suivant').addEventListener('click', () => aller(courante + 1))
+      document.getElementById('precedent').addEventListener('click', () => aller(courante - 1))
+
+      window.addEventListener('keydown', (event) => {
+        const suivant = ['ArrowRight', 'ArrowDown', 'PageDown', ' ']
+        const precedent = ['ArrowLeft', 'ArrowUp', 'PageUp']
+        if (suivant.includes(event.key)) {
+          event.preventDefault()
+          aller(courante + 1)
+        } else if (precedent.includes(event.key)) {
+          event.preventDefault()
+          aller(courante - 1)
+        } else if (event.key === 'Home') {
+          event.preventDefault()
+          aller(0)
+        } else if (event.key === 'End') {
+          event.preventDefault()
+          aller(slides.length - 1)
+        }
+      })
+
+      afficher(0)
+    </script>
+  </body>
+</html>

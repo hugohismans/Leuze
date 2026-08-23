@@ -54,6 +54,23 @@
 <div class="mx-auto grid grid-cols-1 gap-5 px-4 py-5 {store.view === 'week' ? 'max-w-[1600px]' : 'max-w-5xl'}">
   <ViewSwitcher />
 
+  <!--
+    Le chemin direct vers sa propre semaine.
+
+    Il n'y en avait aucun : « Ma semaine » ne s'atteignait que par le bouton « Mes
+    inscriptions » du bandeau, discret et sur fond sombre. Mis à l'essai auprès de
+    plusieurs personnes, ce bouton n'était pas vu — et la page restait donc hors
+    d'atteinte, sans que rien n'indique qu'elle existait.
+
+    Même libellé qu'ailleurs : une chose, un nom.
+  -->
+  {#if store.isDemo || store.signedIn}
+    <button type="button" class="btn btn-primary" onclick={() => navigate('/ma-semaine')}>
+      <span aria-hidden="true">🗓️</span>
+      <span>Voir ma semaine</span>
+    </button>
+  {/if}
+
   <!-- En vue jour, le titre visible est celui de la liste juste en dessous :
        ce libellé ne sert qu'à annoncer le changement aux lecteurs d'écran. -->
   <p class="text-center text-xl font-bold" class:sr-only={store.view === 'day'} aria-live="polite">
