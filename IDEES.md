@@ -98,3 +98,64 @@ Ce n'est pas qu'une question d'argent : au sens du RGPD, le responsable du trait
 être l'établissement. Le jour du basculement, il faudra recréer le projet côté ACIS
 (l'emplacement d'une base Firestore n'étant pas modifiable, ce sera de toute façon une
 création) et rejouer le seed. Rien à changer dans le code, sauf la configuration Web.
+
+---
+
+## 3. Rappel avant une séance (notifications)
+
+**En attente.** Idée formulée avant la présentation aux chefs de service, et volontairement
+mise de côté jusque-là : arriver avec « l'application envoie des notifications sur les
+téléphones des patients » déplacerait toute la conversation vers la vie privée, avant même
+qu'ils aient vu la réunion du lundi.
+
+**L'idée.** Prévenir quinze minutes avant qu'une séance commence.
+
+### C'est faisable
+
+Le web push fonctionne, et Firebase Cloud Messaging fait partie du projet — aucun nouveau
+prestataire à faire approuver. Il faudrait : un manifeste et un service worker (l'application
+devient installable), l'enregistrement du jeton d'appareil **par une Cloud Function** et non
+par le navigateur, et une fonction planifiée toutes les cinq minutes qui cherche les séances
+commençant dans quinze à vingt minutes, envoie aux inscrits confirmés, et marque chacun comme
+prévenu. Coût quasi nul.
+
+Une contrainte à connaître : **sur iPhone, le push ne marche que si l'application a été
+ajoutée à l'écran d'accueil.** Dans un onglet Safari ordinaire, il ne se passe rien — en
+silence. C'est une manipulation par appareil, qu'un patient ne fera pas seul.
+
+### Les points de vigilance
+
+1. **L'écran verrouillé est une surface publique.** « Groupe de parole dans 15 minutes » sur
+   un téléphone posé dans la salle commune dit quelque chose de quelqu'un à tous ceux qui
+   passent. Étendu aux rendez-vous, ce serait une donnée de santé sur un écran verrouillé —
+   la première règle du projet tomberait. Piste : texte neutre par défaut (« Vous avez
+   quelque chose dans 15 minutes. Ouvrez Hodie pour voir quoi. »), le détail restant derrière
+   le code ; le titre en clair devient alors un droit de plus sur la fiche de chaque personne.
+
+2. **Les appareils partagés.** Sur une tablette de service, un seul abonnement : les rappels
+   de l'un arrivent dans les mains de l'autre. Il faudrait savoir quels appareils sont
+   partagés, et y désactiver les notifications purement et simplement.
+
+3. **Un rappel qu'on ne peut pas suivre est pire que rien.** Quinze minutes, quand il faut
+   traverser une cour, c'est court. Et un téléphone au vestiaire transforme le rappel en
+   reproche muet.
+
+4. **Le jeton d'appareil est une donnée personnelle de plus.** À écrire par une fonction, à
+   révoquer en fin de séjour, et à déclarer.
+
+### Piste préférable : prévenir l'animateur, pas le patient
+
+« 10h00 Gymnastique douce — 7 inscrits — dans 15 minutes », sur l'appareil du soignant qui
+anime. Même infrastructure, mais aucun problème d'écran verrouillé, aucun appareil partagé,
+aucune installation sur les téléphones des patients — et cela vise mieux la cause réelle.
+Quand quelqu'un ne vient pas, c'est rarement l'oubli : c'est que personne n'est venu le
+chercher. Un soignant prévenu va frapper aux portes ; une notification sur un téléphone
+éteint ne fait rien.
+
+Le rappel patient viendrait ensuite, pour ceux qui ont leur téléphone et le veulent.
+
+### Trois questions à poser à l'équipe avant d'écrire quoi que ce soit
+
+- Les patients ont-ils leur téléphone dans le service, ou est-ce restreint ?
+- Hodie se consulte-t-il sur des appareils personnels ou partagés ?
+- Qui ferait l'installation sur les iPhone ?
