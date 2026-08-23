@@ -30,9 +30,9 @@
           Ailleurs, l'écran porte son propre titre : une page n'a qu'un seul « h1 ».
         -->
         {#if router.path === '/'}
-          <h1 class="text-2xl font-bold">Les activités</h1>
+          <h1 class="text-2xl font-bold">Hodie</h1>
         {:else}
-          <p class="text-2xl font-bold">Les activités</p>
+          <p class="text-2xl font-bold">Hodie</p>
         {/if}
         <p class="text-base text-brand-100">{formatLongDayLabel(today)}</p>
       </div>
