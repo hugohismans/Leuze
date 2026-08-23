@@ -31,6 +31,14 @@
     durationMin,
     practitionerName,
     patientFirstName = '',
+    /**
+     * Le nom exact du bouton qui enregistre, dans l'écran qui nous accueille.
+     *
+     * Il diffère d'un formulaire à l'autre — « Fixer le rendez-vous » depuis la file,
+     * « Enregistrer ce rendez-vous » sans demande préalable. Nommer le mauvais bouton
+     * serait pire que de n'en nommer aucun.
+     */
+    validationLabel,
     onchoisir,
   }: {
     practitionerId: string
@@ -39,11 +47,21 @@
     durationMin: number
     practitionerName: string
     patientFirstName?: string
+    validationLabel: string
     onchoisir: (localDate: LocalDate, time: LocalTime) => void
   } = $props()
 
   let planning = $state<AppointmentPlanning | null>(null)
   let chargement = $state(false)
+
+  /**
+   * Ce qui vient d'être posé dans le formulaire, en toutes lettres.
+   *
+   * Le bouton remplit des champs situés **plus haut**, souvent hors de l'écran sur un
+   * téléphone : on appuie, et rien ne bouge sous les yeux. Sans un mot, le geste passe
+   * pour sans effet, et l'on appuie encore.
+   */
+  let posee = $state<string | null>(null)
 
   /**
    * La clef décrit ce qui a été demandé. Tant qu'elle ne change pas, on ne relit rien —
@@ -76,6 +94,8 @@
     if (demandee === '' || demandee === luePour) return
     luePour = demandee
     chargement = true
+    // Changer d'intervenant ou de durée périme l'annonce : elle nommait l'ancien créneau.
+    posee = null
 
     /*
       La réponse retenue est celle du dernier choix, jamais celle d'un choix d'avant.
@@ -137,6 +157,11 @@
     const proposition = planning?.suggestion
     if (proposition === null || proposition === undefined) return
     onchoisir(proposition.localDate, proposition.time)
+    posee = formatFullWhen(
+      proposition.localDate,
+      instantOf(proposition.localDate, proposition.time),
+      addMinutes(instantOf(proposition.localDate, proposition.time), durationMin),
+    )
   }
 
   const plages = (fenetres: { from: LocalTime; to: LocalTime }[]): string =>
@@ -161,6 +186,18 @@
         <button type="button" class="btn btn-primary mt-3" onclick={prendreLaProposition}>
           <span aria-hidden="true">✓</span> Prendre ce créneau
         </button>
+        <!--
+          « role=status » plutôt qu'une simple phrase : le changement est annoncé aussi à
+          qui n'a pas les yeux sur l'écran. Et il est dit en toutes lettres, jamais par la
+          seule couleur.
+        -->
+        {#if posee !== null}
+          <p role="status" class="mt-3 rounded-xl bg-surface-soft p-4 text-lg text-ink">
+            <strong>C'est noté : {posee}.</strong>
+            La date et l'heure sont remplies plus haut. Vérifiez-les, puis appuyez sur
+            « {validationLabel} », plus bas, pour enregistrer.
+          </p>
+        {/if}
       {/if}
 
       <!--

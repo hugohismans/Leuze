@@ -493,6 +493,7 @@
         durationMin={dureeDirecte}
         practitionerName={intervenantChoisi?.name ?? 'la personne'}
         patientFirstName={quiUid === '' ? '' : (patient(quiUid)?.firstName ?? '')}
+        validationLabel="Enregistrer ce rendez-vous"
         onchoisir={poserDansLeFormulaireDirect}
       />
       {#if alerteDirecte !== null}
@@ -620,6 +621,7 @@
                 durationMin={duree}
                 practitionerName={intervenantDeLaFile?.name ?? 'la personne'}
                 patientFirstName={personne?.firstName ?? ''}
+                validationLabel="Fixer le rendez-vous"
                 onchoisir={poserDansLaFile}
               />
 
