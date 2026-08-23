@@ -1,4 +1,8 @@
-# Les activités — Hôpital psychiatrique Saint-Jean-de-Dieu, Leuze-en-Hainaut
+# Hodie — Hôpital psychiatrique Saint-Jean-de-Dieu, Leuze-en-Hainaut
+
+« Hodie » veut dire « aujourd'hui » en latin. L'application porte le programme des
+activités du service : le calendrier du patient, les inscriptions, la réunion de début
+de semaine, l'appel, les plannings à imprimer et les rendez-vous.
 
 [![Ouvrir dans Cloud Shell](https://gstatic.com/cloudssh/images/open-btn.svg)](https://console.cloud.google.com/cloudshell/open?cloudshell_git_repo=https%3A%2F%2Fgithub.com%2Fhugohismans%2FLeuze&cloudshell_git_branch=main&cloudshell_working_dir=.&cloudshell_command=bash%20scripts%2Fdeploy.sh)
 

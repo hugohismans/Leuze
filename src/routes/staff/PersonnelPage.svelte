@@ -39,8 +39,20 @@
    */
   let comptes = $state<Account[]>([])
 
+  /*
+    « Déjà demandé » plutôt que « la liste est vide ».
+
+    Se garder sur « comptes.length > 0 » revenait à relire indéfiniment tant que la
+    réponse était vide : la réponse vide réécrit l'état, l'effet se relance, la garde ne
+    retient plus rien, et l'on repart. Un service sans aucun compte aurait interrogé le
+    serveur en boucle. Ce drapeau n'est pas réactif — le lire ne doit pas relancer l'effet
+    qui l'écrit.
+  */
+  let deja = false
+
   $effect(() => {
-    if (!staffStore.isAdmin || comptes.length > 0) return
+    if (!staffStore.isAdmin || deja) return
+    deja = true
     // Une réponse qui arrive après qu'on a quitté l'écran n'a rien à y écrire.
     let perimee = false
     void staffStore
@@ -48,7 +60,10 @@
       .then((valeur) => {
         if (!perimee) comptes = valeur
       })
-      .catch(() => undefined)
+      .catch(() => {
+        // Une lecture qui échoue ne doit pas condamner l'écran : on pourra réessayer.
+        deja = false
+      })
     return () => {
       perimee = true
     }

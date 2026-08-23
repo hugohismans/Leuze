@@ -15,8 +15,7 @@
     seesEveryAppointment,
   } from '../../lib/domain/appointmentAccess'
   import { availabilityLabel, availabilityWarning } from '../../lib/domain/availability'
-  import { suggestionMessage } from '../../lib/domain/agenda'
-  import type { AppointmentPlanning } from '../../lib/data/staffPorts'
+  import AppointmentAgenda from './AppointmentAgenda.svelte'
   import { AUTO_DURATION_MIN, AUTO_HORIZON_DAYS } from '../../lib/domain/autoAccept'
   import { enClair } from '../../lib/erreurs'
   import { isoWeekdayOf } from '../../lib/domain/time'
@@ -193,68 +192,17 @@
    */
   let preferenceSouhaitee = $state<'matin' | 'apres-midi' | 'peu-importe'>('peu-importe')
 
-  let planning = $state<AppointmentPlanning | null>(null)
-  let planningPour = $state<string>('')
-  let chargementPlanning = $state(false)
-
-  const clefPlanning = $derived(
-    intervenantDirect === '' ? '' : `${intervenantDirect}|${quiUid}|${dureeDirecte}|${preferenceSouhaitee}`,
-  )
-
-  $effect(() => {
-    const clef = clefPlanning
-    if (clef === '' || clef === planningPour || !formulaireOuvert) return
-    planningPour = clef
-    chargementPlanning = true
-    /*
-      L'agenda affiché est celui du dernier choix, jamais celui d'un choix d'avant.
-
-      On change d'intervenant, puis de patient, puis de durée : trois lectures partent, et
-      rien ne garantit qu'elles reviennent dans l'ordre. Poser un rendez-vous d'après la
-      disponibilité de quelqu'un d'autre, c'est exactement ce que cet écran doit empêcher.
-    */
-    let perimee = false
-    void staffStore
-      .appointmentPlanning({
-        practitionerId: intervenantDirect,
-        ...(quiUid === '' ? {} : { patientUid: quiUid }),
-        preference: preferenceSouhaitee,
-        durationMin: dureeDirecte,
-      })
-      .then((valeur) => {
-        if (!perimee) planning = valeur
-      })
-      .finally(() => {
-        if (!perimee) chargementPlanning = false
-      })
-    return () => {
-      perimee = true
-    }
-  })
-
   /** Le créneau proposé, posé dans le formulaire d'un clic. */
-  function prendreLaProposition(): void {
-    const proposition = planning?.suggestion
-    if (proposition === null || proposition === undefined) return
-    dateDirecte = proposition.localDate
-    heureDirecte = proposition.time
+  function poserDansLeFormulaireDirect(localDate: LocalDate, time: LocalTime): void {
+    dateDirecte = localDate
+    heureDirecte = time
   }
 
-  const messageProposition = $derived(
-    planning === null
-      ? null
-      : suggestionMessage(
-          planning.suggestion,
-          preferenceSouhaitee,
-          planning.suggestion === null
-            ? ''
-            : formatFullWhen(
-                planning.suggestion.localDate,
-                instantOf(planning.suggestion.localDate, planning.suggestion.time),
-                addMinutes(instantOf(planning.suggestion.localDate, planning.suggestion.time), dureeDirecte),
-              ),
-        ),
-  )
+  /** Le même geste, depuis la file des demandes. */
+  function poserDansLaFile(localDate: LocalDate, time: LocalTime): void {
+    date = localDate
+    heure = time
+  }
 
   /** Même question, pour une demande de la file qu'on est en train de fixer. */
   const intervenantDeLaFile = $derived(store.practitionerOf(intervenantFile))
@@ -316,7 +264,16 @@
     busy = false
   }
 
-  const champ = 'w-full rounded-xl border-2 border-line bg-white p-3 text-lg text-ink'
+  /*
+    « min-w-0 » et « max-w-full » ne sont pas décoratifs.
+
+    Sur iPhone, un champ « date » ou « heure » réclame une largeur intrinsèque supérieure
+    à sa colonne ; sans cela il pousse la grille, et tout le formulaire déborde du cadre
+    vers la droite. Un élément de grille a « min-width: auto » par défaut : il refuse de
+    rétrécir sous son contenu tant qu'on ne le lui permet pas.
+  */
+  const champ =
+    'w-full min-w-0 max-w-full rounded-xl border-2 border-line bg-white p-3 text-lg text-ink'
 </script>
 
 <section class="mx-auto max-w-4xl px-4 py-6">
@@ -454,15 +411,15 @@
       </select>
 
       <div class="mt-4 grid gap-4 sm:grid-cols-3">
-        <div>
+        <div class="min-w-0">
           <label for="jour" class="mb-2 block text-lg font-semibold text-ink">Le jour</label>
           <input id="jour" type="date" bind:value={dateDirecte} class={champ} style="min-height: 56px;" />
         </div>
-        <div>
+        <div class="min-w-0">
           <label for="quand" class="mb-2 block text-lg font-semibold text-ink">À quelle heure</label>
           <input id="quand" type="time" bind:value={heureDirecte} class={champ} style="min-height: 56px;" />
         </div>
-        <div>
+        <div class="min-w-0">
           <label for="combien" class="mb-2 block text-lg font-semibold text-ink">Combien de temps</label>
           <select id="combien" bind:value={dureeDirecte} class={champ} style="min-height: 56px;">
             {#each DUREES as minutes (minutes)}
@@ -529,66 +486,15 @@
         </div>
       </fieldset>
 
-      {#if intervenantDirect !== ''}
-        <section class="mt-4 rounded-xl border-2 border-line p-4">
-          <h3 class="text-xl font-bold text-ink">Quand les mettre ensemble</h3>
-          {#if chargementPlanning}
-            <p class="mt-1 text-lg text-ink-soft">Un instant…</p>
-          {:else if planning === null}
-            <p class="mt-1 text-lg text-ink-soft">
-              L'agenda n'a pas pu être lu. Vous pouvez fixer le rendez-vous à l'heure de votre choix.
-            </p>
-          {:else}
-            {#if messageProposition !== null}
-              <p role="status" class="mt-1 text-lg font-semibold text-ink">{messageProposition}</p>
-            {/if}
-            {#if planning.suggestion !== null}
-              <button type="button" class="btn btn-primary mt-3" onclick={prendreLaProposition}>
-                <span aria-hidden="true">✓</span> Prendre ce créneau
-              </button>
-            {/if}
-
-            <!--
-              La semaine, jour par jour : ce qui est annoncé, ce qui est déjà pris, ce
-              qui reste. Une liste plutôt qu'une grille — elle se lit sur un téléphone, et
-              elle se lit à voix haute.
-            -->
-            <ul class="mt-4 grid gap-3">
-              {#each planning.week as jour (jour.localDate)}
-                {#if jour.windows.length > 0 || jour.taken.length > 0}
-                  <li class="rounded-lg bg-surface-soft p-3">
-                    <p class="text-lg font-bold text-ink">{formatDayLabel(jour.localDate)}</p>
-                    {#if jour.windows.length > 0}
-                      <p class="text-base text-ink-soft">
-                        <span aria-hidden="true">🗓️</span>
-                        Reçoit de {jour.windows.map((f) => `${f.from.replace(':', 'h')} à ${f.to.replace(':', 'h')}`).join(' et de ')}
-                      </p>
-                    {/if}
-                    {#each jour.taken as pris (pris.label + pris.start.toISOString())}
-                      <p class="text-base text-ink">
-                        <span aria-hidden="true">{pris.kind === 'appointment' ? '🩺' : '📅'}</span>
-                        Pris de {formatTime(pris.start)} à {formatTime(pris.end)} — {pris.label}
-                      </p>
-                    {/each}
-                    {#if jour.free.length > 0}
-                      <p class="text-base font-semibold text-brand-900">
-                        <span aria-hidden="true">✅</span>
-                        Libre de {jour.free.map((f) => `${f.from.replace(':', 'h')} à ${f.to.replace(':', 'h')}`).join(' et de ')}
-                      </p>
-                    {:else if jour.windows.length > 0}
-                      <p class="text-base font-semibold text-ink-soft">Plus rien de libre ce jour-là.</p>
-                    {/if}
-                  </li>
-                {/if}
-              {/each}
-            </ul>
-            <p class="mt-3 text-base text-ink-soft">
-              « Pris » rassemble les deux agendas : celui de {intervenantChoisi?.name ?? 'la personne'}
-              {#if quiUid !== ''}et celui de {patient(quiUid)?.firstName ?? 'la personne reçue'}{/if}.
-            </p>
-          {/if}
-        </section>
-      {/if}
+      <AppointmentAgenda
+        practitionerId={intervenantDirect}
+        patientUid={quiUid}
+        preference={preferenceSouhaitee}
+        durationMin={dureeDirecte}
+        practitionerName={intervenantChoisi?.name ?? 'la personne'}
+        patientFirstName={quiUid === '' ? '' : (patient(quiUid)?.firstName ?? '')}
+        onchoisir={poserDansLeFormulaireDirect}
+      />
       {#if alerteDirecte !== null}
         <p role="status" class="mt-3 rounded-xl bg-amber-50 p-3 text-lg font-semibold text-ink">
           <span aria-hidden="true">⚠️</span> {alerteDirecte}
@@ -651,15 +557,15 @@
           {#if ouvert === demande.id}
             <div class="mt-3 rounded-xl border-2 border-line p-4">
               <div class="grid gap-4 sm:grid-cols-2">
-                <div>
+                <div class="min-w-0">
                   <label for="date" class="mb-2 block text-lg font-semibold text-ink">Date</label>
                   <input id="date" type="date" bind:value={date} class={champ} style="min-height: 56px;" />
                 </div>
-                <div>
+                <div class="min-w-0">
                   <label for="heure" class="mb-2 block text-lg font-semibold text-ink">Heure</label>
                   <input id="heure" type="time" bind:value={heure} class={champ} style="min-height: 56px;" />
                 </div>
-                <div>
+                <div class="min-w-0">
                   <label for="duree" class="mb-2 block text-lg font-semibold text-ink">Durée</label>
                   <select id="duree" bind:value={duree} class={champ} style="min-height: 56px;">
                     {#each DUREES as minutes (minutes)}
@@ -667,7 +573,7 @@
                     {/each}
                   </select>
                 </div>
-                <div>
+                <div class="min-w-0">
                   <label for="avecqui" class="mb-2 block text-lg font-semibold text-ink">
                     Avec qui — le patient lira ce nom
                   </label>
@@ -701,6 +607,22 @@
                   {availabilityLabel(intervenantDeLaFile?.availability ?? [])}.
                 </p>
               {/if}
+
+              <!--
+                Le même agenda croisé que pour un rendez-vous fixé sans demande. Ici, le
+                moment souhaité n'est pas à choisir : la personne l'a déjà dit en faisant
+                sa demande, et c'est lui qui guide la proposition.
+              -->
+              <AppointmentAgenda
+                practitionerId={intervenantFile}
+                patientUid={demande.patientUid}
+                preference={demande.preference}
+                durationMin={duree}
+                practitionerName={intervenantDeLaFile?.name ?? 'la personne'}
+                patientFirstName={personne?.firstName ?? ''}
+                onchoisir={poserDansLaFile}
+              />
+
               {#if alerteFile !== null}
                 <p role="status" class="mt-3 rounded-xl bg-amber-50 p-3 text-lg font-semibold text-ink">
                   <span aria-hidden="true">⚠️</span> {alerteFile}
