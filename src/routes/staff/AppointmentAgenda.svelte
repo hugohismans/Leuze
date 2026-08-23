@@ -167,7 +167,13 @@
         La semaine, jour par jour : ce qui est annoncé, ce qui est déjà pris, ce qui reste.
         Une liste plutôt qu'une grille — elle se lit sur un téléphone, et elle se lit à
         voix haute.
+
+        La frontière d'erreur n'est pas une précaution de principe. Un rendu qui échoue
+        laisse le navigateur sur l'affichage précédent — ici « Un instant… » — sans rien
+        dire, ni à l'écran ni dans l'état de l'application. Le soignant attend devant une
+        phrase qui ment. Une donnée inattendue doit coûter cette liste, pas l'écran.
       -->
+      <svelte:boundary>
       <ul class="mt-4 grid gap-3">
         {#each planning.week as jour (jour.localDate)}
           {#if jour.windows.length > 0 || jour.taken.length > 0}
@@ -208,6 +214,14 @@
         « Pris » rassemble les deux agendas : celui de {practitionerName}
         {#if patientFirstName !== ''}et celui de {patientFirstName}{/if}.
       </p>
+
+      {#snippet failed()}
+        <p role="status" class="mt-4 rounded-xl bg-surface-soft p-4 text-lg text-ink">
+          Le détail de la semaine n'a pas pu être affiché. Le créneau proposé ci-dessus
+          reste valable, et vous pouvez fixer le rendez-vous à l'heure de votre choix.
+        </p>
+      {/snippet}
+      </svelte:boundary>
     {/if}
   </section>
 {/if}
