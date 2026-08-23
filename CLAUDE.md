@@ -1,6 +1,7 @@
 # CLAUDE.md — Conventions du projet
 
-App web « Activités » — Hôpital psychiatrique Saint-Jean-de-Dieu, Leuze-en-Hainaut.
+App web « Hodie » (« aujourd'hui » en latin) — le programme des activités de l'hôpital
+psychiatrique Saint-Jean-de-Dieu, Leuze-en-Hainaut.
 Lire `PLAN.md` avant toute modification d'architecture.
 
 ---

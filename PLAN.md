@@ -1,4 +1,4 @@
-# PLAN — Web app « Activités » — CH psychiatrique Saint-Jean-de-Dieu, Leuze-en-Hainaut
+# PLAN — « Hodie », web app des activités — CH psychiatrique Saint-Jean-de-Dieu, Leuze-en-Hainaut
 
 > Statut : **en attente de validation**. Aucune ligne de code applicatif n'est écrite avant accord
 > sur ce document et réponses aux questions ouvertes (§8).
