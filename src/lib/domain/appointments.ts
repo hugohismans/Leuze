@@ -88,6 +88,27 @@ export function upcomingScheduled<T extends { status: string; start?: Date; end?
 }
 
 /**
+ * Les rendez-vous fixés déjà passés, le plus récent en tête.
+ *
+ * L'écran soignant les mélangeait aux autres, et la liste s'allongeait sans fin : on y
+ * cherchait « ce qui est prévu » au milieu de ce qui avait déjà eu lieu. Ils ne
+ * disparaissent pas pour autant — un rendez-vous manqué se retrouve, et savoir quand
+ * quelqu'un a vu le psychiatre pour la dernière fois a son utilité. Ils sont seulement
+ * rangés derrière une case à cocher.
+ *
+ * Un rendez-vous compte jusqu'à sa fin : celui de 9h30 n'est pas « passé » à 9h45.
+ */
+export function pastScheduled<T extends { status: string; start?: Date; end?: Date }>(
+  appointments: T[],
+  now: Date = new Date(),
+): T[] {
+  return appointments
+    .filter((a) => a.status === 'scheduled' && a.start !== undefined)
+    .filter((a) => (a.end ?? a.start)!.getTime() < now.getTime())
+    .sort((a, b) => (b.start?.getTime() ?? 0) - (a.start?.getTime() ?? 0))
+}
+
+/**
  * Le prochain rendez-vous fixé, ou `null`. C'est la seule chose qu'un patient a besoin
  * de voir en arrivant : ce qui l'attend, pas la liste de ce qui est passé.
  */

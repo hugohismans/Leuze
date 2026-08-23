@@ -6,7 +6,9 @@
     PREFERENCE_LABELS,
     kindIcon,
     kindName,
+    pastScheduled,
     pendingFirst,
+    upcomingScheduled,
     waitingDays,
     waitingLabel,
   } from '../../lib/domain/appointments'
@@ -27,7 +29,7 @@
     instantOf,
     todayLocalDate,
   } from '../../lib/domain/time'
-  import type { LocalDate, LocalTime } from '../../lib/domain/types'
+  import type { Appointment, LocalDate, LocalTime } from '../../lib/domain/types'
 
   /**
    * La file des demandes de rendez-vous.
@@ -53,11 +55,16 @@
 
   const kinds = $derived(store.appointmentKinds)
   const enAttente = $derived(pendingFirst(staffStore.appointments))
-  const fixes = $derived(
-    staffStore.appointments
-      .filter((a) => a.status === 'scheduled')
-      .sort((a, b) => (a.start?.getTime() ?? 0) - (b.start?.getTime() ?? 0)),
-  )
+  /**
+   * Ce qui est prévu, et ce qui a eu lieu.
+   *
+   * Les deux étaient mélangés, et la liste s'allongeait sans fin : on y cherchait « ce
+   * qui vient » au milieu de ce qui était déjà passé. Le passé ne disparaît pas — un
+   * rendez-vous manqué se retrouve — il attend derrière une case à cocher.
+   */
+  const aVenir = $derived(upcomingScheduled(staffStore.appointments))
+  const passes = $derived(pastScheduled(staffStore.appointments))
+  let voirLePasse = $state(false)
 
   const DUREES = [15, 30, 45, 60]
 
@@ -666,49 +673,81 @@
   {/if}
   {/if}
 
+  <!--
+    Une seule ligne, écrite une fois, servie aux deux listes. Le bouton « Annuler » ne
+    suit pas dans le passé : proposer d'annuler ce qui a déjà eu lieu n'a pas de sens,
+    et le motif enregistré — « le rendez-vous a été déplacé » — serait faux.
+  -->
+  {#snippet ligne(rendezVous: Appointment, annulable: boolean)}
+    <li class="card p-4">
+      <p class="text-lg font-bold text-ink">
+        <span aria-hidden="true">{kindIcon(kinds, rendezVous.kindId)}</span>
+        {patient(rendezVous.patientUid)?.firstName ?? 'Prénom inconnu'} — {rendezVous.withWhom}
+      </p>
+      {#if rendezVous.localDate && rendezVous.start && rendezVous.end}
+        <p class="text-base text-ink">
+          {formatFullWhen(rendezVous.localDate, rendezVous.start, rendezVous.end)}
+          {#if rendezVous.locationId}· {store.locationOf(rendezVous.locationId)?.name}{/if}
+        </p>
+      {/if}
+      {#if rendezVous.autoAccepted === true}
+        <!--
+          Personne n'a posé ce rendez-vous à la main : il faut que cela se lise, sans
+          quoi on se demanderait qui l'a mis là. C'est aussi la façon la plus simple
+          de repérer que le réglage fait ce qu'on croit.
+        -->
+        <p class="text-base font-semibold text-ink-soft">
+          <span aria-hidden="true">⚡</span> Fixé automatiquement, à la demande du patient
+        </p>
+      {/if}
+      {#if annulable}
+        <button
+          type="button"
+          class="btn btn-secondary mt-2"
+          onclick={() => staffStore.cancelAppointment(rendezVous.id, 'Le rendez-vous a été déplacé')}
+        >
+          Annuler ce rendez-vous
+        </button>
+      {/if}
+    </li>
+  {/snippet}
+
   <h2 class="mt-8 mb-3 text-2xl font-bold text-ink">
-    {toutVoir ? 'Rendez-vous fixés' : 'Mes rendez-vous'}
+    {toutVoir ? 'Rendez-vous à venir' : 'Mes rendez-vous à venir'}
   </h2>
-  {#if fixes.length === 0}
+  {#if aVenir.length === 0}
     <p class="card p-5 text-lg text-ink-soft">
       {toutVoir
-        ? 'Aucun rendez-vous fixé pour le moment.'
-        : 'Aucun rendez-vous à votre nom pour le moment.'}
+        ? 'Aucun rendez-vous à venir pour le moment.'
+        : 'Aucun rendez-vous à venir à votre nom.'}
     </p>
   {:else}
     <ul class="grid gap-3">
-      {#each fixes as rendezVous (rendezVous.id)}
-        <li class="card p-4">
-          <p class="text-lg font-bold text-ink">
-            <span aria-hidden="true">{kindIcon(kinds, rendezVous.kindId)}</span>
-            {patient(rendezVous.patientUid)?.firstName ?? 'Prénom inconnu'} — {rendezVous.withWhom}
-          </p>
-          {#if rendezVous.localDate && rendezVous.start && rendezVous.end}
-            <p class="text-base text-ink">
-              {formatFullWhen(rendezVous.localDate, rendezVous.start, rendezVous.end)}
-              {#if rendezVous.locationId}· {store.locationOf(rendezVous.locationId)?.name}{/if}
-            </p>
-          {/if}
-          {#if rendezVous.autoAccepted === true}
-            <!--
-              Personne n'a posé ce rendez-vous à la main : il faut que cela se lise, sans
-              quoi on se demanderait qui l'a mis là. C'est aussi la façon la plus simple
-              de repérer que le réglage fait ce qu'on croit.
-            -->
-            <p class="text-base font-semibold text-ink-soft">
-              <span aria-hidden="true">⚡</span> Fixé automatiquement, à la demande du patient
-            </p>
-          {/if}
-          <button
-            type="button"
-            class="btn btn-secondary mt-2"
-            onclick={() => staffStore.cancelAppointment(rendezVous.id, 'Le rendez-vous a été déplacé')}
-          >
-            Annuler ce rendez-vous
-          </button>
-        </li>
+      {#each aVenir as rendezVous (rendezVous.id)}
+        {@render ligne(rendezVous, true)}
       {/each}
     </ul>
+  {/if}
+
+  <!--
+    Le passé reste consultable, mais il ne s'impose pas. Le nombre est écrit sur la case :
+    on sait ce qu'on va ouvrir avant de l'ouvrir.
+  -->
+  {#if passes.length > 0}
+    <label class="mt-4 flex items-center gap-3" style="min-height: 56px;">
+      <input type="checkbox" class="h-6 w-6" bind:checked={voirLePasse} />
+      <span class="text-lg text-ink">
+        Voir aussi les rendez-vous passés ({passes.length})
+      </span>
+    </label>
+
+    {#if voirLePasse}
+      <ul class="mt-2 grid gap-3">
+        {#each passes as rendezVous (rendezVous.id)}
+          {@render ligne(rendezVous, false)}
+        {/each}
+      </ul>
+    {/if}
   {/if}
 </section>
 
