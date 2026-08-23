@@ -179,7 +179,13 @@
                   Reçoit de {plages(jour.windows)}
                 </p>
               {/if}
-              {#each jour.taken as pris (pris.label + pris.start.toISOString())}
+              <!--
+                La clef est le rang, et non le contenu : deux occupations identiques
+                arrêteraient le rendu de Svelte, et l'écran resterait figé sur son état
+                précédent — « Un instant… » pour toujours, sans que rien ne le dise. La
+                liste est remplacée en entier à chaque lecture ; le rang suffit.
+              -->
+              {#each jour.taken as pris, rang (rang)}
                 <p class="text-base text-ink">
                   <span aria-hidden="true">{pris.kind === 'appointment' ? '🩺' : '📅'}</span>
                   Pris de {formatTime(pris.start)} à {formatTime(pris.end)} — {pris.label}

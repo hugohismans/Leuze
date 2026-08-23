@@ -82,6 +82,24 @@ export function freeSlotsOn(
  * La semaine d'un intervenant, telle qu'on la lit pour poser un rendez-vous : ce qu'il
  * annonce, ce qu'il a déjà, ce qui reste.
  */
+/**
+ * Une activité peut être dans les deux agendas à la fois : l'intervenant l'anime, et la
+ * personne reçue y est inscrite. C'est le même événement, et l'afficher deux fois n'est
+ * pas seulement inélégant — c'est faux, cela laisse croire à deux occupations distinctes.
+ *
+ * Deux entrées sont le même événement quand elles ont les mêmes bornes, la même nature et
+ * le même libellé. Rien de plus : deux ateliers différents à la même heure restent deux.
+ */
+export function dedupeBusy(entries: BusyEntry[]): BusyEntry[] {
+  const vues = new Set<string>()
+  return entries.filter((entry) => {
+    const clef = `${entry.start.getTime()}|${entry.end.getTime()}|${entry.kind}|${entry.label}`
+    if (vues.has(clef)) return false
+    vues.add(clef)
+    return true
+  })
+}
+
 export function agendaWeek(
   days: LocalDate[],
   windows: AvailabilityWindow[],
@@ -92,12 +110,14 @@ export function agendaWeek(
   return days.map((localDate) => ({
     localDate,
     windows: windowsOn(plages, isoWeekdayOf(localDate)),
-    taken: busy
-      .filter((entry) => {
-        const jour = instantOf(localDate, '00:00').getTime()
-        return entry.end.getTime() > jour && entry.start.getTime() < jour + 86_400_000
-      })
-      .sort((a, b) => a.start.getTime() - b.start.getTime()),
+    taken: dedupeBusy(
+      busy
+        .filter((entry) => {
+          const jour = instantOf(localDate, '00:00').getTime()
+          return entry.end.getTime() > jour && entry.start.getTime() < jour + 86_400_000
+        })
+        .sort((a, b) => a.start.getTime() - b.start.getTime()),
+    ),
     free: freeSlotsOn(plages, busy, localDate, durationMin),
   }))
 }
