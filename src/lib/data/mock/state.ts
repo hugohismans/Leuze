@@ -162,6 +162,20 @@ function build(now: Date): MockWorld {
       status: 'requested',
       createdAt: new Date(now.getTime() - 2 * 86_400_000),
     },
+    /*
+      Une demande qui nomme quelqu'un : c'est ce que le patient peut faire depuis qu'il
+      choisit « avec qui ». Elle sert aussi à montrer que la personne nommée la voit dans
+      sa propre file — et peut la fixer sans attendre la bulle.
+    */
+    {
+      id: 'rdv-demo-3',
+      patientUid: 'demo-p3',
+      kindId: 'psychologue',
+      preference: 'apres-midi',
+      status: 'requested',
+      practitionerId: 'claire',
+      createdAt: new Date(now.getTime() - 86_400_000),
+    },
     {
       id: 'rdv-demo-2',
       patientUid: DEMO_PATIENT_UID,

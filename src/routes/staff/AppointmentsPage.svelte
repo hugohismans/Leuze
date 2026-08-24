@@ -573,13 +573,32 @@
     </form>
   {/if}
 
-  {#if toutVoir}
+  <!--
+    La file, pour l'administrateur comme pour l'intervenant.
+
+    Elle était réservée à l'administrateur, et c'était juste tant qu'une demande ne
+    nommait personne : un intervenant n'avait rien à y voir. Depuis que le patient peut
+    demander quelqu'un en particulier, la demande porte un nom dès le départ — et la
+    personne nommée doit pouvoir fixer elle-même, sans attendre la bulle.
+
+    Le compteur du menu, lui, comptait déjà ces demandes : il annonçait « 1 » devant un
+    écran qui n'en montrait aucune. Un compteur qui fait chercher ce qui n'est pas
+    affiché est pire que pas de compteur du tout.
+
+    Il n'y a rien à filtrer ici : un intervenant ne reçoit que les rendez-vous qui
+    portent son identifiant — les règles le disent, et la requête aussi.
+  -->
   <h2 class="mb-3 text-2xl font-bold text-ink">
-    En attente {enAttente.length > 0 ? `(${enAttente.length})` : ''}
+    {toutVoir ? 'En attente' : 'Demandes qui vous attendent'}
+    {enAttente.length > 0 ? `(${enAttente.length})` : ''}
   </h2>
 
   {#if enAttente.length === 0}
-    <p class="card p-5 text-lg text-ink-soft">Aucune demande en attente.</p>
+    <p class="card p-5 text-lg text-ink-soft">
+      {toutVoir
+        ? 'Aucune demande en attente.'
+        : 'Aucune demande ne vous attend. Quand quelqu’un demandera à vous voir, la demande apparaîtra ici.'}
+    </p>
   {:else}
     <ul class="grid gap-4">
       {#each enAttente as demande (demande.id)}
@@ -737,7 +756,6 @@
         </li>
       {/each}
     </ul>
-  {/if}
   {/if}
 
   <!--
