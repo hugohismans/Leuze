@@ -122,6 +122,62 @@ export function agendaWeek(
   }))
 }
 
+/**
+ * Jusqu'où l'on cherche un créneau : trois semaines.
+ *
+ * C'est l'horizon de la proposition automatique, et donc celui de la liste complète : un
+ * créneau proposé qui ne figurerait pas dans « tous les créneaux possibles » ferait mentir
+ * la liste.
+ */
+export const PLANNING_HORIZON_DAYS = 21
+
+/**
+ * Ce que l'écran montre sans qu'on le demande : la semaine qui vient.
+ *
+ * Les trois semaines sont envoyées — elles ne coûtent aucune lecture de plus, le serveur
+ * les a déjà croisées — mais les dérouler d'emblée noierait la proposition sous vingt et
+ * un jours de détail. Le reste s'ouvre à la demande.
+ */
+export const AGENDA_INLINE_DAYS = 7
+
+/** Un jour, et les heures de début auxquelles on peut poser le rendez-vous. */
+export type DaySlots = { localDate: LocalDate; times: LocalTime[] }
+
+/**
+ * Tous les créneaux où l'on peut poser le rendez-vous, jour par jour.
+ *
+ * Le serveur a déjà croisé les deux agendas : `free` est ce qui reste. Il n'y a plus qu'à
+ * le découper à la durée demandée. Rien de nouveau n'est lu, et surtout rien de nouveau
+ * n'est envoyé au navigateur — c'est la même information, présentée autrement.
+ *
+ * Pourquoi cela existe : la proposition automatique répond à « quand au plus tôt ? », ce
+ * qui n'est pas toujours la question. Un soignant qui connaît la personne sait parfois
+ * qu'il vaut mieux jeudi. Il lui faut alors la liste, pas un avis.
+ *
+ * Les jours sans aucun créneau ne figurent pas : une ligne vide n'apprend rien.
+ */
+export function bookableSlots(
+  week: { localDate: LocalDate; free: FreeSlot[] }[],
+  durationMin: number,
+  stepMin = 15,
+): DaySlots[] {
+  if (durationMin <= 0 || stepMin <= 0) return []
+  const jours: DaySlots[] = []
+  for (const jour of week) {
+    const times: LocalTime[] = []
+    for (const trou of jour.free) {
+      const ouverture = minutesOf(trou.from)
+      const fermeture = minutesOf(trou.to)
+      if (ouverture === null || fermeture === null) continue
+      for (let debut = ouverture; debut + durationMin <= fermeture; debut += stepMin) {
+        times.push(toTime(debut))
+      }
+    }
+    if (times.length > 0) jours.push({ localDate: jour.localDate, times })
+  }
+  return jours
+}
+
 export type Suggestion = {
   localDate: LocalDate
   time: LocalTime
