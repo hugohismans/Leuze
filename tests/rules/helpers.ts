@@ -56,6 +56,14 @@ export function occurrenceDoc(overrides: Record<string, unknown> = {}): Record<s
     categoryId: 'creatif',
     locationId: 'atelier',
     localDate: '2026-09-01',
+    /*
+      Une séance porte le nom de qui l'anime, dénormalisé depuis l'activité.
+
+      Il est dans le jeu d'essai par défaut parce qu'il décide d'un droit : écrire une
+      séance, c'est modifier l'activité de quelqu'un. Une séance sans animateur
+      n'appartient à personne en particulier, et relève alors de l'administrateur.
+    */
+    facilitatorId: 'marc',
     start: new Date('2026-09-01T12:00:00Z'),
     end: new Date('2026-09-01T13:30:00Z'),
     audienceKeys: ['all'],

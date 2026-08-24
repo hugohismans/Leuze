@@ -221,12 +221,30 @@ service cloud.firestore {
       // `audienceKeys` est refusée en bloc, elle ne renvoie pas un sous-ensemble.
       allow get, list: if isStaff() || (isPatient() && visibleToPatient());
 
-      allow create: if isStaff() && validNewOccurrence(request.resource.data);
-      allow update: if isStaff() && (staffOccurrencePatch() || staffOccurrenceRegeneration());
+      /*
+        Écrire une séance, c'est modifier l'activité de quelqu'un.
+
+        `mineAsFacilitator` manquait ici, et lui seul. Le document de l'activité était
+        bien protégé — un intervenant ne modifie que celles qu'il anime — mais ses séances
+        ne l'étaient pas : n'importe quel membre du personnel pouvait annuler la séance
+        d'un collègue, et donc vider son activité du programme sans jamais toucher à
+        l'activité elle-même. Constaté en service.
+
+        Une activité sans animateur désigné n'appartient à personne en particulier : elle
+        relève de l'organisation du service, donc de l'administrateur. C'est exactement ce
+        que dit `canEditActivity` côté domaine, et les deux doivent dire la même chose.
+      */
+      allow create: if validNewOccurrence(request.resource.data)
+        && (isAdmin() || (isStaff() && mineAsFacilitator(request.resource.data)));
+      allow update: if (staffOccurrencePatch() || staffOccurrenceRegeneration())
+        && (isAdmin()
+            || (isStaff()
+                && mineAsFacilitator(resource.data)
+                && mineAsFacilitator(request.resource.data)));
       // Une occurrence portant des inscriptions ne se supprime jamais : elle s'annule.
-      allow delete: if isStaff()
-        && resource.data.confirmedCount == 0
-        && resource.data.waitlistCount == 0;
+      allow delete: if resource.data.confirmedCount == 0
+        && resource.data.waitlistCount == 0
+        && (isAdmin() || (isStaff() && mineAsFacilitator(resource.data)));
     }
 
     // --- inscriptions ---------------------------------------------------------

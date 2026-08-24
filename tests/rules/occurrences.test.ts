@@ -15,7 +15,9 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import {
   JONCQUERELLE,
   MAZUREL,
+  asAdmin,
   asPatient,
+  asPractitioner,
   asStaff,
   asVisitor,
   createEnvironment,
@@ -150,8 +152,8 @@ describe('requête du calendrier', () => {
 })
 
 describe('modification d’une occurrence', () => {
-  it('laisse un soignant annuler avec un motif', async () => {
-    const database = asStaff(env)
+  it('laisse l’animateur annuler sa séance, avec un motif', async () => {
+    const database = asPractitioner(env, 'marc')
     await assertSucceeds(
       updateDoc(doc(database, 'occurrences', OUVERTE), {
         status: 'cancelled',
@@ -161,14 +163,14 @@ describe('modification d’une occurrence', () => {
   })
 
   it('refuse qu’un soignant touche aux compteurs de places', async () => {
-    const database = asStaff(env)
+    const database = asPractitioner(env, 'marc')
     await assertFails(updateDoc(doc(database, 'occurrences', OUVERTE), { confirmedCount: 99 }))
   })
 
-  it('laisse un soignant rafraîchir l’audience — c’est ce que fait une régénération', async () => {
+  it('laisse l’animateur rafraîchir l’audience — c’est ce que fait une régénération', async () => {
     // Le soignant définit déjà l'audience sur l'activité : la lui interdire ici ne
     // protégerait rien. Ce qui reste interdit, dans tous les cas, ce sont les compteurs.
-    const database = asStaff(env)
+    const database = asPractitioner(env, 'marc')
     await assertSucceeds(updateDoc(doc(database, 'occurrences', OUVERTE), { audienceKeys: [MAZUREL] }))
     await assertFails(updateDoc(doc(database, 'occurrences', OUVERTE), { confirmedCount: 1 }))
   })
@@ -190,36 +192,36 @@ describe('génération des occurrences par l’application soignante', () => {
   // occurrences. Les règles doivent donc l'autoriser — sans jamais lui laisser toucher
   // aux compteurs de places, qui appartiennent aux inscriptions.
 
-  it('laisse un soignant créer une occurrence vide', async () => {
-    const database = asStaff(env)
+  it('laisse l’animateur créer une occurrence vide', async () => {
+    const database = asPractitioner(env, 'marc')
     await assertSucceeds(
       setDoc(doc(database, 'occurrences', 'occ-nouvelle'), occurrenceDoc({ localDate: '2026-09-08' })),
     )
   })
 
   it('refuse une occurrence créée avec des inscrits', async () => {
-    const database = asStaff(env)
+    const database = asPractitioner(env, 'marc')
     await assertFails(
       setDoc(doc(database, 'occurrences', 'occ-truquee'), occurrenceDoc({ confirmedCount: 5 })),
     )
   })
 
   it('laisse rafraîchir les champs d’une occurrence lors d’une régénération', async () => {
-    const database = asStaff(env)
+    const database = asPractitioner(env, 'marc')
     await assertSucceeds(
       setDoc(doc(database, 'occurrences', OUVERTE), occurrenceDoc({ title: 'Atelier peinture' })),
     )
   })
 
   it('refuse une régénération qui modifierait les compteurs', async () => {
-    const database = asStaff(env)
+    const database = asPractitioner(env, 'marc')
     await assertFails(
       setDoc(doc(database, 'occurrences', OUVERTE), occurrenceDoc({ confirmedCount: 3 })),
     )
   })
 
   it('supprime une occurrence sortie de la série, si personne n’y est inscrit', async () => {
-    const database = asStaff(env)
+    const database = asPractitioner(env, 'marc')
     await assertSucceeds(deleteDoc(doc(database, 'occurrences', OUVERTE)))
   })
 
@@ -230,7 +232,84 @@ describe('génération des occurrences par l’application soignante', () => {
         occurrenceDoc({ confirmedCount: 2 }),
       )
     })
-    const database = asStaff(env)
+    const database = asPractitioner(env, 'marc')
     await assertFails(deleteDoc(doc(database, 'occurrences', 'occ-avec-inscrits')))
+  })
+})
+
+/**
+ * Écrire une séance, c'est modifier l'activité de quelqu'un.
+ *
+ * Constaté en service : une assistante sociale, qui n'est pas administratrice et n'anime
+ * pas l'activité, a pu annuler une séance de gymnastique douce. Le document de l'activité
+ * était bien protégé — un intervenant ne modifie que celles qu'il anime — mais ses
+ * séances ne l'étaient pas. On pouvait donc vider une activité du programme sans jamais
+ * toucher à l'activité elle-même.
+ */
+describe('une séance appartient à qui l’anime', () => {
+  it('refuse qu’un collègue annule la séance de quelqu’un d’autre', async () => {
+    const lola = asPractitioner(env, 'lola')
+    await assertFails(
+      updateDoc(doc(lola, 'occurrences', OUVERTE), {
+        status: 'cancelled',
+        cancellationReason: "L'animateur est absent",
+      }),
+    )
+  })
+
+  it('refuse qu’un collègue la supprime, même vide', async () => {
+    await assertFails(deleteDoc(doc(asPractitioner(env, 'lola'), 'occurrences', OUVERTE)))
+  })
+
+  it('refuse qu’un collègue la régénère à son nom', async () => {
+    await assertFails(
+      setDoc(
+        doc(asPractitioner(env, 'lola'), 'occurrences', OUVERTE),
+        occurrenceDoc({ facilitatorId: 'lola' }),
+      ),
+    )
+  })
+
+  it('refuse un compte du personnel relié à personne', async () => {
+    // Sans lien vers une fiche, on n'anime rien : il n'y a aucune séance à soi.
+    await assertFails(
+      updateDoc(doc(asStaff(env), 'occurrences', OUVERTE), { status: 'cancelled' }),
+    )
+  })
+
+  it('laisse l’administrateur annuler n’importe laquelle : c’est lui qui répartit', async () => {
+    await assertSucceeds(
+      updateDoc(doc(asAdmin(env), 'occurrences', OUVERTE), {
+        status: 'cancelled',
+        cancellationReason: 'La salle n’est pas disponible',
+      }),
+    )
+  })
+
+  it('laisse l’administrateur en créer une pour quelqu’un d’autre', async () => {
+    await assertSucceeds(
+      setDoc(
+        doc(asAdmin(env), 'occurrences', 'occ-pour-marc'),
+        occurrenceDoc({ localDate: '2026-09-15', facilitatorId: 'marc' }),
+      ),
+    )
+  })
+
+  it('refuse à un intervenant une séance que personne n’anime', async () => {
+    // Elle relève de l'organisation du service, donc de l'administrateur — c'est ce que
+    // dit déjà `canEditActivity` côté domaine, et les deux doivent dire la même chose.
+    await env.withSecurityRulesDisabled(async (context) => {
+      const sansAnimateur = occurrenceDoc()
+      delete sansAnimateur['facilitatorId']
+      await setDoc(doc(context.firestore(), 'occurrences', 'occ-orpheline'), sansAnimateur)
+    })
+    await assertFails(
+      updateDoc(doc(asPractitioner(env, 'marc'), 'occurrences', 'occ-orpheline'), {
+        status: 'cancelled',
+      }),
+    )
+    await assertSucceeds(
+      updateDoc(doc(asAdmin(env), 'occurrences', 'occ-orpheline'), { status: 'cancelled' }),
+    )
   })
 })

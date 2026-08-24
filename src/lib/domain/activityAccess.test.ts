@@ -66,3 +66,40 @@ describe('qui modifie quelle activité', () => {
     expect(activityEditRefusal(sansLien, null)).toMatch(/relié à aucune personne/)
   })
 })
+
+/**
+ * Une séance appartient à qui anime son activité.
+ *
+ * Constaté en service : une assistante sociale, qui n'est ni administratrice ni
+ * animatrice de l'activité, a pu annuler une séance de gymnastique douce. Le document de
+ * l'activité était protégé ; ses séances ne l'étaient pas.
+ *
+ * `canEditActivity` répond déjà à la question — une séance porte le même `facilitatorId`
+ * que son activité. Ce qui manquait, ce n'était pas la règle : c'était de s'en servir,
+ * dans les écrans comme dans les règles Firestore.
+ */
+describe('annuler une séance', () => {
+  const seanceDeMarc = { facilitatorId: 'marc' }
+  const seanceSansAnimateur = {}
+
+  it("est permis à l'animateur", () => {
+    expect(canEditActivity({ role: 'staff', practitionerId: 'marc' }, seanceDeMarc)).toBe(true)
+  })
+
+  it('est refusé à un collègue', () => {
+    expect(canEditActivity({ role: 'staff', practitionerId: 'lola' }, seanceDeMarc)).toBe(false)
+  })
+
+  it("est refusé à un compte du personnel relié à personne", () => {
+    expect(canEditActivity({ role: 'staff', practitionerId: null }, seanceDeMarc)).toBe(false)
+  })
+
+  it("est permis à l'administrateur, qui répartit", () => {
+    expect(canEditActivity({ role: 'admin', practitionerId: null }, seanceDeMarc)).toBe(true)
+  })
+
+  it("d'une activité que personne n'anime, relève de l'administrateur seul", () => {
+    expect(canEditActivity({ role: 'staff', practitionerId: 'marc' }, seanceSansAnimateur)).toBe(false)
+    expect(canEditActivity({ role: 'admin', practitionerId: null }, seanceSansAnimateur)).toBe(true)
+  })
+})
