@@ -66,6 +66,15 @@
   let congeErreur = $state<string | null>(null)
   /** Ce que le congé bousculerait, quand le serveur a demandé confirmation. */
   let aConfirmer = $state<LeaveOutcome | null>(null)
+  /**
+   * Annuler aussi les séances animées pendant le congé.
+   *
+   * Coché d'emblée, parce que c'est le cas courant : on s'absente, personne ne les
+   * anime plus, et les laisser au programme met des gens devant une salle vide. Le
+   * décocher reste un geste — un collègue peut très bien les assurer, et l'application
+   * n'a aucun moyen de le deviner.
+   */
+  let annulerLesSeances = $state(true)
 
   /**
    * Le libellé d'un jour, au milieu d'une phrase.
@@ -84,6 +93,7 @@
     congeAu = todayLocalDate()
     congeErreur = null
     aConfirmer = null
+    annulerLesSeances = true
   }
 
   function fermerLesConges(): void {
@@ -101,7 +111,10 @@
     }
     congeErreur = null
     await tenter(async () => {
-      const resultat = await staffStore.declareLeave(practitionerId, conge, { force })
+      const resultat = await staffStore.declareLeave(practitionerId, conge, {
+        force,
+        ...(force && annulerLesSeances ? { cancelSessions: true } : {}),
+      })
       if (resultat.needsConfirmation === true) {
         // On ne ferme rien : l'écran nomme ce qui va bouger, et l'on tranche en le lisant.
         aConfirmer = resultat
@@ -693,50 +706,75 @@
               <p class="text-lg font-bold text-ink">
                 <span aria-hidden="true">⚠️</span> {aConfirmer.message}
               </p>
-              <ul class="mt-2 grid gap-1">
-                {#each aConfirmer.conflicts ?? [] as conflit (conflit.appointmentId)}
-                  <li class="text-base text-ink">
-                    {conflit.firstName} — {formatLongDayLabel(conflit.localDate)}{#if conflit.start !== undefined && conflit.end !== undefined}, de {formatTime(new Date(conflit.start))} à {formatTime(new Date(conflit.end))}{/if}
-                  </li>
-                {/each}
-              </ul>
-              <p class="mt-2 text-base text-ink">
-                {#if (aConfirmer.conflicts ?? []).length === 1}
-                  Si vous déclarez le congé, ce rendez-vous retourne dans la file des
-                  demandes et devra être refixé. La personne concernée le lira dans son
-                  application.
-                {:else}
-                  Si vous déclarez le congé, ces rendez-vous retournent dans la file des
-                  demandes et devront être refixés. Les personnes concernées le liront
-                  dans leur application.
-                {/if}
-              </p>
+
               <!--
-                Les séances animées sont comptées, jamais touchées.
+                Les séances animées : nommées, datées, avec le nombre d'inscrits.
 
-                Une séance a des inscrits : l'annuler est une décision qui se prend séance
-                par séance, avec un motif. Mais la taire dans un écran dont tout l'objet
-                est « qu'est-ce que ce congé bouscule ? » en ferait une demi-vérité.
-
-                La phrase évite l'élision devant le nom : « qu'Docteur Lemaire » est
-                fautif, et « qu'Ada » ne l'est pas — aucune règle simple ne couvre les
-                deux, alors on tourne la phrase autrement.
+                C'est ce nombre qui fait hésiter — annuler un atelier vide et annuler un
+                atelier où onze personnes sont inscrites ne sont pas le même geste.
               -->
-              {#if (aConfirmer.activityCount ?? 0) === 1}
-                <p class="mt-2 text-base font-semibold text-ink">
-                  <span aria-hidden="true">📅</span>
-                  {personne.name} anime aussi une séance pendant ce congé. Elle n'est pas
-                  modifiée : une séance a des inscrits, et s'annule séance par séance,
-                  avec un motif.
-                </p>
-              {:else if (aConfirmer.activityCount ?? 0) > 1}
-                <p class="mt-2 text-base font-semibold text-ink">
-                  <span aria-hidden="true">📅</span>
-                  {personne.name} anime aussi {aConfirmer.activityCount} séances pendant ce
-                  congé. Elles ne sont pas modifiées : une séance a des inscrits, et
-                  s'annule séance par séance, avec un motif.
+              {#if (aConfirmer.sessions ?? []).length > 0}
+                <h5 class="mt-3 text-base font-bold text-ink">Séances que vous animez</h5>
+                <ul class="mt-1 grid gap-1">
+                  {#each aConfirmer.sessions ?? [] as seance (seance.occurrenceId)}
+                    <li class="text-base text-ink">
+                      <span aria-hidden="true">📅</span>
+                      {seance.title} — {enPhrase(seance.localDate)}{#if seance.start !== undefined && seance.end !== undefined}, de {formatTime(new Date(seance.start))} à {formatTime(new Date(seance.end))}{/if}
+                      {#if seance.confirmedCount > 0}
+                        · <strong>{seance.confirmedCount} inscrit{seance.confirmedCount > 1 ? 's' : ''}</strong>
+                      {:else}
+                        · personne d'inscrit
+                      {/if}
+                    </li>
+                  {/each}
+                </ul>
+
+                <label class="mt-3 flex items-start gap-3" style="min-height: 56px;">
+                  <input type="checkbox" class="mt-1 h-6 w-6" bind:checked={annulerLesSeances} />
+                  <span>
+                    <span class="block text-lg font-semibold text-ink">
+                      Annuler aussi ces séances
+                    </span>
+                    <span class="block text-base text-ink-soft">
+                      {#if annulerLesSeances}
+                        Elles seront barrées au programme, avec le motif
+                        « L'animateur est absent ». Les personnes inscrites le liront.
+                      {:else}
+                        Elles resteront au programme. Ne décochez que si quelqu'un d'autre
+                        les assure : l'application n'a aucun moyen de le savoir.
+                      {/if}
+                    </span>
+                  </span>
+                </label>
+              {/if}
+
+              <!--
+                Les rendez-vous, eux, ne sont pas un choix : une date qui ne peut plus
+                tenir ne tient plus. Ils retournent dans la file plutôt que d'être
+                annulés — le patient a demandé à voir quelqu'un, et cette demande tient
+                toujours ; c'est la date qui saute.
+              -->
+              {#if (aConfirmer.conflicts ?? []).length > 0}
+                <h5 class="mt-3 text-base font-bold text-ink">Rendez-vous fixés</h5>
+                <ul class="mt-1 grid gap-1">
+                  {#each aConfirmer.conflicts ?? [] as conflit (conflit.appointmentId)}
+                    <li class="text-base text-ink">
+                      <span aria-hidden="true">🩺</span>
+                      {conflit.firstName} — {enPhrase(conflit.localDate)}{#if conflit.start !== undefined && conflit.end !== undefined}, de {formatTime(new Date(conflit.start))} à {formatTime(new Date(conflit.end))}{/if}
+                    </li>
+                  {/each}
+                </ul>
+                <p class="mt-2 text-base text-ink">
+                  {#if (aConfirmer.conflicts ?? []).length === 1}
+                    Ce rendez-vous retourne dans la file des demandes et devra être refixé.
+                    La personne concernée le lira dans son application.
+                  {:else}
+                    Ces rendez-vous retournent dans la file des demandes et devront être
+                    refixés. Les personnes concernées le liront dans leur application.
+                  {/if}
                 </p>
               {/if}
+
               <div class="mt-3 flex flex-wrap gap-2">
                 <button
                   type="button"
@@ -744,7 +782,7 @@
                   disabled={busy}
                   onclick={() => declarerLeConge(personne.id, true)}
                 >
-                  {busy ? 'Un instant…' : 'Déclarer le congé quand même'}
+                  {busy ? 'Un instant…' : 'Déclarer le congé'}
                 </button>
                 <button type="button" class="btn btn-secondary" onclick={fermerLesConges}>
                   Ne rien changer

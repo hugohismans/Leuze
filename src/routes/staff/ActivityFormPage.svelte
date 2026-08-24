@@ -14,6 +14,8 @@
     facilitatorFor,
   } from '../../lib/domain/activityAccess'
   import { deletionConsequences } from '../../lib/domain/catalog'
+  import { leaveClashes } from '../../lib/domain/leave'
+  import { isoWeekdayOf } from '../../lib/domain/time'
   import { navigate } from '../../lib/router.svelte'
 
   let { activityId, date }: { activityId: string; date?: string } = $props()
@@ -233,6 +235,29 @@
    */
   let avertissementAnimateur = $state(false)
 
+  /**
+   * Les jours de congé que cette activité viendrait heurter.
+   *
+   * L'autre sens du même oubli : on peut déclarer un congé après avoir posé un atelier,
+   * mais on peut tout aussi bien poser un atelier après avoir déclaré un congé. Le second
+   * ne disait rien — l'activité s'enregistrait, et l'on découvrait le lundi qu'elle
+   * tombait en pleine absence.
+   *
+   * Rien n'est interdit : un collègue assure peut-être la séance, et l'application n'a
+   * aucun moyen de le savoir. On le dit une fois, avant d'enregistrer, et l'on laisse
+   * le choix — comme pour l'activité sans animateur désigné, juste au-dessus.
+   */
+  const congesHeurtes = $derived(
+    facilitatorId === ''
+      ? []
+      : leaveClashes(
+          staffStore.leavesOf(facilitatorId),
+          repetition === 'une-fois' ? { dates: [dateUnique] } : { weekdays: jours },
+          isoWeekdayOf,
+        ),
+  )
+  let avertissementConge = $state(false)
+
   async function enregistrer(event: SubmitEvent): Promise<void> {
     event.preventDefault()
     erreur = null
@@ -275,6 +300,12 @@
         avertissementAnimateur = true
         return
       }
+    }
+    // Le congé se dit après l'animateur : l'un peut décider de l'autre, puisque les
+    // congés lus sont ceux de la personne désignée.
+    if (congesHeurtes.length > 0 && !avertissementConge) {
+      avertissementConge = true
+      return
     }
     busy = true
     try {
@@ -951,13 +982,54 @@
       </div>
     {/if}
 
+    <!--
+      L'activité tombe sur un congé déjà déclaré.
+
+      On nomme les jours plutôt que de les compter : « trois séances » ne dit rien,
+      « mardi 25 août » se vérifie d'un coup d'œil sur son propre calendrier. Rien n'est
+      interdit — un collègue assure peut-être la séance — mais on ne l'apprend plus le
+      lundi matin.
+    -->
+    {#if avertissementConge && congesHeurtes.length > 0}
+      <div role="alert" class="card border-4 border-amber-500 bg-amber-50 p-4">
+        <h2 class="mb-2 text-2xl font-bold text-ink">
+          <span aria-hidden="true">🌴</span>
+          {congesHeurtes.length === 1
+            ? 'Cette séance tombe pendant un congé'
+            : 'Des séances tombent pendant un congé'}
+        </h2>
+        <p class="text-lg text-ink">
+          {facilitator === '' ? 'Cette personne' : facilitator} a déclaré un congé sur
+          {congesHeurtes.length === 1 ? 'ce jour' : 'ces jours'} :
+        </p>
+        <ul class="mt-2 grid gap-1">
+          {#each congesHeurtes.slice(0, 8) as jour (jour)}
+            <li class="text-lg font-semibold text-ink">
+              <span aria-hidden="true">·</span> {formatLongDayLabel(jour)}
+            </li>
+          {/each}
+        </ul>
+        {#if congesHeurtes.length > 8}
+          <p class="mt-1 text-base text-ink-soft">
+            … et {congesHeurtes.length - 8} autre{congesHeurtes.length - 8 > 1 ? 's' : ''} jour{congesHeurtes.length - 8 > 1 ? 's' : ''}.
+          </p>
+        {/if}
+        <p class="mt-2 text-lg text-ink">
+          Changez la date, ou enregistrez ainsi si quelqu'un d'autre assure ces séances.
+          Vous pourrez toujours les annuler une par une, avec un motif.
+        </p>
+      </div>
+    {/if}
+
     <div class="flex flex-wrap gap-3">
       <button type="submit" class="btn btn-primary" disabled={busy || refusDeModifier !== null}>
         {busy
           ? 'Enregistrement…'
-          : avertissementAnimateur && facilitatorId === ''
-            ? 'Enregistrer sans appel'
-            : 'Enregistrer'}
+          : avertissementConge && congesHeurtes.length > 0
+            ? 'Enregistrer malgré le congé'
+            : avertissementAnimateur && facilitatorId === ''
+              ? 'Enregistrer sans appel'
+              : 'Enregistrer'}
       </button>
       <button type="button" class="btn btn-secondary" onclick={() => navigate(retour)}>
         Annuler
