@@ -41,7 +41,10 @@
   const enAttente = $derived(
     pendingForViewer(
       { role: staffStore.identity.role, practitionerId: staffStore.identity.practitionerId },
-      staffStore.appointments,
+      // Les demandes de l'unité, comme l'écran qui s'ouvrira : un compteur qui annonce
+      // trois demandes devant un écran qui n'en montre qu'une fait chercher les deux
+      // autres, et ne se comprend pas.
+      staffStore.appointmentsOfUnit,
       store.practitioners,
     ),
   )
@@ -71,9 +74,13 @@
     { chemin: '/soignant/activites', libelle: 'Les activités' },
     { chemin: '/soignant/catalogue', libelle: 'Le catalogue' },
     ...(staffStore.isAdmin ? [{ chemin: '/soignant/a-leur-place', libelle: 'Voir à leur place' }] : []),
-    // Ce que les patients ont le droit de faire : une décision de service, donc
-    // l'administrateur. Rangé dans les écrans occasionnels — on n'y va pas tous les jours.
-    ...(staffStore.isAdmin ? [{ chemin: '/soignant/reglages', libelle: 'Réglages' }] : []),
+    /*
+      Ouvert à tous depuis qu'on y règle son unité de rattachement : un soignant qui
+      travaille dans une unité a le même intérêt à ne pas voir passer les patients des
+      sept autres. Ce que les patients ont le droit de faire y reste réservé à
+      l'administrateur — l'écran le dit et ne montre rien de plus.
+    */
+    { chemin: '/soignant/reglages', libelle: 'Réglages' },
   ])
 
   const actif = (chemin: string): boolean => router.path === chemin

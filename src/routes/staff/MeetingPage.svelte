@@ -35,11 +35,32 @@
    * Le choix est mémorisé sur l'appareil : la tablette du Mazurel rouvre sur Le Mazurel.
    */
   const MEMOIRE = 'leuze.reunion.service'
-  let serviceId = $state<string | null>(
-    typeof localStorage === 'undefined' ? null : localStorage.getItem(MEMOIRE),
-  )
+  const retenu = typeof localStorage === 'undefined' ? null : localStorage.getItem(MEMOIRE)
+  let serviceId = $state<string | null>(retenu)
+
+  /*
+    À défaut d'un choix retenu sur l'appareil, l'unité du compte fait le premier choix.
+
+    C'est ce que ce réglage évite : arriver le lundi matin et re-sélectionner son unité,
+    sur ce poste-ci comme sur celui d'à côté. L'unité n'arrive qu'après la connexion —
+    d'où l'effet plutôt qu'une valeur de départ.
+
+    « semee » est volontairement un « let » ordinaire, non réactif : le lire et l'écrire
+    dans le même effet en ferait une dépendance de cet effet, qui se relancerait
+    aussitôt. Il sert ici à ne semer qu'une fois — sans quoi choisir « Tous les services »
+    serait défait à la lecture suivante.
+  */
+  let semee = retenu !== null
+  $effect(() => {
+    const unite = staffStore.unit
+    if (semee || unite === null) return
+    semee = true
+    serviceId = unite
+  })
 
   function choisirService(valeur: string): void {
+    // Un choix à la main est un choix : l'unité du compte ne le défera pas.
+    semee = true
     serviceId = valeur === '' ? null : valeur
     selection = null
     dernierMessage = null

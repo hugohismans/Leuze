@@ -80,8 +80,26 @@
     if (categories.length === 0 || lieux.length === 0) return
 
     if (nouvelle) {
+      /*
+        Le public par défaut suit l'unité du compte.
+
+        Une activité créée depuis la bulle de La Couturelle s'adresse d'abord à La
+        Couturelle : l'ouvrir à tout l'hôpital par défaut la faisait apparaître dans le
+        calendrier de deux cents personnes qui ne pouvaient pas y aller. Le choix reste
+        entier — deux boutons juste en dessous, et l'écran dit à qui l'activité s'adresse
+        avant qu'on l'enregistre.
+
+        On attend que l'unité ait été **lue** : `unitId` vaut `null` aussi bien avant la
+        lecture qu'en l'absence d'unité, et sans cette distinction on ouvrirait à tous
+        une activité qui devait être réservée.
+      */
+      if (!staffStore.unitLoaded) return
       categoryId = categories[0]!.id
       locationId = lieux[0]!.id
+      if (staffStore.unit !== null) {
+        pourTous = false
+        serviceIds = [staffStore.unit]
+      }
       // La date vient de la case de la semaine sur laquelle le soignant a cliqué.
       if (date !== undefined) dateUnique = date
 

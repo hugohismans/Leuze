@@ -6,6 +6,7 @@
     overrideOrigin,
   } from '../../lib/domain/permissions'
   import { staffStore } from '../../lib/staffState.svelte'
+  import UnitFilter from './UnitFilter.svelte'
   import { proposed } from '../../lib/domain/catalog'
   import { store } from '../../lib/appState.svelte'
   import { presenceOf, type Presence } from '../../lib/domain/presence'
@@ -35,8 +36,21 @@
   // déjà rattachées continuent d'apparaître normalement.
   const services = $derived(proposed(staffStore.catalog.services))
 
+  /*
+    Le service proposé à la création : celui du compte quand il en a un.
+
+    Il faut attendre que l'unité ait été **lue** : `unitId` vaut `null` aussi bien avant
+    la lecture qu'en l'absence d'unité, et sans cette distinction on proposerait
+    L'Ancrive — première de la liste — à la bulle de La Couturelle.
+
+    « semee » est volontairement un « let » ordinaire, non réactif : le lire et l'écrire
+    dans le même effet en ferait une dépendance de cet effet, qui se relancerait aussitôt.
+  */
+  let semee = false
   $effect(() => {
-    if (serviceId === '' && services.length > 0) serviceId = services[0]!.id
+    if (semee || services.length === 0 || !staffStore.unitLoaded) return
+    semee = true
+    if (serviceId === '') serviceId = staffStore.unit ?? services[0]!.id
   })
 
   /**
@@ -90,14 +104,19 @@
     return presenceOf(lignes, maintenant)
   }
 
+  /*
+    La liste s'ouvre sur l'unité du compte. Les autres unités ne sont pas perdues : la
+    case ci-dessous les ramène toutes, et le nombre de personnes écartées est écrit.
+  */
   const parService = $derived(
     services
       .map((service) => ({
         service,
-        patients: staffStore.patients.filter((p) => p.serviceId === service.id),
+        patients: staffStore.patientsOfUnit.filter((p) => p.serviceId === service.id),
       }))
       .filter((groupe) => groupe.patients.length > 0),
   )
+  const ecartes = $derived(staffStore.patients.length - staffStore.patientsOfUnit.length)
 
   async function creer(event: SubmitEvent): Promise<void> {
     event.preventDefault()
@@ -220,11 +239,19 @@
     </p>
   {/if}
 
+  <!-- L'unité de rattachement du compte, et de quoi en sortir. -->
+  <UnitFilter hidden={ecartes} />
+
   {#if staffStore.patients.length === 0}
     <p class="card p-5 text-lg text-ink-soft">
       {staffStore.isAdmin
         ? 'Aucune personne enregistrée. Ajoutez-en une ci-dessus : elle apparaîtra alors dans la réunion du lundi.'
         : 'Aucune personne enregistrée. Un administrateur doit en ajouter une pour qu’elle apparaisse ici.'}
+    </p>
+  {:else if parService.length === 0}
+    <p class="card p-5 text-lg text-ink-soft">
+      Personne n'est rattaché à {staffStore.unitLabel}. Cochez « Voir toutes les unités »
+      ci-dessus pour retrouver les autres.
     </p>
   {:else}
     {#each parService as groupe (groupe.service.id)}

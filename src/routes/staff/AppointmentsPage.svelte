@@ -17,6 +17,7 @@
     seesEveryAppointment,
   } from '../../lib/domain/appointmentAccess'
   import { availabilityLabel, availabilityWarning } from '../../lib/domain/availability'
+  import UnitFilter from './UnitFilter.svelte'
   import AppointmentAgenda from './AppointmentAgenda.svelte'
   import { AUTO_DURATION_MIN, AUTO_HORIZON_DAYS } from '../../lib/domain/autoAccept'
   import { enClair } from '../../lib/erreurs'
@@ -54,7 +55,15 @@
   const sansAgenda = $derived(!toutVoir && staffStore.identity.practitionerId === null)
 
   const kinds = $derived(store.appointmentKinds)
-  const enAttente = $derived(pendingFirst(staffStore.appointments))
+  /*
+    Tout ce qui suit part des rendez-vous **de l'unité** et non de tout l'hôpital.
+
+    Une bulle fixe les rendez-vous de ses patients ; ceux des sept autres unités
+    n'allongeaient la file que pour la rendre illisible. Rien n'est retiré à personne :
+    la case « Voir toutes les unités » rend l'ensemble, et le compte de ce qui n'est pas
+    affiché est écrit en toutes lettres au-dessus.
+  */
+  const enAttente = $derived(pendingFirst(staffStore.appointmentsOfUnit))
   /**
    * Ce qui est prévu, et ce qui a eu lieu.
    *
@@ -62,9 +71,12 @@
    * qui vient » au milieu de ce qui était déjà passé. Le passé ne disparaît pas — un
    * rendez-vous manqué se retrouve — il attend derrière une case à cocher.
    */
-  const aVenir = $derived(upcomingScheduled(staffStore.appointments))
-  const passes = $derived(pastScheduled(staffStore.appointments))
+  const aVenir = $derived(upcomingScheduled(staffStore.appointmentsOfUnit))
+  const passes = $derived(pastScheduled(staffStore.appointmentsOfUnit))
   let voirLePasse = $state(false)
+
+  /** Ce que le filtre par unité laisse de côté, pour pouvoir le dire au lieu de le taire. */
+  const ecartes = $derived(staffStore.appointments.length - staffStore.appointmentsOfUnit.length)
 
   const DUREES = [15, 30, 45, 60]
 
@@ -133,7 +145,7 @@
     proposed(store.services)
       .map((service) => ({
         service,
-        patients: staffStore.patients
+        patients: staffStore.patientsOfUnit
           .filter((p) => p.serviceId === service.id)
           .sort((a, b) => a.firstName.localeCompare(b.firstName, 'fr')),
       }))
@@ -304,6 +316,9 @@
       {staffStore.message}
     </p>
   {/if}
+
+  <!-- L'unité de rattachement du compte, et de quoi en sortir. -->
+  <UnitFilter hidden={ecartes} />
 
   {#if monIntervenant !== null && monIntervenant !== undefined}
     <!--
