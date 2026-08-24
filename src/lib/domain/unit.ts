@@ -57,13 +57,17 @@ export function patientsOfUnit<T extends { serviceId: string }>(patients: T[], u
  * ne peut rattacher à personne disparaîtrait de tous les écrans à la fois, et plus
  * personne n'y répondrait. Une ligne de trop se voit ; une demande perdue, non.
  */
-export function appointmentsOfUnit<T extends { patientUid: string }>(
+export function appointmentsOfUnit<T extends { patientUid?: string }>(
   appointments: T[],
   serviceOf: (patientUid: string) => string | null,
   unit: Unit,
 ): T[] {
   if (unit === null || unit === '') return appointments
   return appointments.filter((appointment) => {
+    // Sans patient, il n'y a pas d'unité : c'est un rendez-vous avec une personne
+    // extérieure à l'hôpital. Il appartient à l'agenda de l'intervenant, pas à une
+    // unité, et le cacher à sept bulles sur huit ne le rendrait à aucune.
+    if (appointment.patientUid === undefined || appointment.patientUid === '') return true
     const service = serviceOf(appointment.patientUid)
     return service === null || service === unit
   })

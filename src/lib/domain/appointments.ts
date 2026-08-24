@@ -52,6 +52,35 @@ export function patientStatusLabel(appointment: Appointment, kinds: AppointmentK
   }
 }
 
+/**
+ * Le nom à écrire pour un rendez-vous, côté soignant.
+ *
+ * Un rendez-vous concerne un patient de l'hôpital — on lit alors son prénom dans la
+ * liste du personnel — ou une personne extérieure, qui n'a pas de compte et dont le
+ * prénom voyage avec le rendez-vous lui-même.
+ *
+ * La fonction existe parce que la question se pose partout : dans la file, dans les
+ * rendez-vous à venir, dans le planning imprimé. Trois façons d'y répondre finiraient
+ * par se contredire, et c'est un nom affiché à la mauvaise personne.
+ */
+export function appointmentWho(
+  appointment: Pick<Appointment, 'patientUid' | 'externalName'>,
+  firstNameOf: (patientUid: string) => string | undefined,
+): string {
+  if (appointment.patientUid !== undefined && appointment.patientUid !== '') {
+    return firstNameOf(appointment.patientUid) ?? 'Prénom inconnu'
+  }
+  const externe = appointment.externalName?.trim() ?? ''
+  // « Personne extérieure » sans prénom vaut mieux qu'un vide : la ligne reste lisible,
+  // et l'on comprend au moins de quel genre de rendez-vous il s'agit.
+  return externe === '' ? 'Personne extérieure' : externe
+}
+
+/** Vrai quand le rendez-vous concerne quelqu'un qui n'est pas hospitalisé ici. */
+export function isExternal(appointment: Pick<Appointment, 'patientUid'>): boolean {
+  return appointment.patientUid === undefined || appointment.patientUid === ''
+}
+
 /** Libellé court pour la file des demandes, côté soignant. */
 export function staffRequestLabel(appointment: Appointment, kinds: AppointmentKind[]): string {
   return appointment.status === 'scheduled' && appointment.localDate

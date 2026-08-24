@@ -31,6 +31,12 @@ export type WeekEntry =
       withWhom?: string
       /** Pour retrouver le prénom et le service côté soignant. Jamais affiché tel quel. */
       patientUid?: string
+      /**
+       * Le prénom d'une personne extérieure à l'hôpital, quand le rendez-vous n'est pas
+       * celui d'un patient d'ici. Sans lui, la feuille imprimée du soignant n'aurait
+       * affiché que le motif — et c'est le nom qu'on y cherche des yeux.
+       */
+      externalName?: string
       locationId?: string
     }
 
@@ -85,6 +91,7 @@ export function myWeek(
       end: appointment.end,
       kindId: appointment.kindId,
       patientUid: appointment.patientUid,
+      ...(appointment.externalName !== undefined ? { externalName: appointment.externalName } : {}),
       ...(appointment.withWhom !== undefined ? { withWhom: appointment.withWhom } : {}),
       ...(appointment.locationId !== undefined ? { locationId: appointment.locationId } : {}),
     })

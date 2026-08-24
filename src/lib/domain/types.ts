@@ -238,8 +238,28 @@ export type AppointmentPreference = 'matin' | 'apres-midi' | 'peu-importe'
  */
 export type Appointment = {
   id: string
-  /** UID Firebase Auth du patient. Aucun nom de famille, aucune donnée de santé. */
-  patientUid: string
+  /**
+   * UID Firebase Auth du patient — absent quand le rendez-vous concerne une personne
+   * extérieure à l'hôpital.
+   *
+   * Certains soignants reçoivent des gens qui ne sont plus hospitalisés : d'anciens
+   * patients, le plus souvent. Ces rendez-vous occupent une vraie place dans un agenda,
+   * et les tenir hors de l'application, c'est proposer des créneaux déjà pris.
+   *
+   * L'un ou l'autre, jamais les deux, jamais aucun : c'est un patient d'ici, ou une
+   * personne extérieure nommée par `externalName`. Les règles Firestore vérifient
+   * exactement cette alternative.
+   */
+  patientUid?: string
+  /**
+   * Le prénom d'une personne extérieure, quand le rendez-vous n'est pas celui d'un
+   * patient de l'hôpital.
+   *
+   * Un prénom, et rien d'autre : ni nom de famille, ni adresse, ni motif. C'est la même
+   * discipline qu'ici — un patient de l'hôpital n'est enregistré qu'avec son prénom, et
+   * il n'y a aucune raison d'en demander davantage à quelqu'un qui n'y est même plus.
+   */
+  externalName?: string
   kindId: string
   preference: AppointmentPreference
   status: AppointmentStatus
