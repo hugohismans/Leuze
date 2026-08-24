@@ -3,6 +3,7 @@
   import { store } from '../../lib/appState.svelte'
   import { audienceLabelForStaff, isPublished } from '../../lib/domain/audience'
   import { byChronology } from '../../lib/domain/activityOrder'
+  import { activityEditRefusal, canEditActivity } from '../../lib/domain/activityAccess'
   import { deletionConsequences, deletionCosts } from '../../lib/domain/catalog'
   import { formatDuration, todayLocalDate } from '../../lib/domain/time'
   import type { Activity } from '../../lib/domain/types'
@@ -19,6 +20,20 @@
   const activites = $derived(byChronology(staffStore.activities, todayLocalDate()))
 
   /** La suppression se confirme sur place, comme dans le catalogue. */
+  /**
+   * Qui regarde, et ce qu'il peut modifier.
+   *
+   * Une activité est celle de qui l'anime : un collègue ne la modifie pas, et une
+   * activité que personne n'anime relève de l'organisation du service. La règle vit dans
+   * le domaine, et les règles Firestore appliquent la même chose sur le jeton — ceci ne
+   * fait qu'éviter de proposer une porte que le serveur referme.
+   */
+  const moi = $derived({
+    role: staffStore.identity.role,
+    practitionerId: staffStore.identity.practitionerId,
+  })
+  const modifiable = (activity: Activity): boolean => canEditActivity(moi, activity)
+
   let aSupprimer = $state<string | null>(null)
   let busy = $state(false)
   let erreur = $state<string | null>(null)
@@ -137,6 +152,25 @@
             {audienceLabelForStaff(activity, staffStore.catalog.services)}
           </p>
 
+          <!--
+            Les quatre gestes n'apparaissent qu'à qui peut les faire.
+
+            Ils étaient offerts à tout le personnel : la personne qui animait l'activité,
+            oui, mais aussi n'importe quel collègue. Les règles Firestore protégeaient le
+            document de l'activité et laissaient passer ses séances — on pouvait donc
+            annuler l'atelier d'un autre. C'est corrigé des deux côtés : ici l'écran ne
+            propose plus la porte, et les règles la referment.
+
+            Rien n'est grisé : un bouton désactivé fait chercher pourquoi. Une phrase le
+            dit à la place, et l'activité reste visible — le programme est un calendrier
+            partagé, voir n'est pas modifier.
+          -->
+          {#if !modifiable(activity)}
+            <p class="mt-3 text-base text-ink-soft">
+              <span aria-hidden="true">🔒</span>
+              {activityEditRefusal(moi, activity)}
+            </p>
+          {:else}
           <div class="mt-3 flex flex-wrap gap-2">
             <button type="button" class="btn btn-secondary" onclick={() => navigate(`/soignant/activite/${activity.id}`)}>
               Modifier
@@ -161,6 +195,7 @@
               Supprimer
             </button>
           </div>
+          {/if}
 
           {#if aEffacer !== null && aEffacer.id === activity.id}
             <!--

@@ -1,8 +1,26 @@
 <script lang="ts">
   import { staffStore } from '../../lib/staffState.svelte'
+  import { canEditActivity } from '../../lib/domain/activityAccess'
   import type { Occurrence } from '../../lib/domain/types'
 
   let { occurrence }: { occurrence: Occurrence } = $props()
+
+  /**
+   * Annuler une séance, c'est modifier l'activité de quelqu'un.
+   *
+   * Le bouton était offert à tout le personnel : n'importe quel collègue pouvait annuler
+   * l'atelier d'un autre, et les règles Firestore le laissaient passer. Les deux sont
+   * corrigés ; ici, on cesse simplement de proposer une porte que le serveur referme.
+   *
+   * Une séance annulée reste lisible par tous, avec son motif : c'est ce qui permet à la
+   * personne inscrite de comprendre. Voir n'est pas modifier.
+   */
+  const jePeux = $derived(
+    canEditActivity(
+      { role: staffStore.identity.role, practitionerId: staffStore.identity.practitionerId },
+      occurrence,
+    ),
+  )
 
   /** Deux clics : « Annuler », puis le motif. Les motifs courants évitent de taper. */
   const MOTIFS = [
@@ -29,10 +47,14 @@
     <p class="text-base font-semibold text-ink">
       <span aria-hidden="true">🚫</span> Annulée — {occurrence.cancellationReason || 'sans motif'}
     </p>
-    <button type="button" class="btn btn-secondary" onclick={() => staffStore.restoreOccurrence(occurrence.id)}>
-      Rétablir
-    </button>
+    {#if jePeux}
+      <button type="button" class="btn btn-secondary" onclick={() => staffStore.restoreOccurrence(occurrence.id)}>
+        Rétablir
+      </button>
+    {/if}
   </div>
+{:else if !jePeux}
+  <!-- Rien : cette séance n'est pas la vôtre. L'écran de l'activité dit qui l'anime. -->
 {:else if !ouvert}
   <button type="button" class="btn btn-secondary" onclick={() => (ouvert = true)}>
     Annuler cette séance

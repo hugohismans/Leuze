@@ -1,5 +1,6 @@
 <script lang="ts">
   import { staffStore } from '../../lib/staffState.svelte'
+  import { canEditActivity } from '../../lib/domain/activityAccess'
   import { weekProgramme, programmeCount } from '../../lib/domain/programme'
   import {
     addLocalDays,
@@ -46,6 +47,12 @@
       .sort((a, b) => a.start.getTime() - b.start.getTime()),
   )
   let busy = $state(false)
+
+  /** Qui regarde : une séance appartient à qui anime son activité. */
+  const moi = $derived({
+    role: staffStore.identity.role,
+    practitionerId: staffStore.identity.practitionerId,
+  })
 
   async function retablir(occurrenceId: string): Promise<void> {
     if (busy) return
@@ -163,9 +170,16 @@
                   Motif : {occurrence.cancellationReason || 'sans motif'}
                 </p>
               </div>
-              <button type="button" class="btn btn-secondary" disabled={busy} onclick={() => retablir(occurrence.id)}>
-                {busy ? 'Un instant…' : 'Rétablir'}
-              </button>
+              <!--
+                Rétablir une séance, c'est modifier l'activité de quelqu'un : le bouton
+                n'apparaît qu'à qui l'anime, et à l'administrateur. La séance annulée
+                reste lisible par tous, avec son motif — voir n'est pas modifier.
+              -->
+              {#if canEditActivity(moi, occurrence)}
+                <button type="button" class="btn btn-secondary" disabled={busy} onclick={() => retablir(occurrence.id)}>
+                  {busy ? 'Un instant…' : 'Rétablir'}
+                </button>
+              {/if}
             </li>
           {/each}
         </ul>

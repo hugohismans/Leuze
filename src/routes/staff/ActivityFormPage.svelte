@@ -664,7 +664,23 @@
         </div>
       </div>
 
-      {#if !choisitLAnimateur}
+      {#if !choisitLAnimateur && refusDeModifier !== null}
+        <!--
+          L'activité est celle de quelqu'un d'autre : on nomme cette personne, et on se
+          garde bien d'annoncer « vous animerez cette activité ». La phrase le faisait,
+          juste sous celle qui disait le contraire — deux lignes qui se contredisaient à
+          trois centimètres l'une de l'autre.
+        -->
+        <p class="mt-4 rounded-xl bg-surface-soft p-3 text-lg text-ink">
+          <span aria-hidden="true">👤</span>
+          {#if facilitator !== ''}
+            Cette activité est animée par <strong>{facilitator}</strong>.
+          {:else}
+            Cette activité n'est animée par personne en particulier.
+          {/if}
+          Vous pouvez la lire, pas la modifier.
+        </p>
+      {:else if !choisitLAnimateur}
         <!-- Pas de menu : l'activité est la vôtre. On le dit, on ne le fait pas deviner. -->
         <p class="mt-4 rounded-xl bg-surface-soft p-3 text-lg text-ink">
           <span aria-hidden="true">👤</span>
