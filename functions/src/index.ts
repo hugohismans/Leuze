@@ -795,6 +795,17 @@ export const requestAppointment = onCall(async (request: CallableRequest) => {
   if (preference !== 'matin' && preference !== 'apres-midi' && preference !== 'peu-importe') {
     throw new HttpsError('invalid-argument', 'Choisissez un moment de la journée.')
   }
+  /*
+    La personne demandée, quand le patient en a nommé une.
+
+    Souvent il ne veut pas « un psychiatre » mais celui qu'il connaît, et le lui refuser
+    c'est le renvoyer au bouche-à-oreille. Le nom n'est pas une promesse : la demande
+    reste une demande, et c'est l'équipe — la personne nommée ou la bulle — qui fixe.
+
+    Vérifié ici et pas seulement à l'écran : un écran se contourne, pas une fonction.
+  */
+  const demande = request.data?.practitionerId
+  const practitionerId = typeof demande === 'string' && demande.trim() !== '' ? demande.trim() : null
 
 
 
@@ -808,7 +819,7 @@ export const requestAppointment = onCall(async (request: CallableRequest) => {
     lectures ; faire attendre quelqu'un d'inquiet coûte plus cher.
   */
   const aujourdHui = todayLocalDate()
-  const [ouvert, motif, deja, place] = await Promise.all([
+  const [ouvert, motif, deja, place, fiche] = await Promise.all([
     patientMay('requestAppointment', patient.uid),
     db().collection(COLLECTIONS.appointmentKinds).doc(kindId).get(),
     db()
@@ -816,7 +827,10 @@ export const requestAppointment = onCall(async (request: CallableRequest) => {
       .where('patientUid', '==', patient.uid)
       .where('kindId', '==', kindId)
       .get(),
-    premierePlaceLibre(kindId, preference),
+    premierePlaceLibre(kindId, preference, patient.serviceId, practitionerId),
+    practitionerId === null
+      ? Promise.resolve(null)
+      : db().collection(COLLECTIONS.practitioners).doc(practitionerId).get(),
   ])
   if (!ouvert.ok) return { ok: false, scheduled: false, message: ouvert.message }
 
@@ -826,6 +840,27 @@ export const requestAppointment = onCall(async (request: CallableRequest) => {
       'failed-precondition',
       "Ce motif de rendez-vous n'existe plus. Demandez à un soignant.",
     )
+  }
+
+  /*
+    La personne demandée doit exister, tenir ce motif, et passer dans l'unité du patient.
+
+    Les trois se vérifient ensemble parce qu'ils disent la même chose : cette personne
+    peut-elle réellement recevoir ce patient ? Proposer un nom qui ne le peut pas, ce
+    serait promettre un rendez-vous qui n'aura pas lieu. Le message reste en français
+    simple : il remonte jusqu'à l'écran d'un patient.
+  */
+  if (practitionerId !== null) {
+    const donnees = fiche?.data()
+    const sert =
+      donnees?.['audience'] !== 'services' ||
+      (Array.isArray(donnees['serviceIds']) && donnees['serviceIds'].includes(patient.serviceId))
+    if (fiche?.exists !== true || donnees?.['isActive'] !== true || donnees['kindId'] !== kindId || !sert) {
+      throw new HttpsError(
+        'failed-precondition',
+        "Cette personne ne peut pas vous recevoir. Choisissez-en une autre, ou laissez l'équipe choisir.",
+      )
+    }
   }
 
   /*
@@ -855,6 +890,14 @@ export const requestAppointment = onCall(async (request: CallableRequest) => {
     kindId,
     preference,
     createdAt: Timestamp.now(),
+    /*
+      Le nom demandé est porté par la demande elle-même.
+
+      C'est lui qui la fait arriver dans la file de la personne nommée : un intervenant
+      ne reçoit que les rendez-vous qui portent son identifiant — les règles le disent, et
+      la requête aussi. Sans ce champ, la demande n'aurait été vue que par la bulle.
+    */
+    ...(practitionerId === null ? {} : { practitionerId }),
   }
 
   if (place === null) {
@@ -901,6 +944,8 @@ export const requestAppointment = onCall(async (request: CallableRequest) => {
 async function premierePlaceLibre(
   kindId: string,
   preference: 'matin' | 'apres-midi' | 'peu-importe',
+  serviceId: string,
+  practitionerId: string | null,
 ): Promise<{ practitionerId: string; name: string; slot: NonNullable<ReturnType<typeof findFirstSlot>> } | null> {
   // Le catalogue des intervenants tient en quelques dizaines de lignes : on le lit en
   // entier plutôt que de demander un index pour trois égalités.
@@ -910,12 +955,25 @@ async function premierePlaceLibre(
     kindId?: string
     isActive?: boolean
     autoAccept?: boolean
+    audience?: 'all' | 'services'
+    serviceIds?: string[]
     availability?: AvailabilityWindow[]
   }
   const intervenants = await db().collection(COLLECTIONS.practitioners).get()
   const candidats: Fiche[] = intervenants.docs
     .map((d) => ({ ...(d.data() as Omit<Fiche, 'id'>), id: d.id }))
     .filter((p) => p.isActive === true && p.autoAccept === true && p.kindId === kindId)
+    // Quelqu'un qui ne passe pas dans cette unité ne peut pas recevoir ce patient : lui
+    // donner une place tout de suite serait poser un rendez-vous qui n'aura pas lieu.
+    .filter((p) => p.audience !== 'services' || (p.serviceIds ?? []).includes(serviceId))
+    /*
+      Une personne a été demandée : elle seule, ou personne.
+
+      Se rabattre sur un collègue parce qu'il a de la place ferait exactement le
+      contraire de ce qui vient d'être demandé, et sans le dire. Sans place chez elle,
+      la demande rejoint la file — c'est elle qui fixera, ou la bulle.
+    */
+    .filter((p) => practitionerId === null || p.id === practitionerId)
     .filter((p) => Array.isArray(p.availability) && p.availability.length > 0)
     .sort((a, b) => (a.name ?? '').localeCompare(b.name ?? '', 'fr'))
   if (candidats.length === 0) return null

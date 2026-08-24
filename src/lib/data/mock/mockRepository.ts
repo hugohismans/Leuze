@@ -9,6 +9,7 @@
  * en réunion du lundi apparaît aussitôt dans le calendrier du patient.
  */
 import { isVisibleToService } from '../../domain/audience'
+import { servesService } from '../../domain/practitioners'
 import { patientConflictNotice } from '../../domain/conflicts'
 import {
   effectivePermissions,
@@ -79,10 +80,17 @@ function premierePlaceLibre(
   kindId: string,
   preference: AppointmentPreference,
   maintenant: Date,
+  serviceId: string | null,
+  practitionerId: string | null,
 ): { practitionerId: string; name: string; slot: NonNullable<ReturnType<typeof findFirstSlot>> } | null {
   const candidats = mockCatalog
     .practitioners()
     .filter((p) => p.isActive && p.autoAccept === true && p.kindId === kindId)
+    // Les deux mêmes garde-fous que sur le serveur : quelqu'un qui ne passe pas dans
+    // cette unité ne peut pas recevoir ce patient, et une personne demandée est
+    // demandée — on ne se rabat pas sur un collègue sans le dire.
+    .filter((p) => servesService(p, serviceId))
+    .filter((p) => practitionerId === null || p.id === practitionerId)
     .sort((a, b) => a.name.localeCompare(b.name, 'fr'))
 
   // Jamais aujourd'hui : un rendez-vous posé dans deux heures est un rendez-vous manqué.
@@ -320,9 +328,24 @@ export function createMockRepository(options: { now?: () => Date } = {}): MockRe
           .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
       },
 
-      async request(kindId: string, preference: AppointmentPreference) {
+      async request(kindId: string, preference: AppointmentPreference, practitionerId?: string) {
         const uid = world.session.patientUid
         if (uid === null) return { ok: false, message: 'Saisissez votre code pour demander un rendez-vous.' }
+        const demande = practitionerId === undefined || practitionerId === '' ? null : practitionerId
+        const service = world.session.serviceId
+        if (demande !== null) {
+          // Le même refus que sur le serveur, mot pour mot : la démonstration doit
+          // montrer ce qui se passera vraiment.
+          const fiche = mockCatalog.practitioners().find((p) => p.id === demande)
+          if (fiche === undefined || !fiche.isActive || fiche.kindId !== kindId || !servesService(fiche, service)) {
+            return {
+              ok: false,
+              scheduled: false,
+              message:
+                "Cette personne ne peut pas vous recevoir. Choisissez-en une autre, ou laissez l'équipe choisir.",
+            }
+          }
+        }
         if (!isAllowed(droitsDe(uid), 'requestAppointment')) {
           return { ok: false, message: refusalFor('requestAppointment') }
         }
@@ -352,13 +375,14 @@ export function createMockRepository(options: { now?: () => Date } = {}): MockRe
           kindId,
           preference,
           createdAt: clock(),
+          ...(demande === null ? {} : { practitionerId: demande }),
         }
 
         /*
           L'acceptation automatique, jouée exactement comme sur le serveur : la
           démonstration doit montrer ce qui se passera vraiment, sinon elle ment.
         */
-        const place = premierePlaceLibre(kindId, preference, clock())
+        const place = premierePlaceLibre(kindId, preference, clock(), service, demande)
         if (place === null) {
           world.appointments = [...world.appointments, { ...commun, status: 'requested' }]
           return { ok: true, scheduled: false, message: 'Votre demande est envoyée. Un soignant vous dira quand.' }

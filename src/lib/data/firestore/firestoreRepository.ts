@@ -402,17 +402,25 @@ export function createFirestoreRepository(): AppRepository {
        * patient ne verra jamais : c'est donc la fonction appelable qui décide, et qui
        * répond soit « c'est noté, mardi à 9 heures », soit « un soignant vous dira quand ».
        */
-      async request(kindId: string, preference: AppointmentPreference) {
+      async request(kindId: string, preference: AppointmentPreference, practitionerId?: string) {
         await sessionReady
         if (session.patientUid === null) {
           return { ok: false, message: 'Saisissez votre code pour demander un rendez-vous.' }
         }
         try {
           const call = httpsCallable<
-            { kindId: string; preference: AppointmentPreference },
+            { kindId: string; preference: AppointmentPreference; practitionerId?: string },
             { ok: boolean; scheduled: boolean; message: string }
           >(functions, 'requestAppointment')
-          const reponse = (await call({ kindId, preference })).data
+          const reponse = (
+            await call({
+              kindId,
+              preference,
+              // Le serveur revérifie que cette personne tient ce motif et passe dans
+              // l'unité du patient : l'écran ne fait que proposer.
+              ...(practitionerId === undefined || practitionerId === '' ? {} : { practitionerId }),
+            })
+          ).data
           mineCache = null
           return reponse
         } catch (error) {

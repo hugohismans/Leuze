@@ -96,6 +96,14 @@ export interface AppointmentService {
   request(
     kindId: string,
     preference: AppointmentPreference,
+    /**
+     * La personne demandée, quand le patient en a nommé une.
+     *
+     * Un nom n'est pas une promesse : la demande reste une demande, et c'est l'équipe —
+     * la personne nommée ou la bulle — qui fixe. Il évite seulement qu'un patient qui
+     * sait déjà qui il veut voir soit renvoyé au bouche-à-oreille.
+     */
+    practitionerId?: string,
   ): Promise<{ ok: boolean; message: string; scheduled?: boolean }>
   withdraw(appointmentId: string): Promise<{ ok: boolean; message: string }>
 

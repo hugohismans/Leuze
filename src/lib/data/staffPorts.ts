@@ -389,6 +389,13 @@ export interface CatalogAdminService {
     name: string
     role: string
     kindId?: string
+    /**
+     * Les unités où cette personne intervient. Toujours les deux champs ensemble :
+     * l'écriture se fait par fusion, et n'en écrire qu'un laisserait derrière une
+     * ancienne liste qui contredirait le choix qu'on vient de faire.
+     */
+    audience?: 'all' | 'services'
+    serviceIds?: string[]
     isActive: boolean
   }): Promise<void>
 

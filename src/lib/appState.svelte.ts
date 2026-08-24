@@ -3,6 +3,7 @@
  * jamais Firebase : brancher l'adapter Firestore au lot L1 ne touchera pas ce fichier.
  */
 import { upcomingScheduled } from './domain/appointments'
+import { requestablePractitioners as requestableFor } from './domain/practitioners'
 import { capacityOf, likelyStatus } from './domain/capacity'
 import {
   OPEN_TO_PATIENTS,
@@ -425,11 +426,23 @@ class AppStore {
     this.appointments = mine
   }
 
+  /**
+   * Les personnes qu'un patient peut demander à voir pour ce motif.
+   *
+   * Le filtre vit ici et non dans l'écran : c'est la règle du projet, et elle a une
+   * raison — un filtre de rendu se contourne, s'oublie, et se dédouble le jour où un
+   * deuxième écran pose la même question. Le serveur revérifie de toute façon.
+   */
+  requestablePractitioners(kindId: string): Practitioner[] {
+    return requestableFor(this.practitioners, kindId, this.serviceId)
+  }
+
   async requestAppointment(
     kindId: string,
     preference: AppointmentPreference,
+    practitionerId?: string,
   ): Promise<{ ok: boolean; message: string }> {
-    const resultat = await (await this.repo()).appointments.request(kindId, preference)
+    const resultat = await (await this.repo()).appointments.request(kindId, preference, practitionerId)
     // La réponse dit déjà tout ce que la personne attend — « c'est noté », ou la date si
     // la place a été trouvée toute seule. La liste se met à jour derrière.
     void this.loadAppointments()

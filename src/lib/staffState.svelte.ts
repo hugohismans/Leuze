@@ -1031,6 +1031,9 @@ class StaffStore {
     name: string
     role: string
     kindId?: string
+    /** Les unités où cette personne intervient. Voir `domain/practitioners.ts`. */
+    audience?: 'all' | 'services'
+    serviceIds?: string[]
     isActive: boolean
   }): Promise<void> {
     await (await this.app$()).catalogAdmin.savePractitioner(practitioner)
