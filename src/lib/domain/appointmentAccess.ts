@@ -104,8 +104,19 @@ export function pendingForViewer<T extends SeenAppointment & { kindId: string }>
   const lien = viewer.practitionerId
   if (lien === undefined || lien === null || lien === '') return 0
   const monMotif = practitioners.find((p) => p.id === lien)?.kindId
-  if (monMotif === undefined || monMotif === '') return 0
-  return enAttente.filter((a) => a.kindId === monMotif).length
+  /*
+    Une demande qui me nomme me concerne, quel que soit son motif.
+
+    Depuis que le patient peut demander quelqu'un en particulier, la demande porte un
+    nom dès le départ. C'est ce nom qui décide — pas le motif : un motif réattribué
+    entre-temps ferait disparaître du compteur une demande qui m'attend, et personne ne
+    la verrait plus.
+  */
+  return enAttente.filter(
+    (a) =>
+      a.practitionerId === lien ||
+      (a.practitionerId === undefined && monMotif !== undefined && monMotif !== '' && a.kindId === monMotif),
+  ).length
 }
 
 /**

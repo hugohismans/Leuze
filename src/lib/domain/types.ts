@@ -82,6 +82,19 @@ export type Practitioner = {
   /** Motif de rendez-vous correspondant, quand il y en a un. */
   kindId?: string
   /**
+   * À quelles unités cette personne intervient.
+   *
+   * Même forme que le public d'une activité, et pour la même raison : c'est la même
+   * question (« à qui cela s'adresse-t-il ? ») et deux formes différentes finiraient par
+   * diverger. Absent vaut `'all'` — un intervenant qui n'a jamais été rattaché à rien
+   * continue de couvrir tout l'hôpital, comme avant que ce champ existe.
+   *
+   * Certains couvrent réellement tout : l'animateur sportif passe dans toutes les unités.
+   * D'autres tiennent à une seule.
+   */
+  audience?: 'all' | 'services'
+  serviceIds?: string[]
+  /**
    * Les plages où cette personne reçoit, en semaine type. Elles n'interdisent rien :
    * elles répondent à « est-il là ? » au moment où l'on fixe un rendez-vous.
    */

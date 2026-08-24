@@ -130,3 +130,48 @@ describe('le planning d’un intervenant', () => {
     expect(practitionerPlanningRefusal({ role: null })).toContain('réservé au personnel')
   })
 })
+
+/**
+ * Depuis que le patient peut demander quelqu'un en particulier, une demande porte un nom
+ * dès le départ. C'est ce nom qui décide qui la voit — et le compteur du menu doit
+ * annoncer exactement ce que l'écran montrera.
+ */
+describe('une demande qui nomme quelqu’un', () => {
+  const intervenants = [
+    { id: 'lemaire', kindId: 'psychiatre' },
+    { id: 'ada', kindId: 'psychiatre' },
+  ]
+  const moi = { role: 'staff' as const, practitionerId: 'lemaire' }
+
+  it('compte pour la personne nommée', () => {
+    const demandes = [
+      { status: 'requested' as const, kindId: 'psychiatre', practitionerId: 'lemaire' },
+    ]
+    expect(pendingForViewer(moi, demandes, intervenants)).toBe(1)
+  })
+
+  it('ne compte pas pour un collègue du même motif', () => {
+    const demandes = [{ status: 'requested' as const, kindId: 'psychiatre', practitionerId: 'ada' }]
+    expect(pendingForViewer(moi, demandes, intervenants)).toBe(0)
+  })
+
+  it('compte quand même si le motif a changé depuis', () => {
+    const demandes = [
+      { status: 'requested' as const, kindId: 'autre', practitionerId: 'lemaire' },
+    ]
+    expect(pendingForViewer(moi, demandes, intervenants)).toBe(1)
+  })
+
+  it('sans nom, le motif décide, comme avant', () => {
+    const demandes = [{ status: 'requested' as const, kindId: 'psychiatre' }]
+    expect(pendingForViewer(moi, demandes, intervenants)).toBe(1)
+  })
+
+  it("l'administrateur les voit toutes", () => {
+    const demandes = [
+      { status: 'requested' as const, kindId: 'psychiatre', practitionerId: 'ada' },
+      { status: 'requested' as const, kindId: 'autre' },
+    ]
+    expect(pendingForViewer({ role: 'admin', practitionerId: null }, demandes, intervenants)).toBe(2)
+  })
+})
