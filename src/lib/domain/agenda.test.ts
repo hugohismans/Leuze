@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { agendaWeek, freeSlotsOn, suggestSlot, suggestionMessage } from './agenda'
+import { agendaWeek, firstBookableDay, freeSlotsOn, suggestSlot, suggestionMessage } from './agenda'
 import type { BusyEntry } from './conflicts'
 import { instantOf } from './time'
 import type { AvailabilityWindow } from './types'
@@ -162,5 +162,40 @@ describe('ce que l’écran dit du créneau proposé', () => {
     const message = suggestionMessage(null, 'peu-importe', '')
     expect(message).toContain('Aucun créneau')
     expect(message).toContain('Vous pouvez tout de même fixer le rendez-vous')
+  })
+})
+
+/**
+ * « Jamais aujourd'hui » — la règle qui manquait du côté de l'agenda croisé.
+ *
+ * L'acceptation automatique l'appliquait déjà ; la proposition faite à la bulle, non.
+ * Elle a donc proposé un rendez-vous le jour même à neuf heures trente, alors qu'il en
+ * était quatorze : rien dans ce module ne connaît l'heure qu'il est, et rien ne devrait
+ * avoir à la connaître.
+ */
+describe('le premier jour où l’on propose', () => {
+  it('est le lendemain, jamais le jour même', () => {
+    expect(firstBookableDay('2026-08-24')).toBe('2026-08-25')
+  })
+
+  it('franchit les fins de mois', () => {
+    expect(firstBookableDay('2026-08-31')).toBe('2026-09-01')
+    expect(firstBookableDay('2026-12-31')).toBe('2027-01-01')
+  })
+
+  it('ne propose plus rien aujourd’hui, même si la plage y est libre', () => {
+    // Une plage le lundi, et l'on cherche depuis un lundi : la proposition doit sauter
+    // au lundi suivant plutôt que d'offrir une heure déjà passée.
+    const lundi = '2026-08-24'
+    const proposition = suggestSlot({
+      windows: [{ weekday: 1, from: '09:00', to: '12:00' }],
+      practitionerBusy: [],
+      patientBusy: [],
+      preference: 'peu-importe',
+      from: firstBookableDay(lundi),
+      horizonDays: 21,
+      durationMin: 30,
+    })
+    expect(proposition?.localDate).toBe('2026-08-31')
   })
 })

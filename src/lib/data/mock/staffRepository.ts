@@ -3,7 +3,7 @@
  * Même logique de génération que l'adapter Firestore, mêmes fonctions du domaine.
  */
 import { addLocalDays, addMinutes, instantOf, todayLocalDate } from '../../domain/time'
-import { PLANNING_HORIZON_DAYS, agendaWeek, suggestSlot } from '../../domain/agenda'
+import { PLANNING_HORIZON_DAYS, agendaWeek, firstBookableDay, suggestSlot } from '../../domain/agenda'
 import { blockingConflicts, type BusyEntry } from '../../domain/conflicts'
 import { hasOverrides, type PatientActionOverrides, type PatientPermissions } from '../../domain/permissions'
 import type { ActivityProposal } from '../../domain/proposals'
@@ -546,7 +546,8 @@ export function createMockStaffApp(): StaffApp {
         const intervenant = mockCatalog.practitioners().find((p) => p.id === query.practitionerId)
         const plages = intervenant?.availability ?? []
         const duree = query.durationMin ?? 30
-        const depart = query.from ?? todayLocalDate()
+        // Jamais aujourd'hui : voir `firstBookableDay`.
+        const depart = query.from ?? firstBookableDay(todayLocalDate())
         const jusque = addLocalDays(depart, PLANNING_HORIZON_DAYS)
 
         const occupeIntervenant: BusyEntry[] = []

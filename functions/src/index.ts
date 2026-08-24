@@ -40,7 +40,7 @@ import {
   TITLE_MAX,
   type ActivityProposal,
 } from './domain/proposals'
-import { PLANNING_HORIZON_DAYS, agendaWeek, suggestSlot } from './domain/agenda'
+import { PLANNING_HORIZON_DAYS, agendaWeek, firstBookableDay, suggestSlot } from './domain/agenda'
 import { attendanceRefusal, canMarkAttendance } from './domain/attendance'
 import {
   AUTO_DURATION_MIN,
@@ -670,7 +670,21 @@ export const appointmentPlanning = onCall(async (request: CallableRequest) => {
   const moment: 'matin' | 'apres-midi' | 'peu-importe' =
     preference === 'matin' || preference === 'apres-midi' ? preference : 'peu-importe'
   const durationMin = typeof request.data?.durationMin === 'number' ? request.data.durationMin : 30
-  const depart = typeof request.data?.from === 'string' ? (request.data.from as LocalDate) : todayLocalDate()
+  /*
+    L'agenda croisé commence demain, jamais aujourd'hui.
+
+    Il commençait aujourd'hui, et rien ici ne connaît l'heure qu'il est : il a donc
+    proposé un rendez-vous le jour même à neuf heures trente alors qu'il en était
+    quatorze. L'acceptation automatique appliquait déjà cette règle de son côté ; les
+    deux chemins disent désormais la même chose.
+
+    La semaine affichée part du même jour : montrer aujourd'hui inviterait à y poser un
+    rendez-vous, ce qui est exactement ce qu'on veut éviter.
+  */
+  const depart =
+    typeof request.data?.from === 'string'
+      ? (request.data.from as LocalDate)
+      : firstBookableDay(todayLocalDate())
 
   const fiche = await db().collection(COLLECTIONS.practitioners).doc(practitionerId).get()
   if (!fiche.exists) throw new HttpsError('not-found', "Cette personne n'a pas été trouvée.")
@@ -978,8 +992,9 @@ async function premierePlaceLibre(
     .sort((a, b) => (a.name ?? '').localeCompare(b.name ?? '', 'fr'))
   if (candidats.length === 0) return null
 
-  // Jamais aujourd'hui : un rendez-vous posé dans deux heures est un rendez-vous manqué.
-  const depart = addLocalDays(todayLocalDate(), 1)
+  // Jamais aujourd'hui : voir `firstBookableDay`. La règle vit dans le domaine, et non
+  // recopiée ici — c'est en la recopiant à moitié qu'elle a fini par manquer ailleurs.
+  const depart = firstBookableDay(todayLocalDate())
   const jusque = addLocalDays(depart, AUTO_HORIZON_DAYS)
 
   /*

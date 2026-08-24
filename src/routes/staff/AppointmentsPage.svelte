@@ -18,6 +18,7 @@
   } from '../../lib/domain/appointmentAccess'
   import { availabilityLabel, availabilityWarning } from '../../lib/domain/availability'
   import UnitFilter from './UnitFilter.svelte'
+  import { firstBookableDay } from '../../lib/domain/agenda'
   import AppointmentAgenda from './AppointmentAgenda.svelte'
   import { AUTO_DURATION_MIN, AUTO_HORIZON_DAYS } from '../../lib/domain/autoAccept'
   import { enClair } from '../../lib/erreurs'
@@ -106,7 +107,15 @@
   }
 
   let ouvert = $state<string | null>(null)
-  let date = $state<LocalDate>(todayLocalDate())
+  /*
+    Les deux formulaires s'ouvrent sur demain, pas sur aujourd'hui.
+
+    Un rendez-vous posé dans deux heures est un rendez-vous manqué : personne n'a été
+    prévenu, et la personne est peut-être déjà en atelier. Rien n'est interdit — la date
+    reste un champ, et l'on écrit aujourd'hui si c'est ce qu'on veut. C'est ce que
+    l'application propose d'elle-même qui commence demain, ici comme dans l'agenda croisé.
+  */
+  let date = $state<LocalDate>(firstBookableDay(todayLocalDate()))
   let heure = $state<LocalTime>('10:00')
   let duree = $state(30)
   let avecQui = $state('')
@@ -133,7 +142,7 @@
   let formulaireOuvert = $state(false)
   let quiUid = $state('')
   let quelKind = $state('')
-  let dateDirecte = $state<LocalDate>(todayLocalDate())
+  let dateDirecte = $state<LocalDate>(firstBookableDay(todayLocalDate()))
   let heureDirecte = $state<LocalTime>('10:00')
   let dureeDirecte = $state(30)
   let avecQuiDirecte = $state('')
@@ -257,7 +266,7 @@
 
   function ouvrir(appointmentId: string, kindId: string, demandeId?: string): void {
     ouvert = appointmentId
-    date = todayLocalDate()
+    date = firstBookableDay(todayLocalDate())
     heure = '10:00'
     duree = 30
     /*

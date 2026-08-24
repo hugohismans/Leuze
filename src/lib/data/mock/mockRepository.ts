@@ -8,6 +8,7 @@
  * son état avec l'adapter soignant (`mock/state.ts`), si bien qu'une inscription prise
  * en réunion du lundi apparaît aussitôt dans le calendrier du patient.
  */
+import { firstBookableDay } from '../../domain/agenda'
 import { isVisibleToService } from '../../domain/audience'
 import { servesService } from '../../domain/practitioners'
 import { patientConflictNotice } from '../../domain/conflicts'
@@ -93,8 +94,8 @@ function premierePlaceLibre(
     .filter((p) => practitionerId === null || p.id === practitionerId)
     .sort((a, b) => a.name.localeCompare(b.name, 'fr'))
 
-  // Jamais aujourd'hui : un rendez-vous posé dans deux heures est un rendez-vous manqué.
-  const depart = addLocalDays(todayLocalDate(maintenant), 1)
+  // Jamais aujourd'hui : voir `firstBookableDay`.
+  const depart = firstBookableDay(todayLocalDate(maintenant))
 
   for (const candidat of candidats) {
     const plages = candidat.availability ?? []

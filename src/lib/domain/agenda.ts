@@ -123,6 +123,26 @@ export function agendaWeek(
 }
 
 /**
+ * Le premier jour où l'on propose un rendez-vous : jamais aujourd'hui.
+ *
+ * Un rendez-vous posé dans deux heures est un rendez-vous manqué. Personne n'a été
+ * prévenu, la personne est peut-être déjà en atelier, et l'on aura fait le contraire de
+ * ce qu'on voulait — donner une date sur laquelle compter.
+ *
+ * Pire encore, et c'est ce qui est arrivé : rien ici ne connaît l'heure qu'il est. Une
+ * recherche partant d'aujourd'hui propose la première plage libre du jour, neuf heures
+ * trente, y compris quand il en est quatorze. Faire dépendre la proposition de l'heure
+ * courante compliquerait tout pour un gain nul ; commencer demain règle les deux d'un
+ * coup, et c'est la règle que l'acceptation automatique appliquait déjà de son côté.
+ *
+ * Cela n'interdit rien : un soignant qui veut fixer un rendez-vous cet après-midi écrit
+ * la date et l'heure. C'est ce que l'application **propose** qui commence demain.
+ */
+export function firstBookableDay(today: LocalDate): LocalDate {
+  return addLocalDays(today, 1)
+}
+
+/**
  * Jusqu'où l'on cherche un créneau : trois semaines.
  *
  * C'est l'horizon de la proposition automatique, et donc celui de la liste complète : un
