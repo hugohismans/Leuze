@@ -379,8 +379,10 @@ class StaffStore {
   }
 
   /** Un rendez-vous fixé d'emblée, pour qui n'a pas fait la demande dans l'application. */
+  /** Un patient d'ici, ou une personne extérieure nommée par son prénom. Jamais les deux. */
   async createAppointment(rendezVous: {
-    patientUid: string
+    patientUid?: string
+    externalName?: string
     kindId: string
     date: LocalDate
     time: LocalTime

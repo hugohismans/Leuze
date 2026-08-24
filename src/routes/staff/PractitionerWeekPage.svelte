@@ -63,9 +63,19 @@
     ),
   )
 
-  /** Prénom et service de la personne reçue. Rien d'autre n'est enregistré nulle part. */
-  const recu = (patientUid: string | undefined): { prenom: string; service: string } | null => {
-    const patient = staffStore.patients.find((p) => p.uid === patientUid)
+  /**
+   * Prénom et service de la personne reçue. Rien d'autre n'est enregistré nulle part.
+   *
+   * Une personne extérieure à l'hôpital n'a pas de service : son prénom voyage avec le
+   * rendez-vous lui-même. Sans ce cas, la feuille imprimée n'aurait affiché que
+   * « Le psychiatre » — et c'est précisément le nom qu'on y cherche des yeux.
+   */
+  const recu = (
+    rendezVous: { patientUid?: string; externalName?: string },
+  ): { prenom: string; service: string } | null => {
+    const externe = rendezVous.externalName?.trim() ?? ''
+    if (externe !== '') return { prenom: externe, service: "hors de l'hôpital" }
+    const patient = staffStore.patients.find((p) => p.uid === rendezVous.patientUid)
     if (patient === undefined) return null
     return {
       prenom: patient.firstName,
@@ -80,7 +90,7 @@
       // Sur sa propre feuille, son nom n'apprend rien : la place est rendue à la
       // personne qu'il reçoit, qui est ce qu'il vient y chercher.
       rendezVous.map((rendezVous) => {
-        const personne = recu(rendezVous.patientUid)
+        const personne = recu(rendezVous)
         return {
           ...rendezVous,
           withWhom:
@@ -106,7 +116,7 @@
   const intitule = (entree: WeekEntry): string => {
     if (entree.kind === 'activity') return entree.title
     const motif = kindName(store.appointmentKinds, entree.kindId)
-    const personne = recu(entree.patientUid)
+    const personne = recu(entree)
     // Qui, d'où, pour quoi — dans cet ordre : c'est le nom qu'on cherche des yeux.
     return personne === null ? motif : `${personne.prenom} · ${personne.service} · ${motif}`
   }

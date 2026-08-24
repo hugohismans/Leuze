@@ -574,7 +574,8 @@ export function createFirestoreStaffApp(): StaffApp {
       },
 
       async createAppointment(rendezVous: {
-        patientUid: string
+        patientUid?: string
+        externalName?: string
         kindId: string
         date: LocalDate
         time: LocalTime
@@ -586,8 +587,16 @@ export function createFirestoreStaffApp(): StaffApp {
         const start = instantOf(rendezVous.date, rendezVous.time)
         try {
           // Créé déjà fixé : il n'y a jamais eu de demande à transformer.
+          const externe = rendezVous.externalName?.trim() ?? ''
           await addDoc(collection(db, 'appointments'), {
-            patientUid: rendezVous.patientUid,
+            /*
+              L'un ou l'autre, jamais les deux : les règles vérifient exactement cette
+              alternative. Écrire les deux champs — ou un « patientUid » vide — ferait
+              refuser l'écriture, et à juste titre : un rendez-vous concerne quelqu'un.
+            */
+            ...(externe === ''
+              ? { patientUid: rendezVous.patientUid ?? '' }
+              : { externalName: externe }),
             kindId: rendezVous.kindId,
             // Le moment souhaité n'a pas de sens ici : le rendez-vous est déjà posé.
             preference: 'peu-importe',
@@ -600,7 +609,18 @@ export function createFirestoreStaffApp(): StaffApp {
             ...(rendezVous.practitionerId ? { practitionerId: rendezVous.practitionerId } : {}),
             ...(rendezVous.locationId ? { locationId: rendezVous.locationId } : {}),
           })
-          return { ok: true, message: 'Rendez-vous fixé. Le patient le voit dans son calendrier.' }
+          /*
+            Une personne extérieure n'a pas l'application : le rendez-vous ne lui
+            apparaîtra nulle part. Le dire ici évite de croire que c'est fait — c'est le
+            soignant qui prévient, comme avant l'application.
+          */
+          return {
+            ok: true,
+            message:
+              externe === ''
+                ? 'Rendez-vous fixé. Le patient le voit dans son calendrier.'
+                : `Rendez-vous fixé avec ${externe}. Cette personne n'a pas l'application : prévenez-la.`,
+          }
         } catch {
           return { ok: false, message: "Le rendez-vous n'a pas pu être enregistré." }
         }

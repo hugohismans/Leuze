@@ -4,6 +4,7 @@
   import { proposed } from '../../lib/domain/catalog'
   import {
     PREFERENCE_LABELS,
+    appointmentWho,
     kindIcon,
     kindName,
     pastScheduled,
@@ -140,7 +141,21 @@
    * ont un téléphone — exactement l'inverse de ce que cette application doit faire.
    */
   let formulaireOuvert = $state(false)
+  /**
+   * Pour qui. Un patient de l'hôpital, ou une personne extérieure.
+   *
+   * Certains soignants reçoivent des gens qui ne sont plus hospitalisés — d'anciens
+   * patients, le plus souvent. Ces rendez-vous occupent une vraie place dans un agenda,
+   * et les tenir hors de l'application, c'est proposer des créneaux déjà pris.
+   */
+  const EXTERIEURE = 'personne-exterieure'
   let quiUid = $state('')
+  let nomExterieur = $state('')
+  const pourUnExterieur = $derived(quiUid === EXTERIEURE)
+  /** Le formulaire est complet quand quelqu'un est désigné, d'une façon ou de l'autre. */
+  const quelquUnEstDesigne = $derived(
+    pourUnExterieur ? nomExterieur.trim().length > 0 : quiUid !== '',
+  )
   let quelKind = $state('')
   let dateDirecte = $state<LocalDate>(firstBookableDay(todayLocalDate()))
   let heureDirecte = $state<LocalTime>('10:00')
@@ -244,10 +259,11 @@
   )
 
   async function fixerDirectement(): Promise<void> {
-    if (busy || quiUid === '' || quelKind === '' || avecQuiDirecte.trim().length === 0) return
+    if (busy || !quelquUnEstDesigne || quelKind === '' || avecQuiDirecte.trim().length === 0) return
     busy = true
     const ok = await staffStore.createAppointment({
-      patientUid: quiUid,
+      // L'un ou l'autre, jamais les deux : c'est ce que les règles vérifient.
+      ...(pourUnExterieur ? { externalName: nomExterieur.trim() } : { patientUid: quiUid }),
       kindId: quelKind,
       date: dateDirecte,
       time: heureDirecte,
@@ -259,6 +275,7 @@
     if (ok) {
       formulaireOuvert = false
       quiUid = ''
+      nomExterieur = ''
       lieuDirecte = ''
     }
     busy = false
@@ -447,7 +464,37 @@
             {/each}
           </optgroup>
         {/each}
+        <!--
+          En dernier, et dans son propre groupe : c'est le cas rare, et le confondre avec
+          la liste des patients ferait chercher un prénom qui n'y est pas.
+        -->
+        <optgroup label="Hors de l'hôpital">
+          <option value={EXTERIEURE}>Une personne extérieure à l'hôpital</option>
+        </optgroup>
       </select>
+
+      {#if pourUnExterieur}
+        <label for="nom-exterieur" class="mt-4 mb-2 block text-lg font-semibold text-ink">
+          Son prénom
+        </label>
+        <input
+          id="nom-exterieur"
+          bind:value={nomExterieur}
+          class={champ}
+          style="min-height: 56px;"
+          autocomplete="off"
+          maxlength="60"
+        />
+        <!--
+          Le même garde-fou que pour un patient d'ici, dont l'application n'enregistre
+          jamais que le prénom. Il est écrit, et pas seulement respecté par le code : un
+          champ libre finit par recevoir ce qu'on n'a pas dit de ne pas y mettre.
+        -->
+        <p class="mt-1 text-base text-ink-soft">
+          Un prénom suffit. N'écrivez ni nom de famille, ni adresse, ni raison du
+          rendez-vous. Cette personne n'a pas l'application : c'est vous qui la prévenez.
+        </p>
+      {/if}
 
       <label for="motif" class="mt-4 mb-2 block text-lg font-semibold text-ink">
         {toutVoir ? 'Avec quel professionnel' : 'À quel titre'}
@@ -536,11 +583,11 @@
 
       <AppointmentAgenda
         practitionerId={intervenantDirect}
-        patientUid={quiUid}
+        patientUid={pourUnExterieur ? '' : quiUid}
         preference={preferenceSouhaitee}
         durationMin={dureeDirecte}
         practitionerName={intervenantChoisi?.name ?? 'la personne'}
-        patientFirstName={quiUid === '' ? '' : (patient(quiUid)?.firstName ?? '')}
+        patientFirstName={pourUnExterieur || quiUid === '' ? '' : (patient(quiUid)?.firstName ?? '')}
         validationLabel="Enregistrer ce rendez-vous"
         onchoisir={poserDansLeFormulaireDirect}
       />
@@ -562,7 +609,7 @@
         <button
           type="submit"
           class="btn btn-primary"
-          disabled={busy || quiUid === '' || avecQuiDirecte.trim().length === 0}
+          disabled={busy || !quelquUnEstDesigne || avecQuiDirecte.trim().length === 0}
         >
           {busy ? 'Un instant…' : 'Enregistrer ce rendez-vous'}
         </button>
@@ -603,12 +650,12 @@
     <ul class="grid gap-4">
       {#each enAttente as demande (demande.id)}
         {@const jours = waitingDays(demande)}
-        {@const personne = patient(demande.patientUid)}
+        {@const personne = demande.patientUid === undefined ? undefined : patient(demande.patientUid)}
         <li class="card p-4">
           <div class="flex flex-wrap items-baseline justify-between gap-2">
             <h3 class="text-xl font-bold text-ink">
               <span aria-hidden="true">{kindIcon(kinds, demande.kindId)}</span>
-              {personne?.firstName ?? 'Prénom inconnu'} — {kindName(kinds, demande.kindId)}
+              {appointmentWho(demande, (uid) => patient(uid)?.firstName)} — {kindName(kinds, demande.kindId)}
             </h3>
             <!-- L'attente est doublée d'un mot : jamais la couleur seule. -->
             <span class="badge" class:font-bold={jours >= 3} style="background: var(--color-surface-soft); color: var(--color-ink);">
@@ -767,7 +814,7 @@
     <li class="card p-4">
       <p class="text-lg font-bold text-ink">
         <span aria-hidden="true">{kindIcon(kinds, rendezVous.kindId)}</span>
-        {patient(rendezVous.patientUid)?.firstName ?? 'Prénom inconnu'} — {rendezVous.withWhom}
+        {appointmentWho(rendezVous, (uid) => patient(uid)?.firstName)} — {rendezVous.withWhom}
       </p>
       {#if rendezVous.localDate && rendezVous.start && rendezVous.end}
         <p class="text-base text-ink">

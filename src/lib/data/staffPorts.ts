@@ -380,8 +380,17 @@ export interface StaffRepository {
    * Un rendez-vous fixé d'emblée, sans demande préalable. Beaucoup de patients ne se
    * serviront jamais de l'application : ils demandent de vive voix, et le soignant note.
    */
+  /**
+   * Fixer un rendez-vous, pour un patient d'ici ou pour une personne extérieure.
+   *
+   * L'un ou l'autre, jamais les deux : `patientUid` pour quelqu'un d'hospitalisé,
+   * `externalName` — un prénom, rien d'autre — pour un ancien patient qu'un soignant
+   * continue de recevoir. Le second n'a pas de compte : il ne verra rien de tout cela,
+   * le rendez-vous ne vit que dans l'agenda du soignant.
+   */
   createAppointment(rendezVous: {
-    patientUid: string
+    patientUid?: string
+    externalName?: string
     kindId: string
     date: LocalDate
     time: LocalTime

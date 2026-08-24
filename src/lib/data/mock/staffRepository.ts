@@ -506,7 +506,8 @@ export function createMockStaffApp(): StaffApp {
       },
 
       async createAppointment(rendezVous: {
-        patientUid: string
+        patientUid?: string
+        externalName?: string
         kindId: string
         date: LocalDate
         time: LocalTime
@@ -518,12 +519,16 @@ export function createMockStaffApp(): StaffApp {
         if (!canScheduleAs(identity, rendezVous.practitionerId ?? null)) {
           return { ok: false, message: refusDAgenda }
         }
+        const externe = rendezVous.externalName?.trim() ?? ''
         const start = instantOf(rendezVous.date, rendezVous.time)
         world.appointments = [
           ...world.appointments,
           {
-            id: `rdv-${rendezVous.patientUid}-${start.getTime()}`,
-            patientUid: rendezVous.patientUid,
+            id: `rdv-${externe === '' ? rendezVous.patientUid : 'externe'}-${start.getTime()}`,
+            // L'un ou l'autre, jamais les deux : comme sur le serveur.
+            ...(externe === ''
+              ? { patientUid: rendezVous.patientUid ?? '' }
+              : { externalName: externe }),
             kindId: rendezVous.kindId,
             preference: 'peu-importe',
             status: 'scheduled',
@@ -536,7 +541,14 @@ export function createMockStaffApp(): StaffApp {
             ...(rendezVous.locationId ? { locationId: rendezVous.locationId } : {}),
           },
         ]
-        return { ok: true, message: 'Rendez-vous fixé. Le patient le voit dans son calendrier.' }
+        // Une personne extérieure n'a pas l'application : c'est le soignant qui prévient.
+        return {
+          ok: true,
+          message:
+            externe === ''
+              ? 'Rendez-vous fixé. Le patient le voit dans son calendrier.'
+              : `Rendez-vous fixé avec ${externe}. Cette personne n'a pas l'application : prévenez-la.`,
+        }
       },
 
       /**
