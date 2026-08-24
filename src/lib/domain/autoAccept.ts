@@ -22,8 +22,14 @@
  *
  * **Rien n'est verrouillé.** Le rendez-vous fixé automatiquement est un rendez-vous
  * ordinaire : il se déplace, il s'annule avec un motif, comme tous les autres.
+ *
+ * **Rien pendant un congé.** Une plage dit « je reçois le mardi », en semaine type, sans
+ * savoir dire « sauf la semaine du 15 ». Sans les congés, l'acceptation automatique
+ * plaçait donc des rendez-vous en pleine absence — et c'est le patient qui l'apprenait
+ * devant une porte fermée.
  */
 import { suggestSlot, type Suggestion } from './agenda'
+import type { Leave } from './leave'
 import { instantOf } from './time'
 import type { BusyEntry } from './conflicts'
 import type { AppointmentPreference, AvailabilityWindow, LocalDate, LocalTime } from './types'
@@ -42,6 +48,8 @@ export type SlotSearch = {
   durationMin: number
   /** Pas de la recherche, en minutes. Quinze : l'agenda reste lisible. */
   stepMin?: number
+  /** Les congés déclarés : ces jours-là, rien n'est retenu. */
+  leaves?: Leave[]
 }
 
 export type FoundSlot = Suggestion
@@ -88,6 +96,7 @@ export function findFirstSlot(search: SlotSearch): FoundSlot | null {
     horizonDays: search.horizonDays,
     durationMin: search.durationMin,
     ...(search.stepMin === undefined ? {} : { stepMin: search.stepMin }),
+    ...(search.leaves === undefined ? {} : { leaves: search.leaves }),
   })
 }
 

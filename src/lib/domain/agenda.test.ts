@@ -67,7 +67,7 @@ describe('ce qui reste libre dans une journée', () => {
 describe('la semaine telle qu’on la lit pour poser un rendez-vous', () => {
   it('donne pour chaque jour la plage annoncée, ce qui est pris et ce qui reste', () => {
     const semaine = agendaWeek([LUNDI, MARDI], mardiMatin, [pris(MARDI, '10:00', '10:30', 'Camille')], 30)
-    expect(semaine[0]).toEqual({ localDate: LUNDI, windows: [], taken: [], free: [] })
+    expect(semaine[0]).toEqual({ localDate: LUNDI, windows: [], taken: [], free: [], onLeave: false })
     expect(semaine[1]?.windows).toEqual([{ weekday: 2, from: '09:00', to: '12:00' }])
     expect(semaine[1]?.taken.map((t) => t.label)).toEqual(['Camille'])
     expect(semaine[1]?.free).toEqual([
@@ -197,5 +197,83 @@ describe('le premier jour où l’on propose', () => {
       durationMin: 30,
     })
     expect(proposition?.localDate).toBe('2026-08-31')
+  })
+})
+
+/**
+ * Le congé se pose par-dessus la semaine type.
+ *
+ * « Je reçois le mardi de 9 h à 12 h » ne sait pas dire « sauf la semaine du 15 ».
+ * Sans cette exception datée, l'application proposait des rendez-vous en pleine absence,
+ * et c'est le patient qui l'apprenait devant une porte fermée.
+ */
+describe('un jour de congé', () => {
+  const CONGE = [{ from: MARDI, to: MARDI }]
+
+  it('n’annonce plus aucune plage et ne laisse rien de libre', () => {
+    const semaine = agendaWeek([MARDI], mardiMatin, [], 30, CONGE)
+    expect(semaine[0]?.onLeave).toBe(true)
+    expect(semaine[0]?.windows).toEqual([])
+    expect(semaine[0]?.free).toEqual([])
+  })
+
+  it('montre quand même ce qui y est déjà pris', () => {
+    // C'est justement ce qu'il faut voir avant de déclarer une absence.
+    const semaine = agendaWeek([MARDI], mardiMatin, [pris(MARDI, '10:00', '10:30', 'Camille')], 30, CONGE)
+    expect(semaine[0]?.taken.map((t) => t.label)).toEqual(['Camille'])
+  })
+
+  it('ne change rien aux autres jours', () => {
+    const semaine = agendaWeek([MARDI, JEUDI], mardiEtJeudi, [], 30, CONGE)
+    expect(semaine[1]?.onLeave).toBe(false)
+    expect(semaine[1]?.free.length).toBeGreaterThan(0)
+  })
+
+  it('ne reçoit aucune proposition', () => {
+    const sans = suggestSlot({
+      windows: mardiEtJeudi,
+      practitionerBusy: [],
+      patientBusy: [],
+      preference: 'peu-importe',
+      from: MARDI,
+      horizonDays: 3,
+      durationMin: 30,
+    })
+    expect(sans?.localDate).toBe(MARDI)
+
+    const avec = suggestSlot({
+      windows: mardiEtJeudi,
+      practitionerBusy: [],
+      patientBusy: [],
+      preference: 'peu-importe',
+      from: MARDI,
+      horizonDays: 3,
+      durationMin: 30,
+      leaves: CONGE,
+    })
+    expect(avec?.localDate).toBe(JEUDI)
+  })
+
+  it('sans congé déclaré, la recherche est exactement celle d’avant', () => {
+    const reference = suggestSlot({
+      windows: mardiEtJeudi,
+      practitionerBusy: [],
+      patientBusy: [],
+      preference: 'peu-importe',
+      from: MARDI,
+      horizonDays: 3,
+      durationMin: 30,
+    })
+    const avecListeVide = suggestSlot({
+      windows: mardiEtJeudi,
+      practitionerBusy: [],
+      patientBusy: [],
+      preference: 'peu-importe',
+      from: MARDI,
+      horizonDays: 3,
+      durationMin: 30,
+      leaves: [],
+    })
+    expect(avecListeVide).toEqual(reference)
   })
 })

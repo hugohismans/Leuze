@@ -257,6 +257,15 @@ export type Appointment = {
   cancellationReason?: string
   /** Fixé sans intervention humaine, dans les plages de l'intervenant. */
   autoAccepted?: boolean
+  /**
+   * La date a sauté parce que la personne s'est déclarée en congé.
+   *
+   * La demande est retournée dans la file — elle tient toujours, c'est la date qui ne
+   * tient plus. Sans ce drapeau, le patient verrait son rendez-vous redevenir une simple
+   * demande sans la moindre explication, ce qui est la façon la plus sûre de faire croire
+   * à une panne. Il ne dit pas pourquoi la personne s'absente, et ne le dira jamais.
+   */
+  reopenedForLeave?: boolean
 }
 
 /** Le strict minimum. Le code d'accès n'est jamais stocké en clair (l'id du doc est son hash). */

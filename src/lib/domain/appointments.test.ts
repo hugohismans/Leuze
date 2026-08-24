@@ -147,3 +147,45 @@ describe('les rendez-vous qui restent à venir', () => {
     expect(upcomingScheduled(liste, maintenant).map((a) => a.id)).toEqual(['demain', 'dans-dix-jours'])
   })
 })
+
+/**
+ * Une date qui disparaît sans un mot passe pour une panne.
+ *
+ * Le rendez-vous était fixé, la personne s'est déclarée absente, et la demande est
+ * retournée dans la file. Le patient n'y est pour rien : il doit lire ce qui s'est passé,
+ * et savoir qu'il n'a rien à refaire.
+ */
+describe('un rendez-vous rouvert par un congé', () => {
+  const kinds = [{ id: 'psychiatre', name: 'Le psychiatre', icon: '🩺', isActive: true }]
+  const base = {
+    id: 'r1',
+    patientUid: 'p1',
+    kindId: 'psychiatre',
+    preference: 'peu-importe' as const,
+    createdAt: new Date('2026-08-20T10:00:00Z'),
+  }
+
+  it("dit que la personne sera absente, et que la demande tient toujours", () => {
+    const phrase = patientStatusLabel(
+      { ...base, status: 'requested', reopenedForLeave: true },
+      kinds,
+    )
+    expect(phrase).toContain('absente')
+    expect(phrase).toContain('de nouveau en attente')
+  })
+
+  it('ne dit jamais pourquoi la personne s’absente', () => {
+    const phrase = patientStatusLabel(
+      { ...base, status: 'requested', reopenedForLeave: true },
+      kinds,
+    )
+    expect(phrase.toLowerCase()).not.toContain('congé')
+    expect(phrase.toLowerCase()).not.toContain('vacances')
+  })
+
+  it('une demande ordinaire garde exactement sa phrase d’avant', () => {
+    expect(patientStatusLabel({ ...base, status: 'requested' }, kinds)).toBe(
+      'Demande envoyée pour voir le psychiatre. Un soignant vous dira quand.',
+    )
+  })
+})

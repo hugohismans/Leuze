@@ -13,6 +13,7 @@
  * Il ne lit rien et ne décide d'aucun droit : ce sont des intervalles, rien d'autre.
  */
 import { minutesOf, normalizeAvailability, windowsOn } from './availability'
+import { isOnLeave, type Leave } from './leave'
 import { addLocalDays, instantOf, isoWeekdayOf } from './time'
 import type { AppointmentPreference, AvailabilityWindow, LocalDate, LocalTime } from './types'
 import type { BusyEntry } from './conflicts'
@@ -26,6 +27,14 @@ export type AgendaDay = {
   windows: AvailabilityWindow[]
   taken: BusyEntry[]
   free: FreeSlot[]
+  /**
+   * Cette personne est en congé ce jour-là.
+   *
+   * Dit plutôt que déduit : un jour de congé n'a ni plage ni créneau libre, et il
+   * ressemblerait sinon trait pour trait à un jour où la personne ne reçoit jamais.
+   * L'écran doit pouvoir écrire « En congé » — une absence tue se cherche.
+   */
+  onLeave: boolean
 }
 
 const MIDI = 12 * 60
@@ -105,21 +114,33 @@ export function agendaWeek(
   windows: AvailabilityWindow[],
   busy: BusyEntry[],
   durationMin: number,
+  leaves: Leave[] = [],
 ): AgendaDay[] {
   const plages = normalizeAvailability(windows)
-  return days.map((localDate) => ({
-    localDate,
-    windows: windowsOn(plages, isoWeekdayOf(localDate)),
-    taken: dedupeBusy(
-      busy
-        .filter((entry) => {
-          const jour = instantOf(localDate, '00:00').getTime()
-          return entry.end.getTime() > jour && entry.start.getTime() < jour + 86_400_000
-        })
-        .sort((a, b) => a.start.getTime() - b.start.getTime()),
-    ),
-    free: freeSlotsOn(plages, busy, localDate, durationMin),
-  }))
+  return days.map((localDate) => {
+    /*
+      Un jour de congé n'a ni plage ni créneau libre.
+
+      Le congé est une exception datée posée par-dessus la semaine type : « je reçois le
+      mardi » ne sait pas dire « sauf la semaine du 15 ». Ce qui est déjà pris reste
+      affiché — c'est justement ce qu'il faut voir avant de déclarer une absence.
+    */
+    const enConge = isOnLeave(leaves, localDate)
+    return {
+      localDate,
+      onLeave: enConge,
+      windows: enConge ? [] : windowsOn(plages, isoWeekdayOf(localDate)),
+      taken: dedupeBusy(
+        busy
+          .filter((entry) => {
+            const jour = instantOf(localDate, '00:00').getTime()
+            return entry.end.getTime() > jour && entry.start.getTime() < jour + 86_400_000
+          })
+          .sort((a, b) => a.start.getTime() - b.start.getTime()),
+      ),
+      free: enConge ? [] : freeSlotsOn(plages, busy, localDate, durationMin),
+    }
+  })
 }
 
 /**
@@ -217,6 +238,13 @@ export type SuggestionSearch = {
   durationMin: number
   stepMin?: number
   /**
+   * Les jours où cette personne ne reçoit pas, quelles que soient ses plages.
+   *
+   * Absent vaut « aucun congé » : c'est ce que faisait la recherche avant que les congés
+   * existent, et rien ne doit se restreindre en silence.
+   */
+  leaves?: Leave[]
+  /**
    * Jusqu'où l'on tient au moment souhaité avant de préférer une date plus proche.
    *
    * Une semaine, par défaut. En deçà, « le matin » est respecté même s'il faut attendre
@@ -263,8 +291,11 @@ function chercher(
   const pas = search.stepMin ?? 15
   const tous = [...search.practitionerBusy, ...search.patientBusy]
 
+  const conges = search.leaves ?? []
   for (let i = 0; i < jours; i += 1) {
     const localDate = addLocalDays(search.from, i)
+    // Un jour de congé ne propose rien : c'est tout l'objet du congé.
+    if (isOnLeave(conges, localDate)) continue
     for (const trou of freeSlotsOn(plages, tous, localDate, search.durationMin)) {
       const ouverture = minutesOf(trou.from)!
       const fermeture = minutesOf(trou.to)!

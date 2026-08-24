@@ -29,6 +29,17 @@ export function patientStatusLabel(appointment: Appointment, kinds: AppointmentK
   const qui = kindName(kinds, appointment.kindId)
   switch (appointment.status) {
     case 'requested':
+      /*
+        Une date qui disparaît sans un mot passe pour une panne.
+
+        Le rendez-vous était fixé ; la personne s'est déclarée absente ce jour-là, et la
+        demande est retournée dans la file. Le patient n'y est pour rien et n'a rien à
+        refaire : on le lui dit, sans dire pourquoi la personne s'absente — cela ne le
+        regarde pas, et l'application ne le sait pas.
+      */
+      if (appointment.reopenedForLeave === true) {
+        return `La personne que vous deviez voir sera absente ce jour-là. Votre demande pour voir ${qui.toLowerCase()} est de nouveau en attente : un soignant vous dira quand.`
+      }
       return `Demande envoyée pour voir ${qui.toLowerCase()}. Un soignant vous dira quand.`
     case 'scheduled':
       return appointment.localDate && appointment.start && appointment.end
