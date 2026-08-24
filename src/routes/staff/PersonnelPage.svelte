@@ -10,6 +10,10 @@
   import type { AvailabilityWindow, IsoWeekday, Practitioner } from '../../lib/domain/types'
   import { canSeePractitionerPlanning } from '../../lib/domain/appointmentAccess'
   import { practitionerAudience } from '../../lib/domain/practitioners'
+  import { daysCovered, leaveRefusal, type Leave } from '../../lib/domain/leave'
+  import type { LeaveOutcome } from '../../lib/data/staffPorts'
+  import { formatLongDayLabel, formatTime, todayLocalDate } from '../../lib/domain/time'
+  import type { LocalDate } from '../../lib/domain/types'
   import { proposed } from '../../lib/domain/catalog'
   import type { Account } from '../../lib/domain/impersonation'
   import { navigate } from '../../lib/router.svelte'
@@ -45,6 +49,77 @@
 
   // Un service retiré n'est plus proposé ; ceux déjà cochés restent tels quels.
   const servicesProposes = $derived(proposed(store.services))
+
+  /**
+   * Les congés : une exception datée posée par-dessus les plages.
+   *
+   * « Je reçois le mardi de 9 h à 12 h » ne sait pas dire « sauf la semaine du 15 ».
+   * Sans cette exception, l'application proposait des rendez-vous en pleine absence, et
+   * c'est le patient qui l'apprenait devant une porte fermée.
+   *
+   * Le motif n'est pas demandé et ne le sera pas : la raison d'une absence ne regarde
+   * pas une application de programme d'activités.
+   */
+  let congesOuverts = $state<string | null>(null)
+  let congeDu = $state<LocalDate>(todayLocalDate())
+  let congeAu = $state<LocalDate>(todayLocalDate())
+  let congeErreur = $state<string | null>(null)
+  /** Ce que le congé bousculerait, quand le serveur a demandé confirmation. */
+  let aConfirmer = $state<LeaveOutcome | null>(null)
+
+  /**
+   * Le libellé d'un jour, au milieu d'une phrase.
+   *
+   * « Du Mardi 25 août » porte une majuscule qui n'a rien à y faire : le libellé est
+   * écrit pour commencer une ligne, pas pour suivre « du ».
+   */
+  const enPhrase = (jour: LocalDate): string => {
+    const libelle = formatLongDayLabel(jour)
+    return libelle.charAt(0).toLowerCase() + libelle.slice(1)
+  }
+
+  function ouvrirLesConges(practitionerId: string): void {
+    congesOuverts = practitionerId
+    congeDu = todayLocalDate()
+    congeAu = todayLocalDate()
+    congeErreur = null
+    aConfirmer = null
+  }
+
+  function fermerLesConges(): void {
+    congesOuverts = null
+    aConfirmer = null
+    congeErreur = null
+  }
+
+  async function declarerLeConge(practitionerId: string, force = false): Promise<void> {
+    const conge = { from: congeDu, to: congeAu }
+    const refus = leaveRefusal(conge)
+    if (refus !== null) {
+      congeErreur = refus
+      return
+    }
+    congeErreur = null
+    await tenter(async () => {
+      const resultat = await staffStore.declareLeave(practitionerId, conge, { force })
+      if (resultat.needsConfirmation === true) {
+        // On ne ferme rien : l'écran nomme ce qui va bouger, et l'on tranche en le lisant.
+        aConfirmer = resultat
+        return
+      }
+      if (!resultat.ok) {
+        congeErreur = resultat.message
+        return
+      }
+      fermerLesConges()
+    })
+  }
+
+  async function retirerLeConge(practitionerId: string, conge: Leave): Promise<void> {
+    await tenter(async () => {
+      await staffStore.removeLeave(practitionerId, conge)
+    })
+  }
 
   function basculerUnite(id: string): void {
     unites = unites.includes(id) ? unites.filter((u) => u !== id) : [...unites, id]
@@ -530,6 +605,183 @@
     </div>
   {/snippet}
 
+  <!--
+    Les congés d'une personne : une exception datée posée par-dessus ses plages.
+
+    Le geste est courant — on s'absente une semaine — mais il n'est pas anodin : des
+    rendez-vous sont peut-être déjà fixés sur ces jours-là. L'écran les nomme avant de
+    rien changer, et c'est un humain qui tranche en les lisant.
+  -->
+  {#snippet conges(personne: Practitioner)}
+    {@const siens = staffStore.leavesOf(personne.id)}
+    <div class="mt-3 rounded-xl border-2 border-line p-4">
+      <h4 class="text-lg font-semibold text-ink">Congés</h4>
+
+      {#if siens.length === 0}
+        <p class="mt-1 text-base text-ink-soft">Aucun congé déclaré.</p>
+      {:else}
+        <ul class="mt-2 grid gap-2">
+          {#each siens as conge (conge.from + conge.to)}
+            <li class="flex flex-wrap items-center justify-between gap-2">
+              <span class="text-base text-ink">
+                <span aria-hidden="true">🌴</span>
+                {#if conge.from === conge.to}
+                  Le {enPhrase(conge.from)}
+                {:else}
+                  Du {enPhrase(conge.from)} au {enPhrase(conge.to)} ({daysCovered(conge)} jours)
+                {/if}
+              </span>
+              {#if peutModifierLesPlages(personne.id)}
+                <button
+                  type="button"
+                  class="btn btn-secondary"
+                  disabled={busy}
+                  onclick={() => retirerLeConge(personne.id, conge)}
+                >
+                  Retirer
+                </button>
+              {/if}
+            </li>
+          {/each}
+        </ul>
+      {/if}
+
+      {#if peutModifierLesPlages(personne.id)}
+        {#if congesOuverts === personne.id}
+          <div class="mt-3 grid gap-3 sm:grid-cols-2">
+            <div class="min-w-0">
+              <label for={`conge-du-${personne.id}`} class="mb-2 block text-lg font-semibold text-ink">
+                Premier jour
+              </label>
+              <input
+                id={`conge-du-${personne.id}`}
+                type="date"
+                bind:value={congeDu}
+                class={champ}
+                style="min-height: 56px;"
+              />
+            </div>
+            <div class="min-w-0">
+              <label for={`conge-au-${personne.id}`} class="mb-2 block text-lg font-semibold text-ink">
+                Dernier jour
+              </label>
+              <input
+                id={`conge-au-${personne.id}`}
+                type="date"
+                bind:value={congeAu}
+                class={champ}
+                style="min-height: 56px;"
+              />
+            </div>
+          </div>
+
+          {#if congeErreur !== null}
+            <p role="alert" class="mt-3 rounded-xl bg-red-50 p-3 text-lg font-semibold text-red-900">
+              <span aria-hidden="true">⚠️</span> {congeErreur}
+            </p>
+          {/if}
+
+          <!--
+            L'avertissement, quand des rendez-vous sont déjà fixés.
+
+            Il les nomme un par un : « trois rendez-vous » ne dit rien, « Camille mardi à
+            10 h » se pèse. Et il dit ce qui va leur arriver — retourner dans la file, non
+            disparaître — avant qu'on appuie, jamais après.
+          -->
+          {#if aConfirmer !== null}
+            <div role="status" class="mt-3 rounded-xl border-2 border-amber-500 bg-amber-50 p-4">
+              <p class="text-lg font-bold text-ink">
+                <span aria-hidden="true">⚠️</span> {aConfirmer.message}
+              </p>
+              <ul class="mt-2 grid gap-1">
+                {#each aConfirmer.conflicts ?? [] as conflit (conflit.appointmentId)}
+                  <li class="text-base text-ink">
+                    {conflit.firstName} — {formatLongDayLabel(conflit.localDate)}{#if conflit.start !== undefined && conflit.end !== undefined}, de {formatTime(new Date(conflit.start))} à {formatTime(new Date(conflit.end))}{/if}
+                  </li>
+                {/each}
+              </ul>
+              <p class="mt-2 text-base text-ink">
+                {#if (aConfirmer.conflicts ?? []).length === 1}
+                  Si vous déclarez le congé, ce rendez-vous retourne dans la file des
+                  demandes et devra être refixé. La personne concernée le lira dans son
+                  application.
+                {:else}
+                  Si vous déclarez le congé, ces rendez-vous retournent dans la file des
+                  demandes et devront être refixés. Les personnes concernées le liront
+                  dans leur application.
+                {/if}
+              </p>
+              <!--
+                Les séances animées sont comptées, jamais touchées.
+
+                Une séance a des inscrits : l'annuler est une décision qui se prend séance
+                par séance, avec un motif. Mais la taire dans un écran dont tout l'objet
+                est « qu'est-ce que ce congé bouscule ? » en ferait une demi-vérité.
+
+                La phrase évite l'élision devant le nom : « qu'Docteur Lemaire » est
+                fautif, et « qu'Ada » ne l'est pas — aucune règle simple ne couvre les
+                deux, alors on tourne la phrase autrement.
+              -->
+              {#if (aConfirmer.activityCount ?? 0) === 1}
+                <p class="mt-2 text-base font-semibold text-ink">
+                  <span aria-hidden="true">📅</span>
+                  {personne.name} anime aussi une séance pendant ce congé. Elle n'est pas
+                  modifiée : une séance a des inscrits, et s'annule séance par séance,
+                  avec un motif.
+                </p>
+              {:else if (aConfirmer.activityCount ?? 0) > 1}
+                <p class="mt-2 text-base font-semibold text-ink">
+                  <span aria-hidden="true">📅</span>
+                  {personne.name} anime aussi {aConfirmer.activityCount} séances pendant ce
+                  congé. Elles ne sont pas modifiées : une séance a des inscrits, et
+                  s'annule séance par séance, avec un motif.
+                </p>
+              {/if}
+              <div class="mt-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  class="btn btn-primary"
+                  disabled={busy}
+                  onclick={() => declarerLeConge(personne.id, true)}
+                >
+                  {busy ? 'Un instant…' : 'Déclarer le congé quand même'}
+                </button>
+                <button type="button" class="btn btn-secondary" onclick={fermerLesConges}>
+                  Ne rien changer
+                </button>
+              </div>
+            </div>
+          {:else}
+            <div class="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                class="btn btn-primary"
+                disabled={busy}
+                onclick={() => declarerLeConge(personne.id)}
+              >
+                {busy ? 'Un instant…' : 'Enregistrer ce congé'}
+              </button>
+              <button type="button" class="btn btn-secondary" onclick={fermerLesConges}>Annuler</button>
+            </div>
+          {/if}
+
+          <p class="mt-2 text-base text-ink-soft">
+            Pendant ces jours, aucun rendez-vous ne sera proposé — ni par l'agenda, ni
+            automatiquement. Le motif du congé n'est pas demandé.
+          </p>
+        {:else}
+          <button
+            type="button"
+            class="btn btn-secondary mt-3"
+            onclick={() => ouvrirLesConges(personne.id)}
+          >
+            Déclarer un congé
+          </button>
+        {/if}
+      {/if}
+    </div>
+  {/snippet}
+
   {#snippet fiche(id: string)}
     {@const personne = store.practitionerOf(id)}
     {#if personne !== null}
@@ -541,7 +793,7 @@
           </div>
         </div>
 
-        {#if personne.isActive}{@render plages(personne)}{/if}
+        {#if personne.isActive}{@render plages(personne)}{@render conges(personne)}{/if}
 
         <div class="mt-3 flex flex-wrap gap-2">
           {#if canSeePractitionerPlanning(moi, personne.id)}

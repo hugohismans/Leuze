@@ -268,9 +268,19 @@
       <svelte:boundary>
       <ul class="mt-4 grid gap-3">
         {#each semaineVisible as jour (jour.localDate)}
-          {#if jour.windows.length > 0 || jour.taken.length > 0}
+          {#if jour.onLeave === true || jour.windows.length > 0 || jour.taken.length > 0}
             <li class="rounded-lg bg-surface-soft p-3">
               <p class="text-lg font-bold text-ink">{formatDayLabel(jour.localDate)}</p>
+              <!--
+                Un jour de congé n'a ni plage ni créneau : il ressemblerait trait pour
+                trait à un jour où la personne ne reçoit jamais. On l'écrit, sinon
+                l'absence se cherche.
+              -->
+              {#if jour.onLeave === true}
+                <p class="text-base font-semibold text-ink">
+                  <span aria-hidden="true">🌴</span> En congé — aucun rendez-vous ce jour-là.
+                </p>
+              {/if}
               {#if jour.windows.length > 0}
                 <p class="text-base text-ink-soft">
                   <span aria-hidden="true">🗓️</span>
