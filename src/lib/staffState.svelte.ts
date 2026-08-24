@@ -29,6 +29,7 @@ import {
 import type { ActivityProposal } from './domain/proposals'
 import { store } from './appState.svelte'
 import { countsOf, undoToggle, withToggled } from './domain/roster'
+import { appointmentsOfUnit, patientsOfUnit, resolveUnit, unitName } from './domain/unit'
 import { todayLocalDate, weekDays } from './domain/time'
 import { enClair } from './erreurs'
 import type {
@@ -75,6 +76,78 @@ class StaffStore {
    * l'impression doit donner la feuille de La Couturelle, sans avoir à le redire.
    */
   programmeServiceId = $state<string | null>(null)
+
+  /**
+   * L'unité de soins à laquelle ce compte est rattaché, telle qu'elle est enregistrée.
+   *
+   * `null` veut dire « aucune » : l'écran s'ouvre alors sur l'hôpital entier, comme
+   * avant que ce réglage existe.
+   */
+  unitId = $state<string | null>(null)
+
+  /**
+   * Vrai quand on demande à voir toutes les unités, le temps d'une visite.
+   *
+   * Ce n'est pas un droit qu'on s'accorde — le compte les voyait déjà toutes. C'est
+   * l'inverse : le réglage retire du bruit, et cette case le remet. Elle vit ici et
+   * non dans un écran, pour que passer des rendez-vous aux patients ne la redemande pas.
+   */
+  voirToutesLesUnites = $state(false)
+
+  /** L'unité qui filtre réellement les écrans, une fois la case et le catalogue pris en compte. */
+  readonly unit = $derived(
+    this.voirToutesLesUnites ? null : resolveUnit(store.services, this.unitId),
+  )
+  /** Son nom, pour l'écrire. `null` quand il n'y a rien à écrire. */
+  readonly unitLabel = $derived(unitName(store.services, this.unit))
+
+  /** Les patients de l'unité — ceux que cet écran a à connaître. */
+  readonly patientsOfUnit = $derived(patientsOfUnit(this.patients, this.unit))
+
+  /**
+   * Les rendez-vous de l'unité. Un rendez-vous suit le service de son patient : c'est
+   * le patient qui appartient à une unité, jamais le rendez-vous lui-même.
+   */
+  readonly appointmentsOfUnit = $derived(
+    appointmentsOfUnit(
+      this.appointments,
+      (uid) => this.patients.find((p) => p.uid === uid)?.serviceId ?? null,
+      this.unit,
+    ),
+  )
+
+  /**
+   * Vrai dès que l'unité a été lue, qu'il y en ait une ou non.
+   *
+   * `unitId` ne distingue pas « pas encore lue » de « aucune » : les deux valent `null`.
+   * Un écran qui pré-remplit un champ a besoin de la différence, sous peine de proposer
+   * la première unité de la liste à quelqu'un qui en a une autre.
+   */
+  unitLoaded = $state(false)
+
+  async loadMyUnit(): Promise<void> {
+    this.unitId = await (await this.app$()).repository.readMyUnit().catch(() => null)
+    this.unitLoaded = true
+  }
+
+  /** Régler son unité. Elle s'applique tout de suite, et revient si le serveur refuse. */
+  async setMyUnit(serviceId: string | null): Promise<void> {
+    const avant = this.unitId
+    this.unitId = serviceId
+    const resultat = await (await this.app$()).repository.saveMyUnit(serviceId)
+    if (!resultat.ok) {
+      this.unitId = avant
+      this.message = resultat.message
+      return
+    }
+    /*
+      Changer d'unité rend inutile la case « voir toutes les unités » : on vient de dire
+      laquelle on veut. La laisser cochée montrerait tout l'hôpital juste après avoir
+      choisi une unité — et donnerait l'impression que le réglage n'a rien fait.
+    */
+    this.voirToutesLesUnites = false
+    this.message = resultat.message
+  }
   /** Message de compte rendu affiché après une action, en français simple. */
   message = $state<string | null>(null)
   /**
@@ -125,7 +198,10 @@ class StaffStore {
         void this.loadProposals()
         void this.loadPatientPermissions()
       }
-      if (this.identity.role !== null) void this.loadPatientActions()
+      if (this.identity.role !== null) {
+        void this.loadPatientActions()
+        void this.loadMyUnit()
+      }
       await this.refresh()
     }
     return result.ok ? { ok: true } : { ok: false, message: result.message }
@@ -163,7 +239,10 @@ class StaffStore {
         void this.loadProposals()
         void this.loadPatientPermissions()
       }
-      if (this.identity.role !== null) void this.loadPatientActions()
+      if (this.identity.role !== null) {
+        void this.loadPatientActions()
+        void this.loadMyUnit()
+      }
     }
   }
 

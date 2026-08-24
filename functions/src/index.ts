@@ -1473,6 +1473,50 @@ export const createStaffAccount = onCall(async (request: CallableRequest) => {
   return { uid, email, practitionerId, password: motDePasse }
 })
 
+/**
+ * L'unité de soins à laquelle un compte du personnel se rattache.
+ *
+ * L'hôpital n'a pas un poste d'administration mais plusieurs : une bulle par unité —
+ * La Couturelle, La Joncquerelle, Le Mazurel… Chacune s'occupe de ses patients. Sans
+ * ce réglage, chaque écran s'ouvrait sur l'hôpital entier et il fallait re-choisir son
+ * unité partout, à chaque fois, sur chaque poste.
+ *
+ * Ce n'est **pas un droit** : le compte garde exactement ce qu'il avait, et une case à
+ * l'écran lui rend l'hôpital entier. Une cloison véritable se poserait dans le jeton et
+ * dans les règles, jamais dans un champ que l'écran peut ignorer.
+ *
+ * Chacun règle le sien, et personne d'autre : ce n'est pas une attribution de poste,
+ * c'est le réglage de son propre écran. L'écriture passe tout de même par ici — le
+ * document `staff/` porte le rôle, et un document que le navigateur peut écrire n'est
+ * plus une référence.
+ */
+export const setMyUnit = onCall(async (request: CallableRequest) => {
+  const staff = requireStaff(request)
+  const brut = request.data?.serviceId
+  const serviceId = typeof brut === 'string' && brut.trim() !== '' ? brut.trim() : null
+
+  if (serviceId !== null) {
+    // Un identifiant qui ne correspond à rien viderait tous les écrans sans rien dire.
+    const service = await db().collection(COLLECTIONS.services).doc(serviceId).get()
+    if (!service.exists) {
+      throw new HttpsError('not-found', "Cette unité n'existe pas. Choisissez-en une dans la liste.")
+    }
+  }
+
+  await db()
+    .collection(COLLECTIONS.staff)
+    .doc(staff.uid)
+    .set({ serviceId, updatedAt: FieldValue.serverTimestamp() }, { merge: true })
+
+  return {
+    ok: true,
+    message:
+      serviceId === null
+        ? "Votre compte n'est plus rattaché à une unité : vous voyez tout l'hôpital."
+        : 'Votre unité est enregistrée.',
+  }
+})
+
 // ---------------------------------------------------------------------------
 // « Voir à leur place » — outil de mise au point, réservé à l'administrateur
 // ---------------------------------------------------------------------------

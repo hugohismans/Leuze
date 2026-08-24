@@ -169,6 +169,19 @@ export interface StaffRepository {
   ): Promise<{ ok: boolean; message: string }>
 
   /**
+   * L'unité à laquelle ce compte est rattaché, et la régler.
+   *
+   * Une bulle par unité de soins : celle de La Couturelle fixe les rendez-vous de La
+   * Couturelle. Le réglage vit sur le compte et non dans le navigateur — un poste
+   * remplacé, une connexion depuis un autre ordinateur, et il serait à refaire.
+   *
+   * Il n'accorde ni ne retire aucun droit : c'est ce que l'écran montre en arrivant,
+   * et une case rend l'ensemble de l'hôpital. `null` veut dire « aucune unité ».
+   */
+  readMyUnit(): Promise<string | null>
+  saveMyUnit(serviceId: string | null): Promise<{ ok: boolean; message: string }>
+
+  /**
    * Ce que les patients ont le droit de faire, et le régler.
    *
    * Quatre gestes : s'inscrire, se retirer, demander un rendez-vous, proposer une

@@ -50,6 +50,13 @@ export type MockWorld = {
   proposals: ActivityProposal[]
   /** Ce que les patients ont le droit de faire. Tout ouvert dans la démonstration. */
   patientPermissions: PatientPermissions
+  /**
+   * L'unité de rattachement des comptes du personnel, par identifiant de compte.
+   *
+   * Aucun compte n'en a au départ : la démonstration s'ouvre sur l'hôpital entier,
+   * comme un compte fraîchement créé.
+   */
+  staffUnits: Record<string, string>
   /** Les réglages particuliers, par personne. Vide tant que personne n'en a. */
   patientActions: Record<string, PatientActionOverrides>
   patients: (SeedPatient & { expiresAt?: Date })[]
@@ -201,6 +208,7 @@ function build(now: Date): MockWorld {
     ],
     patientPermissions: { ...OPEN_TO_PATIENTS },
     patientActions: {},
+    staffUnits: {},
     patients,
     session:
       aLaPlaceDe === undefined

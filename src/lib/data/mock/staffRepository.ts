@@ -624,6 +624,22 @@ export function createMockStaffApp(): StaffApp {
         return { ok: true, message: 'Retiré de la liste.' }
       },
 
+      async readMyUnit(): Promise<string | null> {
+        const uid = identity.uid
+        if (uid === null) return null
+        return world.staffUnits[uid] ?? null
+      },
+
+      async saveMyUnit(serviceId: string | null) {
+        const uid = identity.uid
+        if (uid === null) return { ok: false, message: 'Vous n’êtes pas connecté.' }
+        const suivants = { ...world.staffUnits }
+        if (serviceId === null || serviceId === '') delete suivants[uid]
+        else suivants[uid] = serviceId
+        world.staffUnits = suivants
+        return { ok: true, message: 'Votre unité est enregistrée.' }
+      },
+
       async readPatientPermissions(): Promise<PatientPermissions> {
         return { ...world.patientPermissions }
       },

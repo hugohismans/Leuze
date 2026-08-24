@@ -678,6 +678,40 @@ export function createFirestoreStaffApp(): StaffApp {
         }
       },
 
+      async readMyUnit(): Promise<string | null> {
+        /*
+          Lecture directe : les règles accordent à chacun la lecture de son propre
+          document `staff/`. Une fonction appelable coûterait ici un démarrage à froid
+          de plusieurs secondes pour un seul mot.
+        */
+        try {
+          const uid = identity.uid
+          if (uid === null) return null
+          const snapshot = await getDoc(doc(db, 'staff', uid))
+          const lu = snapshot.data()?.['serviceId']
+          return typeof lu === 'string' && lu !== '' ? lu : null
+        } catch {
+          return null
+        }
+      },
+
+      async saveMyUnit(serviceId: string | null) {
+        /*
+          L'écriture, elle, passe par le serveur : `staff/` est en lecture seule pour le
+          client — c'est là que vit le rôle, et un document que le navigateur peut
+          écrire n'est plus une référence.
+        */
+        try {
+          const call = httpsCallable<{ serviceId: string | null }, { ok: boolean; message: string }>(
+            functions,
+            'setMyUnit',
+          )
+          return (await call({ serviceId })).data
+        } catch (error) {
+          return { ok: false, message: messageDErreur(error) }
+        }
+      },
+
       async readPatientPermissions(): Promise<PatientPermissions> {
         try {
           const snapshot = await getDoc(doc(db, 'config', 'app'))
