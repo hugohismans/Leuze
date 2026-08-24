@@ -103,12 +103,32 @@ export type LeaveConflict = {
  * `activityCount` compte les séances animées pendant le congé — comptées, jamais
  * touchées : une séance a des inscrits, et l'annuler se décide séance par séance.
  */
+/**
+ * Une séance que le congé fait tomber, telle qu'on la montre avant de trancher.
+ *
+ * Le nombre d'inscrits y figure parce que c'est lui qui fait hésiter : annuler un
+ * atelier vide et annuler un atelier où onze personnes sont inscrites ne sont pas le
+ * même geste.
+ */
+export type LeaveSession = {
+  occurrenceId: string
+  title: string
+  localDate: LocalDate
+  confirmedCount: number
+  start?: string
+  end?: string
+}
+
 export type LeaveOutcome = {
   ok: boolean
   message: string
   needsConfirmation?: boolean
+  /** Les rendez-vous fixés pendant le congé. Ils retournent toujours dans la file. */
   conflicts?: LeaveConflict[]
+  /** Les séances animées pendant le congé. Les annuler est un choix. */
+  sessions?: LeaveSession[]
   reopened?: number
+  cancelledSessions?: number
   activityCount?: number
 }
 
@@ -227,7 +247,11 @@ export interface StaffRepository {
    * Chacun le sien, l'administrateur pour tout le monde — le même partage que pour les
    * disponibilités. Le serveur revérifie : un écran se contourne.
    */
-  declareLeave(practitionerId: string, leave: Leave, options?: { force?: boolean }): Promise<LeaveOutcome>
+  declareLeave(
+    practitionerId: string,
+    leave: Leave,
+    options?: { force?: boolean; cancelSessions?: boolean },
+  ): Promise<LeaveOutcome>
 
   /** Retirer un congé. Ce qu'il a rouvert reste dans la file : cela se refixe à la main. */
   removeLeave(practitionerId: string, leave: Leave): Promise<{ ok: boolean; message: string }>

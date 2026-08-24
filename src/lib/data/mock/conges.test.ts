@@ -169,7 +169,10 @@ describe('les congés', () => {
     const app = await admin()
     await app.superAdmin.impersonate('staff-claire')
 
-    expect((await app.repository.declareLeave('claire', { from: demain, to: demain })).ok).toBe(true)
+    // « force » : c'est ce qu'on fait après avoir lu l'avertissement, puisque le
+    // programme de démonstration porte des séances sur ces jours-là.
+    const sien = await app.repository.declareLeave('claire', { from: demain, to: demain }, { force: true })
+    expect(sien.ok).toBe(true)
 
     const refus = await app.repository.declareLeave('docteur-lemaire', { from: demain, to: demain })
     expect(refus.ok).toBe(false)
@@ -194,15 +197,141 @@ describe('les congés', () => {
       isActive: true,
     })
     // Tout l'horizon en congé : il ne doit rester aucune place à retenir.
-    await app.repository.declareLeave('docteur-lemaire', {
-      from: demain,
-      to: addLocalDays(demain, 30),
-    })
+    await app.repository.declareLeave(
+      'docteur-lemaire',
+      { from: demain, to: addLocalDays(demain, 30) },
+      { force: true },
+    )
 
     const repo = (await import('./index')).createMockRepository()
     const resultat = await repo.appointments.request('psychiatre', 'peu-importe', 'docteur-lemaire')
     expect(resultat.ok).toBe(true)
     expect(resultat.scheduled).toBe(false)
     expect(world.appointments.at(-1)?.status).toBe('requested')
+  })
+})
+
+/**
+ * Un congé posé sur une journée qui ne portait qu'un atelier.
+ *
+ * Constaté en service : l'avertissement ne se déclenchait que sur les rendez-vous. Une
+ * activité seule passait donc sans un mot, et restait au programme sans personne pour
+ * l'animer.
+ */
+describe('un congé qui tombe sur une séance', () => {
+  const demain = firstBookableDay(todayLocalDate())
+
+  beforeEach(() => {
+    resetWorld()
+    mockCatalog.reset()
+    world.appointments = []
+    world.leaves = {}
+    /*
+      Le programme de la démonstration est vidé : il porte déjà des séances de Marc sur
+      la période, et l'on veut ici compter exactement celles que le test a posées.
+    */
+    world.occurrences.clear()
+  })
+
+  const admin = async () => {
+    const app = createMockStaffApp()
+    await app.session.signIn('admin@exemple.test', 'peu-importe')
+    return app
+  }
+
+  /** Une séance animée par Marc, demain, avec des inscrits. */
+  const poserUneSeance = (inscrits = 3): string => {
+    const id = `occ-conge-${demain}`
+    world.occurrences.set(id, {
+      id,
+      activityId: 'gymnastique-douce',
+      seriesId: 'gymnastique-douce',
+      title: 'Gymnastique douce',
+      description: 'Des mouvements lents.',
+      categoryId: 'sport',
+      locationId: 'salle-de-sport',
+      localDate: demain,
+      start: new Date(`${demain}T08:00:00.000Z`),
+      end: new Date(`${demain}T09:00:00.000Z`),
+      facilitatorId: 'marc',
+      facilitator: 'Marc',
+      audienceKeys: ['all'],
+      capacity: 12,
+      registrationRequired: true,
+      waitlistEnabled: true,
+      status: 'scheduled',
+      overridden: false,
+      confirmedCount: inscrits,
+      waitlistCount: 0,
+    })
+    return id
+  }
+
+  it('demande confirmation, même sans aucun rendez-vous', async () => {
+    poserUneSeance()
+    const app = await admin()
+    const resultat = await app.repository.declareLeave('marc', { from: demain, to: demain })
+
+    expect(resultat.ok).toBe(false)
+    expect(resultat.needsConfirmation).toBe(true)
+    expect(resultat.conflicts ?? []).toHaveLength(0)
+    expect(resultat.sessions).toHaveLength(1)
+    expect(resultat.sessions?.[0]?.title).toBe('Gymnastique douce')
+    // Le nombre d'inscrits est ce qui fait hésiter : il doit remonter.
+    expect(resultat.sessions?.[0]?.confirmedCount).toBe(3)
+    // Rien n'a bougé tant qu'on n'a pas confirmé.
+    expect(world.leaves['marc']).toBeUndefined()
+  })
+
+  it('annule les séances quand on le demande, avec un motif lisible', async () => {
+    const id = poserUneSeance()
+    const app = await admin()
+    const resultat = await app.repository.declareLeave(
+      'marc',
+      { from: demain, to: demain },
+      { force: true, cancelSessions: true },
+    )
+    expect(resultat.ok).toBe(true)
+    expect(resultat.cancelledSessions).toBe(1)
+
+    const seance = world.occurrences.get(id)!
+    expect(seance.status).toBe('cancelled')
+    expect(seance.cancellationReason).toBe("L'animateur est absent")
+    // Touchée à la main : une régénération de la série doit l'épargner.
+    expect(seance.overridden).toBe(true)
+  })
+
+  it('les laisse au programme quand on décoche — un collègue les assure peut-être', async () => {
+    const id = poserUneSeance()
+    const app = await admin()
+    const resultat = await app.repository.declareLeave(
+      'marc',
+      { from: demain, to: demain },
+      { force: true },
+    )
+    expect(resultat.ok).toBe(true)
+    expect(resultat.cancelledSessions).toBe(0)
+    expect(world.occurrences.get(id)?.status).toBe('scheduled')
+    // Le congé, lui, est bien enregistré : c'était la demande.
+    expect(world.leaves['marc']).toHaveLength(1)
+  })
+
+  it('ne compte pas une séance déjà annulée', async () => {
+    const id = poserUneSeance()
+    world.occurrences.set(id, { ...world.occurrences.get(id)!, status: 'cancelled' })
+    const app = await admin()
+    const resultat = await app.repository.declareLeave('marc', { from: demain, to: demain })
+    expect(resultat.ok).toBe(true)
+  })
+
+  it('ne touche pas à la séance d’un collègue', async () => {
+    const id = poserUneSeance()
+    const app = await admin()
+    await app.repository.declareLeave(
+      'claire',
+      { from: demain, to: demain },
+      { force: true, cancelSessions: true },
+    )
+    expect(world.occurrences.get(id)?.status).toBe('scheduled')
   })
 })

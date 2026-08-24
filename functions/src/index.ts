@@ -1661,6 +1661,29 @@ async function rendezVousPendant(
 }
 
 /**
+ * Le motif inscrit sur une séance annulée par un congé.
+ *
+ * « L'animateur est absent », et non « Congé » : c'est la personne inscrite qui le lira,
+ * et le vocabulaire est déjà celui de l'application — un rendez-vous rouvert lui dit
+ * exactement la même chose. Ce motif figure d'ailleurs déjà dans la liste que l'écran
+ * d'annulation propose : on n'en invente pas un second pour dire la même chose.
+ */
+const MOTIF_ABSENCE = "L'animateur est absent"
+
+/**
+ * Ce que la période porte, en une phrase.
+ *
+ * Le nombre d'abord, la nature ensuite : « 3 séances et 1 rendez-vous » se lit d'un
+ * coup d'œil, là où « des activités et des rendez-vous » oblige à aller compter plus bas.
+ */
+function cePeriodePorte(rendezVous: number, seances: number): string {
+  const bouts: string[] = []
+  if (seances > 0) bouts.push(seances === 1 ? 'une séance que vous animez' : `${seances} séances que vous animez`)
+  if (rendezVous > 0) bouts.push(rendezVous === 1 ? 'un rendez-vous fixé' : `${rendezVous} rendez-vous fixés`)
+  return `Ce congé tombe sur ${bouts.join(' et ')}.`
+}
+
+/**
  * Déclarer un congé.
  *
  * En deux temps quand des rendez-vous sont déjà fixés pendant ces jours-là : le premier
@@ -1698,12 +1721,35 @@ export const declareLeave = onCall(async (request: CallableRequest) => {
       .where('localDate', '<=', leave.to)
       .get(),
   ])
-  const animees = seances.docs.filter((d) => {
-    const data = d.data()
-    return data['facilitatorId'] === practitionerId && data['status'] !== 'cancelled'
-  }).length
+  /*
+    Les séances que cette personne anime pendant le congé.
 
-  if (enCours.length > 0 && request.data?.force !== true) {
+    Elles n'étaient que comptées, et seulement quand un rendez-vous déclenchait déjà
+    l'avertissement : déclarer un congé sur une journée qui ne portait qu'un atelier ne
+    demandait donc rien du tout, et l'atelier restait au programme sans personne pour
+    l'animer. Constaté en service.
+  */
+  const animees = seances.docs
+    .filter((d) => {
+      const data = d.data()
+      return data['facilitatorId'] === practitionerId && data['status'] === 'scheduled'
+    })
+    .map((d) => {
+      const data = d.data()
+      const debut = data['start'] as Timestamp | undefined
+      const fin = data['end'] as Timestamp | undefined
+      return {
+        occurrenceId: d.id,
+        title: (data['title'] as string | undefined) ?? 'Activité',
+        localDate: (data['localDate'] as LocalDate | undefined) ?? leave.from,
+        confirmedCount: (data['confirmedCount'] as number | undefined) ?? 0,
+        ...(debut === undefined ? {} : { start: debut.toDate().toISOString() }),
+        ...(fin === undefined ? {} : { end: fin.toDate().toISOString() }),
+      }
+    })
+    .sort((a, b) => a.localDate.localeCompare(b.localDate))
+
+  if ((enCours.length > 0 || animees.length > 0) && request.data?.force !== true) {
     // On ne touche à rien : l'écran nomme ce qui va bouger, et un humain confirme.
     const prenoms = await Promise.all(
       enCours.map(async (rendezVous) => {
@@ -1714,7 +1760,8 @@ export const declareLeave = onCall(async (request: CallableRequest) => {
     return {
       ok: false,
       needsConfirmation: true,
-      activityCount: animees,
+      activityCount: animees.length,
+      sessions: animees,
       conflicts: enCours.map((rendezVous, rang) => ({
         appointmentId: rendezVous.id,
         firstName: prenoms[rang] ?? 'Prénom inconnu',
@@ -1722,12 +1769,23 @@ export const declareLeave = onCall(async (request: CallableRequest) => {
         start: rendezVous.start?.toISOString(),
         end: rendezVous.end?.toISOString(),
       })),
-      message:
-        enCours.length === 1
-          ? 'Un rendez-vous est déjà fixé pendant ce congé.'
-          : `${enCours.length} rendez-vous sont déjà fixés pendant ce congé.`,
+      message: cePeriodePorte(enCours.length, animees.length),
     }
   }
+
+  /*
+    Annuler les séances est un choix, laissé à qui déclare le congé.
+
+    Coché, c'est le cas courant : personne ne les anime plus. Décoché, c'est qu'un
+    collègue les assure — l'application n'a aucun moyen de le deviner, et annuler une
+    séance à laquelle des gens sont inscrits ne se fait pas par défaut sans le dire.
+
+    Le motif est « L'animateur est absent », et non « Congé » : c'est ce que la personne
+    inscrite lira, et le vocabulaire est déjà celui de l'application — un rendez-vous
+    rouvert lui dit exactement la même chose.
+  */
+  const annulerLesSeances = request.data?.cancelSessions === true
+  const aAnnuler = annulerLesSeances ? animees : []
 
   const suivants = normalizeLeaves([...(await congesDe(practitionerId)), leave])
   const batch = db().batch()
@@ -1736,6 +1794,14 @@ export const declareLeave = onCall(async (request: CallableRequest) => {
     { leaves: suivants, updatedAt: FieldValue.serverTimestamp() },
     { merge: true },
   )
+  for (const seance of aAnnuler) {
+    batch.update(db().collection(COLLECTIONS.occurrences).doc(seance.occurrenceId), {
+      status: 'cancelled',
+      cancellationReason: MOTIF_ABSENCE,
+      // La séance a été touchée à la main : une régénération de la série l'épargne.
+      overridden: true,
+    })
+  }
   for (const rendezVous of enCours) {
     batch.update(db().collection(COLLECTIONS.appointments).doc(rendezVous.id), {
       status: 'requested',
@@ -1756,20 +1822,41 @@ export const declareLeave = onCall(async (request: CallableRequest) => {
   }
   await batch.commit()
 
-  logger.info('Congé déclaré', { practitionerId, from: leave.from, to: leave.to, rouverts: enCours.length })
+  logger.info('Congé déclaré', {
+    practitionerId,
+    from: leave.from,
+    to: leave.to,
+    rouverts: enCours.length,
+    seancesAnnulees: aAnnuler.length,
+  })
 
   return {
     ok: true,
     reopened: enCours.length,
-    activityCount: animees,
-    message:
-      enCours.length === 0
-        ? 'Le congé est enregistré. Aucun rendez-vous ne sera proposé sur ces jours.'
-        : enCours.length === 1
-          ? 'Le congé est enregistré. Le rendez-vous est remis dans la file et doit être refixé.'
-          : `Le congé est enregistré. ${enCours.length} rendez-vous sont remis dans la file et doivent être refixés.`,
+    cancelledSessions: aAnnuler.length,
+    activityCount: animees.length,
+    message: congeEnregistre(enCours.length, aAnnuler.length),
   }
 })
+
+/** Ce que la déclaration a réellement fait, en une phrase. */
+function congeEnregistre(rouverts: number, seances: number): string {
+  const bouts: string[] = []
+  if (seances > 0) {
+    bouts.push(seances === 1 ? 'Une séance est annulée' : `${seances} séances sont annulées`)
+  }
+  if (rouverts > 0) {
+    bouts.push(
+      rouverts === 1
+        ? 'un rendez-vous est remis dans la file et doit être refixé'
+        : `${rouverts} rendez-vous sont remis dans la file et doivent être refixés`,
+    )
+  }
+  if (bouts.length === 0) {
+    return 'Le congé est enregistré. Aucun rendez-vous ne sera proposé sur ces jours.'
+  }
+  return `Le congé est enregistré. ${bouts.join(', et ')}.`
+}
 
 /**
  * Retirer un congé.

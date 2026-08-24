@@ -665,19 +665,45 @@ export function createMockStaffApp(): StaffApp {
             a.localDate >= leave.from &&
             a.localDate <= leave.to,
         )
-        const animees = [...world.occurrences.values()].filter(
-          (o) =>
-            o.facilitatorId === practitionerId &&
-            o.status !== 'cancelled' &&
-            o.localDate >= leave.from &&
-            o.localDate <= leave.to,
-        ).length
+        // Les séances animées pendant le congé : la liste, et non le seul compte. Un
+        // congé posé sur une journée qui ne portait qu'un atelier ne demandait rien.
+        const animees = [...world.occurrences.values()]
+          .filter(
+            (o) =>
+              o.facilitatorId === practitionerId &&
+              o.status === 'scheduled' &&
+              o.localDate >= leave.from &&
+              o.localDate <= leave.to,
+          )
+          .map((o) => ({
+            occurrenceId: o.id,
+            title: o.title,
+            localDate: o.localDate,
+            confirmedCount: o.confirmedCount,
+            start: o.start.toISOString(),
+            end: o.end.toISOString(),
+          }))
+          .sort((a, b) => a.localDate.localeCompare(b.localDate))
 
-        if (enCours.length > 0 && options.force !== true) {
+        if ((enCours.length > 0 || animees.length > 0) && options.force !== true) {
+          const bouts: string[] = []
+          if (animees.length > 0) {
+            bouts.push(
+              animees.length === 1
+                ? 'une séance que vous animez'
+                : `${animees.length} séances que vous animez`,
+            )
+          }
+          if (enCours.length > 0) {
+            bouts.push(
+              enCours.length === 1 ? 'un rendez-vous fixé' : `${enCours.length} rendez-vous fixés`,
+            )
+          }
           return {
             ok: false,
             needsConfirmation: true,
-            activityCount: animees,
+            activityCount: animees.length,
+            sessions: animees,
             conflicts: enCours.map((a) => ({
               appointmentId: a.id,
               firstName: world.patients.find((p) => p.uid === a.patientUid)?.firstName ?? 'Prénom inconnu',
@@ -685,16 +711,26 @@ export function createMockStaffApp(): StaffApp {
               ...(a.start === undefined ? {} : { start: a.start.toISOString() }),
               ...(a.end === undefined ? {} : { end: a.end.toISOString() }),
             })),
-            message:
-              enCours.length === 1
-                ? 'Un rendez-vous est déjà fixé pendant ce congé.'
-                : `${enCours.length} rendez-vous sont déjà fixés pendant ce congé.`,
+            message: `Ce congé tombe sur ${bouts.join(' et ')}.`,
           }
         }
 
         world.leaves = {
           ...world.leaves,
           [practitionerId]: normalizeLeaves([...(world.leaves[practitionerId] ?? []), leave]),
+        }
+
+        // Annuler les séances est un choix : décoché, c'est qu'un collègue les assure.
+        const aAnnuler = options.cancelSessions === true ? animees : []
+        for (const seance of aAnnuler) {
+          const occurrence = world.occurrences.get(seance.occurrenceId)
+          if (occurrence === undefined) continue
+          world.occurrences.set(seance.occurrenceId, {
+            ...occurrence,
+            status: 'cancelled',
+            cancellationReason: "L'animateur est absent",
+            overridden: true,
+          })
         }
         const rouverts = new Set(enCours.map((a) => a.id))
         world.appointments = world.appointments.map((a) => {
@@ -709,16 +745,28 @@ export function createMockStaffApp(): StaffApp {
           return { ...reste, status: 'requested' as const, reopenedForLeave: true }
         })
 
+        const faits: string[] = []
+        if (aAnnuler.length > 0) {
+          faits.push(
+            aAnnuler.length === 1 ? 'Une séance est annulée' : `${aAnnuler.length} séances sont annulées`,
+          )
+        }
+        if (enCours.length > 0) {
+          faits.push(
+            enCours.length === 1
+              ? 'un rendez-vous est remis dans la file et doit être refixé'
+              : `${enCours.length} rendez-vous sont remis dans la file et doivent être refixés`,
+          )
+        }
         return {
           ok: true,
           reopened: enCours.length,
-          activityCount: animees,
+          cancelledSessions: aAnnuler.length,
+          activityCount: animees.length,
           message:
-            enCours.length === 0
+            faits.length === 0
               ? 'Le congé est enregistré. Aucun rendez-vous ne sera proposé sur ces jours.'
-              : enCours.length === 1
-                ? 'Le congé est enregistré. Le rendez-vous est remis dans la file et doit être refixé.'
-                : `Le congé est enregistré. ${enCours.length} rendez-vous sont remis dans la file et doivent être refixés.`,
+              : `Le congé est enregistré. ${faits.join(', et ')}.`,
         }
       },
 

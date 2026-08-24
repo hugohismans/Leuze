@@ -721,7 +721,7 @@ export function createFirestoreStaffApp(): StaffApp {
       async declareLeave(practitionerId: string, leave: Leave, options = {}) {
         try {
           const call = httpsCallable<
-            { practitionerId: string; from: string; to: string; force?: boolean },
+            { practitionerId: string; from: string; to: string; force?: boolean; cancelSessions?: boolean },
             LeaveOutcome
           >(functions, 'declareLeave')
           return (
@@ -730,6 +730,7 @@ export function createFirestoreStaffApp(): StaffApp {
               from: leave.from,
               to: leave.to,
               ...(options.force === true ? { force: true } : {}),
+              ...(options.cancelSessions === true ? { cancelSessions: true } : {}),
             })
           ).data
         } catch (error) {
