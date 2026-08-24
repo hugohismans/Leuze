@@ -92,6 +92,8 @@ import {
   type PatientActionOverrides,
   type PatientPermissions,
 } from '../../domain/permissions'
+import { normalizeLeaves, type Leave } from '../../domain/leave'
+import type { LeaveOutcome } from '../staffPorts'
 import { firebase } from './app'
 import { FIRST_NAME_KEY } from './keys'
 
@@ -673,6 +675,55 @@ export function createFirestoreStaffApp(): StaffApp {
             'staffUnregister',
           )
           return (await call({ occurrenceId, patientUid })).data
+        } catch (error) {
+          return { ok: false, message: messageDErreur(error) }
+        }
+      },
+
+      async readLeaves(): Promise<Record<string, Leave[]>> {
+        // Lecture directe : les règles accordent la collection au personnel, et une
+        // fonction appelable coûterait un démarrage à froid pour quelques dates.
+        try {
+          const snapshot = await getDocs(collection(db, 'leaves'))
+          const par: Record<string, Leave[]> = {}
+          for (const document of snapshot.docs) {
+            const brut = document.data()['leaves']
+            const conges = normalizeLeaves(Array.isArray(brut) ? (brut as Leave[]) : [])
+            if (conges.length > 0) par[document.id] = conges
+          }
+          return par
+        } catch {
+          // Un agenda sans congés reste un agenda : on ne bloque pas l'écran pour cela.
+          return {}
+        }
+      },
+
+      async declareLeave(practitionerId: string, leave: Leave, options = {}) {
+        try {
+          const call = httpsCallable<
+            { practitionerId: string; from: string; to: string; force?: boolean },
+            LeaveOutcome
+          >(functions, 'declareLeave')
+          return (
+            await call({
+              practitionerId,
+              from: leave.from,
+              to: leave.to,
+              ...(options.force === true ? { force: true } : {}),
+            })
+          ).data
+        } catch (error) {
+          return { ok: false, message: messageDErreur(error) }
+        }
+      },
+
+      async removeLeave(practitionerId: string, leave: Leave) {
+        try {
+          const call = httpsCallable<
+            { practitionerId: string; from: string; to: string },
+            { ok: boolean; message: string }
+          >(functions, 'removeLeave')
+          return (await call({ practitionerId, from: leave.from, to: leave.to })).data
         } catch (error) {
           return { ok: false, message: messageDErreur(error) }
         }

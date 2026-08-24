@@ -62,6 +62,14 @@ export const COLLECTIONS = {
   /** Ce qu'une personne peut faire quand cela diffère de la règle du service. */
   patientActions: 'patientActions',
   appointmentKinds: 'appointmentKinds',
+  /**
+   * Les congés du personnel, un document par intervenant.
+   *
+   * À part du document `practitioners/`, et pour une raison de lecture : les
+   * intervenants sont lisibles par toute personne connectée, patients compris, parce
+   * que le patient lit leur nom. Les dates d'absence de quelqu'un n'ont rien à y faire.
+   */
+  leaves: 'leaves',
   config: 'config',
 } as const
 

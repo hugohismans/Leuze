@@ -4,6 +4,7 @@
  */
 import { addLocalDays, addMinutes, instantOf, todayLocalDate } from '../../domain/time'
 import { PLANNING_HORIZON_DAYS, agendaWeek, firstBookableDay, suggestSlot } from '../../domain/agenda'
+import { leaveRefusal, normalizeLeaves, withoutLeave, type Leave } from '../../domain/leave'
 import { blockingConflicts, type BusyEntry } from '../../domain/conflicts'
 import { hasOverrides, type PatientActionOverrides, type PatientPermissions } from '../../domain/permissions'
 import type { ActivityProposal } from '../../domain/proposals'
@@ -580,11 +581,13 @@ export function createMockStaffApp(): StaffApp {
         }
 
         const jours = Array.from({ length: PLANNING_HORIZON_DAYS }, (_, i) => addLocalDays(depart, i))
-        const semaine = agendaWeek(jours, plages, [...occupeIntervenant, ...occupePatient], duree)
+        const conges = world.leaves[query.practitionerId] ?? []
+        const semaine = agendaWeek(jours, plages, [...occupeIntervenant, ...occupePatient], duree, conges)
         return {
           availability: plages,
           week: semaine.map((jour) => ({
             localDate: jour.localDate,
+            onLeave: jour.onLeave,
             windows: jour.windows,
             free: jour.free,
             taken: jour.taken.map((t) => ({ label: t.label, kind: t.kind, start: t.start, end: t.end })),
@@ -597,6 +600,7 @@ export function createMockStaffApp(): StaffApp {
             from: depart,
             horizonDays: PLANNING_HORIZON_DAYS,
             durationMin: duree,
+            leaves: conges,
           }),
         }
       },
@@ -623,6 +627,102 @@ export function createMockStaffApp(): StaffApp {
         if (!outcome.ok) return { ok: false, message: "Cette personne n'était pas inscrite." }
         applyBoard(outcome.board)
         return { ok: true, message: 'Retiré de la liste.' }
+      },
+
+      async readLeaves(): Promise<Record<string, Leave[]>> {
+        return { ...world.leaves }
+      },
+
+      async declareLeave(practitionerId: string, leave: Leave, options = {}) {
+        // Le même partage de droits que sur le serveur : chacun le sien, l'administrateur
+        // pour tout le monde. La démonstration doit refuser ce que le serveur refuse.
+        if (identity.role !== 'admin' && identity.practitionerId !== practitionerId) {
+          return {
+            ok: false,
+            message: 'Vous ne pouvez déclarer un congé que pour vous-même. Demandez à un administrateur.',
+          }
+        }
+        const refus = leaveRefusal(leave)
+        if (refus !== null) return { ok: false, message: refus }
+
+        const enCours = world.appointments.filter(
+          (a) =>
+            a.practitionerId === practitionerId &&
+            a.status === 'scheduled' &&
+            a.localDate !== undefined &&
+            a.localDate >= leave.from &&
+            a.localDate <= leave.to,
+        )
+        const animees = [...world.occurrences.values()].filter(
+          (o) =>
+            o.facilitatorId === practitionerId &&
+            o.status !== 'cancelled' &&
+            o.localDate >= leave.from &&
+            o.localDate <= leave.to,
+        ).length
+
+        if (enCours.length > 0 && options.force !== true) {
+          return {
+            ok: false,
+            needsConfirmation: true,
+            activityCount: animees,
+            conflicts: enCours.map((a) => ({
+              appointmentId: a.id,
+              firstName: world.patients.find((p) => p.uid === a.patientUid)?.firstName ?? 'Prénom inconnu',
+              localDate: a.localDate!,
+              ...(a.start === undefined ? {} : { start: a.start.toISOString() }),
+              ...(a.end === undefined ? {} : { end: a.end.toISOString() }),
+            })),
+            message:
+              enCours.length === 1
+                ? 'Un rendez-vous est déjà fixé pendant ce congé.'
+                : `${enCours.length} rendez-vous sont déjà fixés pendant ce congé.`,
+          }
+        }
+
+        world.leaves = {
+          ...world.leaves,
+          [practitionerId]: normalizeLeaves([...(world.leaves[practitionerId] ?? []), leave]),
+        }
+        const rouverts = new Set(enCours.map((a) => a.id))
+        world.appointments = world.appointments.map((a) => {
+          if (!rouverts.has(a.id)) return a
+          /*
+            La date s'efface, le nom demeure : c'est lui qui ramène la demande dans la
+            file de la personne. Rouvrir une demande pour qu'elle n'atterrisse nulle part
+            ne vaudrait pas mieux que l'annuler.
+          */
+          const { start, end, localDate, withWhom, locationId, autoAccepted, ...reste } = a
+          void start, void end, void localDate, void withWhom, void locationId, void autoAccepted
+          return { ...reste, status: 'requested' as const, reopenedForLeave: true }
+        })
+
+        return {
+          ok: true,
+          reopened: enCours.length,
+          activityCount: animees,
+          message:
+            enCours.length === 0
+              ? 'Le congé est enregistré. Aucun rendez-vous ne sera proposé sur ces jours.'
+              : enCours.length === 1
+                ? 'Le congé est enregistré. Le rendez-vous est remis dans la file et doit être refixé.'
+                : `Le congé est enregistré. ${enCours.length} rendez-vous sont remis dans la file et doivent être refixés.`,
+        }
+      },
+
+      async removeLeave(practitionerId: string, leave: Leave) {
+        if (identity.role !== 'admin' && identity.practitionerId !== practitionerId) {
+          return { ok: false, message: 'Vous ne pouvez retirer que vos propres congés.' }
+        }
+        world.leaves = {
+          ...world.leaves,
+          [practitionerId]: withoutLeave(world.leaves[practitionerId] ?? [], leave),
+        }
+        return {
+          ok: true,
+          message:
+            'Le congé est retiré. Les rendez-vous déjà remis dans la file y restent : ils se refixent à la main.',
+        }
       },
 
       async readMyUnit(): Promise<string | null> {

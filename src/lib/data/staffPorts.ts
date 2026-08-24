@@ -2,6 +2,7 @@
  * Ports de l'espace soignant. Comme pour le patient, l'interface ne connaît que ceci —
  * jamais Firebase. Deux adapters les implémentent : `firestore/` et `mock/`.
  */
+import type { Leave } from '../domain/leave'
 import type { PatientActionOverrides, PatientPermissions } from '../domain/permissions'
 import type { ActivityProposal } from '../domain/proposals'
 import type { CatalogKind, CatalogRemoval } from '../domain/catalog'
@@ -71,11 +72,44 @@ export type AppointmentPlanning = {
   availability: AvailabilityWindow[]
   week: {
     localDate: LocalDate
+    /** En congé ce jour-là : ni plage, ni créneau, et l'écran doit pouvoir le dire. */
+    onLeave?: boolean
     windows: AvailabilityWindow[]
     free: { from: LocalTime; to: LocalTime }[]
     taken: TimeConflict[]
   }[]
   suggestion: { localDate: LocalDate; time: LocalTime; matchesPreference: boolean } | null
+}
+
+/**
+ * Un rendez-vous que le congé ferait bouger, tel qu'on le montre avant de trancher.
+ *
+ * Le prénom y figure parce que c'est ce qui rend la décision possible : « trois
+ * rendez-vous » ne dit rien, « Camille mardi à 10 h » se pèse.
+ */
+export type LeaveConflict = {
+  appointmentId: string
+  firstName: string
+  localDate: LocalDate
+  start?: string
+  end?: string
+}
+
+/**
+ * Ce que répond une déclaration de congé.
+ *
+ * Deux temps quand des rendez-vous sont déjà fixés : le premier appel ne modifie rien et
+ * rend la liste ; l'écran la montre, un humain tranche, et le second appel enregistre.
+ * `activityCount` compte les séances animées pendant le congé — comptées, jamais
+ * touchées : une séance a des inscrits, et l'annuler se décide séance par séance.
+ */
+export type LeaveOutcome = {
+  ok: boolean
+  message: string
+  needsConfirmation?: boolean
+  conflicts?: LeaveConflict[]
+  reopened?: number
+  activityCount?: number
 }
 
 /** Un patient, tel que le personnel le voit : un prénom, un service. Rien d'autre. */
@@ -178,6 +212,26 @@ export interface StaffRepository {
    * Il n'accorde ni ne retire aucun droit : c'est ce que l'écran montre en arrivant,
    * et une case rend l'ensemble de l'hôpital. `null` veut dire « aucune unité ».
    */
+  /**
+   * Les congés du personnel, par intervenant.
+   *
+   * Une plage de disponibilité dit « je reçois le mardi », en semaine type ; elle ne
+   * sait pas dire « sauf la semaine du 15 ». Le congé est cette exception datée, et
+   * sans lui l'application proposait des rendez-vous en pleine absence.
+   */
+  readLeaves(): Promise<Record<string, Leave[]>>
+
+  /**
+   * Déclarer un congé. Sans `force`, ne modifie rien et rend ce qui serait bousculé.
+   *
+   * Chacun le sien, l'administrateur pour tout le monde — le même partage que pour les
+   * disponibilités. Le serveur revérifie : un écran se contourne.
+   */
+  declareLeave(practitionerId: string, leave: Leave, options?: { force?: boolean }): Promise<LeaveOutcome>
+
+  /** Retirer un congé. Ce qu'il a rouvert reste dans la file : cela se refixe à la main. */
+  removeLeave(practitionerId: string, leave: Leave): Promise<{ ok: boolean; message: string }>
+
   readMyUnit(): Promise<string | null>
   saveMyUnit(serviceId: string | null): Promise<{ ok: boolean; message: string }>
 

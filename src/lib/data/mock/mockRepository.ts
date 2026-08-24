@@ -111,6 +111,8 @@ function premierePlaceLibre(
     )
     const slot = findFirstSlot({
       windows: plages,
+      // Un jour d'absence ne retient aucune place, même quand la plage du jour est libre.
+      leaves: world.leaves[candidat.id] ?? [],
       busy: occupes,
       preference,
       from: depart,

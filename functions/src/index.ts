@@ -41,6 +41,7 @@ import {
   type ActivityProposal,
 } from './domain/proposals'
 import { PLANNING_HORIZON_DAYS, agendaWeek, firstBookableDay, suggestSlot } from './domain/agenda'
+import { leaveRefusal, normalizeLeaves, withoutLeave, type Leave } from './domain/leave'
 import { attendanceRefusal, canMarkAttendance } from './domain/attendance'
 import {
   AUTO_DURATION_MIN,
@@ -686,7 +687,10 @@ export const appointmentPlanning = onCall(async (request: CallableRequest) => {
       ? (request.data.from as LocalDate)
       : firstBookableDay(todayLocalDate())
 
-  const fiche = await db().collection(COLLECTIONS.practitioners).doc(practitionerId).get()
+  const [fiche, conges] = await Promise.all([
+    db().collection(COLLECTIONS.practitioners).doc(practitionerId).get(),
+    congesDe(practitionerId),
+  ])
   if (!fiche.exists) throw new HttpsError('not-found', "Cette personne n'a pas été trouvée.")
   const plages = Array.isArray(fiche.data()?.['availability'])
     ? (fiche.data()!['availability'] as AvailabilityWindow[])
@@ -755,6 +759,8 @@ export const appointmentPlanning = onCall(async (request: CallableRequest) => {
     from: depart,
     horizonDays: PLANNING_HORIZON_DAYS,
     durationMin,
+    // Un jour de congé ne propose rien, quelles que soient les plages annoncées.
+    leaves: conges,
   })
 
   /*
@@ -768,12 +774,13 @@ export const appointmentPlanning = onCall(async (request: CallableRequest) => {
   */
   const jours: LocalDate[] = []
   for (let i = 0; i < PLANNING_HORIZON_DAYS; i += 1) jours.push(addLocalDays(depart, i))
-  const semaine = agendaWeek(jours, plages, [...occupeIntervenant, ...occupePatient], durationMin)
+  const semaine = agendaWeek(jours, plages, [...occupeIntervenant, ...occupePatient], durationMin, conges)
 
   return {
     availability: plages,
     week: semaine.map((jour) => ({
       localDate: jour.localDate,
+      onLeave: jour.onLeave,
       windows: jour.windows,
       free: jour.free,
       taken: jour.taken.map((t) => ({
@@ -1005,6 +1012,10 @@ async function premierePlaceLibre(
     allers-retours en file avant que le patient n'ait sa réponse. On lit tout d'un coup et
     l'on garde le premier dans l'ordre, qui est le même qu'avant.
   */
+  // Les congés des candidats, lus en même temps que leurs agendas : un jour d'absence
+  // ne doit pas retenir de place, même quand la plage du jour est libre.
+  const congesDesCandidats = await Promise.all(candidats.map((candidat) => congesDe(candidat.id)))
+
   const agendas = await Promise.all(
     candidats.map((candidat) =>
       db()
@@ -1034,6 +1045,7 @@ async function premierePlaceLibre(
       from: depart,
       horizonDays: AUTO_HORIZON_DAYS,
       durationMin: AUTO_DURATION_MIN,
+      leaves: congesDesCandidats[index] ?? [],
     })
     if (slot !== null) {
       return { practitionerId: candidat.id, name: candidat.name ?? 'un professionnel', slot }
@@ -1587,6 +1599,204 @@ export const setMyUnit = onCall(async (request: CallableRequest) => {
       serviceId === null
         ? "Votre compte n'est plus rattaché à une unité : vous voyez tout l'hôpital."
         : 'Votre unité est enregistrée.',
+  }
+})
+
+// ---------------------------------------------------------------------------
+// Les congés du personnel
+// ---------------------------------------------------------------------------
+
+/**
+ * Qui peut déclarer un congé pour qui.
+ *
+ * Chacun le sien — il est le premier à savoir quand il s'absente — et l'administrateur
+ * pour tout le monde, parce qu'une absence se sait parfois à la bulle avant d'être
+ * saisie par l'intéressé. C'est le même partage que pour les disponibilités.
+ */
+function exigeDroitSurLesConges(request: CallableRequest, practitionerId: string): void {
+  const staff = requireStaff(request)
+  if (staff.role === 'admin' || staff.practitionerId === practitionerId) return
+  throw new HttpsError(
+    'permission-denied',
+    "Vous ne pouvez déclarer un congé que pour vous-même. Demandez à un administrateur.",
+  )
+}
+
+/** Les congés enregistrés pour une personne, remis en ordre. */
+async function congesDe(practitionerId: string): Promise<Leave[]> {
+  const document = await db().collection(COLLECTIONS.leaves).doc(practitionerId).get()
+  const brut = document.data()?.['leaves']
+  return normalizeLeaves(Array.isArray(brut) ? (brut as Leave[]) : [])
+}
+
+/**
+ * Ce qu'un congé bousculerait : les rendez-vous déjà fixés pendant ces jours-là.
+ *
+ * On les nomme avant de rien faire. Déclarer une absence est un geste courant ; effacer
+ * sans le dire la date que trois personnes attendaient ne doit pas l'être.
+ */
+async function rendezVousPendant(
+  practitionerId: string,
+  leave: Leave,
+): Promise<{ id: string; patientUid: string; localDate: LocalDate; start?: Date; end?: Date }[]> {
+  const snapshot = await db()
+    .collection(COLLECTIONS.appointments)
+    .where('practitionerId', '==', practitionerId)
+    .where('status', '==', 'scheduled')
+    .where('localDate', '>=', leave.from)
+    .where('localDate', '<=', leave.to)
+    .get()
+  return snapshot.docs.map((document) => {
+    const data = document.data()
+    const debut = data['start'] as Timestamp | undefined
+    const fin = data['end'] as Timestamp | undefined
+    return {
+      id: document.id,
+      patientUid: (data['patientUid'] as string | undefined) ?? '',
+      localDate: (data['localDate'] as LocalDate | undefined) ?? leave.from,
+      ...(debut === undefined ? {} : { start: debut.toDate() }),
+      ...(fin === undefined ? {} : { end: fin.toDate() }),
+    }
+  })
+}
+
+/**
+ * Déclarer un congé.
+ *
+ * En deux temps quand des rendez-vous sont déjà fixés pendant ces jours-là : le premier
+ * appel ne modifie rien et rend la liste de ce qui serait bousculé ; l'écran la montre,
+ * et c'est un humain qui tranche. Le second appel, avec `force`, enregistre et rouvre.
+ *
+ * « Rouvrir » plutôt qu'« annuler » : le patient a demandé à voir quelqu'un, et cette
+ * demande tient toujours — c'est la date qui ne tient plus. La demande retourne donc
+ * dans la file, avec le nom de la personne, et sera refixée. L'annuler obligerait le
+ * patient à tout recommencer pour une absence dont il n'est pour rien.
+ *
+ * Les activités animées pendant le congé sont **comptées, jamais touchées** : une séance
+ * a des inscrits, et l'annuler est une décision qui se prend séance par séance, avec un
+ * motif. L'écran dit combien il y en a ; c'est déjà ce qu'on oublie.
+ */
+export const declareLeave = onCall(async (request: CallableRequest) => {
+  const practitionerId = requireString(request.data?.practitionerId, 'practitionerId')
+  exigeDroitSurLesConges(request, practitionerId)
+
+  const leave: Leave = {
+    from: requireString(request.data?.from, 'from', 10),
+    to: requireString(request.data?.to, 'to', 10),
+  }
+  const refus = leaveRefusal(leave)
+  if (refus !== null) throw new HttpsError('invalid-argument', refus)
+
+  const fiche = await db().collection(COLLECTIONS.practitioners).doc(practitionerId).get()
+  if (!fiche.exists) throw new HttpsError('not-found', "Cette personne n'a pas été trouvée.")
+
+  const [enCours, seances] = await Promise.all([
+    rendezVousPendant(practitionerId, leave),
+    db()
+      .collection(COLLECTIONS.occurrences)
+      .where('localDate', '>=', leave.from)
+      .where('localDate', '<=', leave.to)
+      .get(),
+  ])
+  const animees = seances.docs.filter((d) => {
+    const data = d.data()
+    return data['facilitatorId'] === practitionerId && data['status'] !== 'cancelled'
+  }).length
+
+  if (enCours.length > 0 && request.data?.force !== true) {
+    // On ne touche à rien : l'écran nomme ce qui va bouger, et un humain confirme.
+    const prenoms = await Promise.all(
+      enCours.map(async (rendezVous) => {
+        const patient = await db().collection(COLLECTIONS.patients).doc(rendezVous.patientUid).get()
+        return (patient.data()?.['firstName'] as string | undefined) ?? 'Prénom inconnu'
+      }),
+    )
+    return {
+      ok: false,
+      needsConfirmation: true,
+      activityCount: animees,
+      conflicts: enCours.map((rendezVous, rang) => ({
+        appointmentId: rendezVous.id,
+        firstName: prenoms[rang] ?? 'Prénom inconnu',
+        localDate: rendezVous.localDate,
+        start: rendezVous.start?.toISOString(),
+        end: rendezVous.end?.toISOString(),
+      })),
+      message:
+        enCours.length === 1
+          ? 'Un rendez-vous est déjà fixé pendant ce congé.'
+          : `${enCours.length} rendez-vous sont déjà fixés pendant ce congé.`,
+    }
+  }
+
+  const suivants = normalizeLeaves([...(await congesDe(practitionerId)), leave])
+  const batch = db().batch()
+  batch.set(
+    db().collection(COLLECTIONS.leaves).doc(practitionerId),
+    { leaves: suivants, updatedAt: FieldValue.serverTimestamp() },
+    { merge: true },
+  )
+  for (const rendezVous of enCours) {
+    batch.update(db().collection(COLLECTIONS.appointments).doc(rendezVous.id), {
+      status: 'requested',
+      /*
+        La date s'efface, le reste demeure. Le nom de la personne surtout : c'est lui qui
+        ramène la demande dans sa file — et rouvrir une demande pour qu'elle n'atterrisse
+        nulle part ne vaudrait pas mieux que l'annuler.
+      */
+      start: FieldValue.delete(),
+      end: FieldValue.delete(),
+      localDate: FieldValue.delete(),
+      withWhom: FieldValue.delete(),
+      locationId: FieldValue.delete(),
+      autoAccepted: FieldValue.delete(),
+      // Ce que le patient lira, à la place d'une date disparue sans explication.
+      reopenedForLeave: true,
+    })
+  }
+  await batch.commit()
+
+  logger.info('Congé déclaré', { practitionerId, from: leave.from, to: leave.to, rouverts: enCours.length })
+
+  return {
+    ok: true,
+    reopened: enCours.length,
+    activityCount: animees,
+    message:
+      enCours.length === 0
+        ? 'Le congé est enregistré. Aucun rendez-vous ne sera proposé sur ces jours.'
+        : enCours.length === 1
+          ? 'Le congé est enregistré. Le rendez-vous est remis dans la file et doit être refixé.'
+          : `Le congé est enregistré. ${enCours.length} rendez-vous sont remis dans la file et doivent être refixés.`,
+  }
+})
+
+/**
+ * Retirer un congé.
+ *
+ * Les rendez-vous rouverts ne se referment pas d'eux-mêmes : ils sont retournés dans la
+ * file, quelqu'un s'en occupe peut-être déjà, et les remettre à leur ancienne date sans
+ * prévenir ferait deux rendez-vous là où il n'en faut qu'un. Le congé s'annule ; ce
+ * qu'il a déplacé se refixe à la main.
+ */
+export const removeLeave = onCall(async (request: CallableRequest) => {
+  const practitionerId = requireString(request.data?.practitionerId, 'practitionerId')
+  exigeDroitSurLesConges(request, practitionerId)
+  const leave: Leave = {
+    from: requireString(request.data?.from, 'from', 10),
+    to: requireString(request.data?.to, 'to', 10),
+  }
+
+  const suivants = withoutLeave(await congesDe(practitionerId), leave)
+  await db()
+    .collection(COLLECTIONS.leaves)
+    .doc(practitionerId)
+    .set({ leaves: suivants, updatedAt: FieldValue.serverTimestamp() }, { merge: true })
+
+  return {
+    ok: true,
+    message:
+      'Le congé est retiré. Les rendez-vous déjà remis dans la file y restent : ils se refixent à la main.',
   }
 })
 

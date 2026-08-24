@@ -19,6 +19,7 @@ import {
   type PatientPermissions,
 } from '../../domain/permissions'
 import type { ActivityProposal } from '../../domain/proposals'
+import type { Leave } from '../../domain/leave'
 import type { Appointment, Occurrence, Registration } from '../../domain/types'
 import { recount, type Board } from '../../domain/waitlist'
 import { activitiesSeed } from '../seed/activities.seed'
@@ -57,6 +58,8 @@ export type MockWorld = {
    * comme un compte fraîchement créé.
    */
   staffUnits: Record<string, string>
+  /** Les congés du personnel, par intervenant. Aucun au départ. */
+  leaves: Record<string, Leave[]>
   /** Les réglages particuliers, par personne. Vide tant que personne n'en a. */
   patientActions: Record<string, PatientActionOverrides>
   patients: (SeedPatient & { expiresAt?: Date })[]
@@ -223,6 +226,7 @@ function build(now: Date): MockWorld {
     patientPermissions: { ...OPEN_TO_PATIENTS },
     patientActions: {},
     staffUnits: {},
+    leaves: {},
     patients,
     session:
       aLaPlaceDe === undefined

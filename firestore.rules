@@ -373,6 +373,20 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // --- congés du personnel --------------------------------------------------
+    //
+    // À part du document « practitioners/ », et pour une raison de lecture : les
+    // intervenants sont lisibles par toute personne connectée, patients compris, parce
+    // que le patient lit leur nom. Les dates d'absence de quelqu'un n'ont rien à y faire.
+    //
+    // L'écriture passe par une fonction appelable : déclarer un congé rouvre les
+    // rendez-vous déjà fixés sur ces jours-là, et deux écritures qui doivent tenir
+    // ensemble ne se confient pas au navigateur.
+    match /leaves/{practitionerId} {
+      allow read: if isStaff();
+      allow write: if false;
+    }
+
     // --- comptes du personnel -------------------------------------------------
     // Le rôle qui fait autorité est le « custom claim » du jeton, posé par une
     // Cloud Function. Ce document ne sert qu'à l'affichage (prénom, actif ou non).

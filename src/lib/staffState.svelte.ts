@@ -27,6 +27,8 @@ import {
   type PatientPermissions,
 } from './domain/permissions'
 import type { ActivityProposal } from './domain/proposals'
+import type { Leave } from './domain/leave'
+import type { LeaveOutcome } from './data/staffPorts'
 import { store } from './appState.svelte'
 import { countsOf, undoToggle, withToggled } from './domain/roster'
 import { appointmentsOfUnit, patientsOfUnit, resolveUnit, unitName } from './domain/unit'
@@ -125,6 +127,47 @@ class StaffStore {
    */
   unitLoaded = $state(false)
 
+  /**
+   * Les congés du personnel, par intervenant.
+   *
+   * Ils vivent ici et non dans l'écran : la fiche du personnel les affiche, l'agenda
+   * croisé s'en sert, et deux lectures donneraient deux vérités le temps d'un aller-retour.
+   */
+  leaves = $state<Record<string, Leave[]>>({})
+
+  async loadLeaves(): Promise<void> {
+    this.leaves = await (await this.app$()).repository.readLeaves().catch(() => ({}))
+  }
+
+  leavesOf(practitionerId: string): Leave[] {
+    return this.leaves[practitionerId] ?? []
+  }
+
+  /**
+   * Déclarer un congé. Sans `force`, rien n'est modifié : la réponse dit ce qui serait
+   * bousculé, l'écran le montre, et c'est un humain qui tranche.
+   */
+  async declareLeave(
+    practitionerId: string,
+    leave: Leave,
+    options: { force?: boolean } = {},
+  ): Promise<LeaveOutcome> {
+    const resultat = await (await this.app$()).repository.declareLeave(practitionerId, leave, options)
+    if (resultat.ok) {
+      await this.loadLeaves()
+      // Des rendez-vous ont pu retourner dans la file : la liste doit le montrer tout de suite.
+      void this.loadAppointments()
+      this.message = resultat.message
+    }
+    return resultat
+  }
+
+  async removeLeave(practitionerId: string, leave: Leave): Promise<void> {
+    const resultat = await (await this.app$()).repository.removeLeave(practitionerId, leave)
+    if (resultat.ok) await this.loadLeaves()
+    this.message = resultat.message
+  }
+
   async loadMyUnit(): Promise<void> {
     this.unitId = await (await this.app$()).repository.readMyUnit().catch(() => null)
     this.unitLoaded = true
@@ -201,6 +244,7 @@ class StaffStore {
       if (this.identity.role !== null) {
         void this.loadPatientActions()
         void this.loadMyUnit()
+        void this.loadLeaves()
       }
       await this.refresh()
     }
@@ -242,6 +286,7 @@ class StaffStore {
       if (this.identity.role !== null) {
         void this.loadPatientActions()
         void this.loadMyUnit()
+        void this.loadLeaves()
       }
     }
   }
