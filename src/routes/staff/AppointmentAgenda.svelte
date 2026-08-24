@@ -1,6 +1,6 @@
 <script lang="ts">
   import { staffStore } from '../../lib/staffState.svelte'
-  import { suggestionMessage } from '../../lib/domain/agenda'
+  import { AGENDA_INLINE_DAYS, bookableSlots, suggestionMessage } from '../../lib/domain/agenda'
   import type { AppointmentPlanning } from '../../lib/data/staffPorts'
   import {
     addMinutes,
@@ -134,6 +134,52 @@
       })
   })
 
+  /*
+    La boîte de dialogue native, et non un panneau bricolé : le navigateur retient le
+    clavier à l'intérieur, rend le focus au bouton qui l'a ouverte, et ferme sur « Échap ».
+    Aucun de ces trois comportements n'est gratuit à réécrire, et chacun d'eux manque
+    toujours dans les panneaux faits à la main.
+
+    Volontairement PAS un « $state » : on ne la lit que dans des gestionnaires
+    d'événement, jamais dans un effet — la rendre réactive n'apporterait rien et
+    ouvrirait la porte au piège « lire et écrire dans le même effet ».
+  */
+  // svelte-ignore non_reactive_update
+  let boite: HTMLDialogElement | null = null
+  let ouverte = $state(false)
+
+  /**
+   * Tous les créneaux où le rendez-vous tiendrait, découpés dans ce que le serveur a
+   * déjà rendu libre. Rien n'est relu : c'est la même information, autrement présentée.
+   */
+  const creneaux = $derived(planning === null ? [] : bookableSlots(planning.week, durationMin))
+  const combien = $derived(creneaux.reduce((total, jour) => total + jour.times.length, 0))
+
+  /**
+   * Ce que l'écran déroule de lui-même : la semaine qui vient.
+   *
+   * Le serveur en envoie trois — c'est l'horizon sur lequel il propose, et une
+   * proposition absente de la liste serait incompréhensible. Les dérouler toutes
+   * enterrerait la proposition sous vingt et un jours de détail.
+   */
+  const semaineVisible = $derived(planning === null ? [] : planning.week.slice(0, AGENDA_INLINE_DAYS))
+
+  function ouvrirLesCreneaux(): void {
+    ouverte = true
+    boite?.showModal()
+  }
+
+  /** Poser un créneau dans le formulaire, d'où qu'il vienne — la proposition ou la liste. */
+  function choisir(localDate: LocalDate, time: LocalTime): void {
+    onchoisir(localDate, time)
+    posee = formatFullWhen(
+      localDate,
+      instantOf(localDate, time),
+      addMinutes(instantOf(localDate, time), durationMin),
+    )
+    boite?.close()
+  }
+
   const message = $derived(
     planning === null
       ? null
@@ -156,12 +202,7 @@
   function prendreLaProposition(): void {
     const proposition = planning?.suggestion
     if (proposition === null || proposition === undefined) return
-    onchoisir(proposition.localDate, proposition.time)
-    posee = formatFullWhen(
-      proposition.localDate,
-      instantOf(proposition.localDate, proposition.time),
-      addMinutes(instantOf(proposition.localDate, proposition.time), durationMin),
-    )
+    choisir(proposition.localDate, proposition.time)
   }
 
   const plages = (fenetres: { from: LocalTime; to: LocalTime }[]): string =>
@@ -182,22 +223,36 @@
       {#if message !== null}
         <p role="status" class="mt-1 text-lg font-semibold text-ink">{message}</p>
       {/if}
-      {#if planning.suggestion !== null}
-        <button type="button" class="btn btn-primary mt-3" onclick={prendreLaProposition}>
-          <span aria-hidden="true">✓</span> Prendre ce créneau
-        </button>
-        <!--
-          « role=status » plutôt qu'une simple phrase : le changement est annoncé aussi à
-          qui n'a pas les yeux sur l'écran. Et il est dit en toutes lettres, jamais par la
-          seule couleur.
-        -->
-        {#if posee !== null}
-          <p role="status" class="mt-3 rounded-xl bg-surface-soft p-4 text-lg text-ink">
-            <strong>C'est noté : {posee}.</strong>
-            La date et l'heure sont remplies plus haut. Vérifiez-les, puis appuyez sur
-            « {validationLabel} », plus bas, pour enregistrer.
-          </p>
+      <div class="mt-3 flex flex-wrap gap-2">
+        {#if planning.suggestion !== null}
+          <button type="button" class="btn btn-primary" onclick={prendreLaProposition}>
+            <span aria-hidden="true">✓</span> Prendre ce créneau
+          </button>
         {/if}
+        <!--
+          La proposition répond à « quand au plus tôt ? ». Ce n'est pas toujours la
+          question : on connaît la personne, on sait qu'il vaut mieux jeudi, ou plus tard
+          dans la matinée. Sans la liste, il ne restait qu'à saisir une heure de mémoire
+          et à espérer qu'elle soit libre.
+        -->
+        {#if combien > 0}
+          <button type="button" class="btn btn-secondary" onclick={ouvrirLesCreneaux}>
+            <span aria-hidden="true">🕑</span> Voir tous les créneaux possibles
+          </button>
+        {/if}
+      </div>
+
+      <!--
+        « role=status » plutôt qu'une simple phrase : le changement est annoncé aussi à
+        qui n'a pas les yeux sur l'écran. Et il est dit en toutes lettres, jamais par la
+        seule couleur.
+      -->
+      {#if posee !== null}
+        <p role="status" class="mt-3 rounded-xl bg-surface-soft p-4 text-lg text-ink">
+          <strong>C'est noté : {posee}.</strong>
+          La date et l'heure sont remplies plus haut. Vérifiez-les, puis appuyez sur
+          « {validationLabel} », plus bas, pour enregistrer.
+        </p>
       {/if}
 
       <!--
@@ -212,7 +267,7 @@
       -->
       <svelte:boundary>
       <ul class="mt-4 grid gap-3">
-        {#each planning.week as jour (jour.localDate)}
+        {#each semaineVisible as jour (jour.localDate)}
           {#if jour.windows.length > 0 || jour.taken.length > 0}
             <li class="rounded-lg bg-surface-soft p-3">
               <p class="text-lg font-bold text-ink">{formatDayLabel(jour.localDate)}</p>
@@ -249,7 +304,8 @@
 
       <p class="mt-3 text-base text-ink-soft">
         « Pris » rassemble les deux agendas : celui de {practitionerName}
-        {#if patientFirstName !== ''}et celui de {patientFirstName}{/if}.
+        {#if patientFirstName !== ''}et celui de {patientFirstName}{/if}. Ci-dessus, la
+        semaine qui vient ; « Voir tous les créneaux possibles » va jusqu'à trois semaines.
       </p>
 
       {#snippet failed()}
@@ -260,5 +316,93 @@
       {/snippet}
       </svelte:boundary>
     {/if}
+
+    <!--
+      La liste complète, dans une boîte de dialogue native.
+
+      Elle n'est pas rendue tant qu'elle n'est pas ouverte : trois semaines de créneaux
+      quart d'heure par quart d'heure font quelques centaines de boutons, et rien ne
+      justifie de les construire pour qui ne les demande pas.
+
+      Elle vit hors de la branche qui affiche la semaine : une relecture de l'agenda la
+      fermerait sinon d'un coup, en plein choix.
+    -->
+    <dialog bind:this={boite} class="creneaux" onclose={() => (ouverte = false)}>
+      {#if ouverte}
+        <div class="max-h-[85vh] overflow-y-auto p-4">
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <h2 class="text-2xl font-bold text-ink">Tous les créneaux possibles</h2>
+            <button type="button" class="btn btn-quiet" onclick={() => boite?.close()}>
+              <span aria-hidden="true">✕</span> Fermer
+            </button>
+          </div>
+
+          {#if chargement}
+            <p class="mt-3 text-lg text-ink-soft">Un instant…</p>
+          {:else if creneaux.length === 0}
+            <p class="mt-3 text-lg text-ink-soft">
+              Il ne reste aucun créneau libre dans les trois semaines qui viennent. Vous pouvez
+              tout de même fixer le rendez-vous à l'heure de votre choix.
+            </p>
+          {:else}
+            <p class="mt-2 text-lg text-ink">
+              Appuyez sur une heure : elle se remplit dans le formulaire. Rien n'est enregistré
+              avant que vous appuyiez sur « {validationLabel} ».
+            </p>
+            <p class="mt-1 text-base text-ink-soft">
+              {durationMin} minutes, dans l'agenda de {practitionerName}{#if patientFirstName !== ''}{' '}et
+                de {patientFirstName}{/if}.
+            </p>
+
+            <ul class="mt-4 grid gap-4">
+              {#each creneaux as jour (jour.localDate)}
+                <li>
+                  <h3 class="text-lg font-bold text-ink">{formatDayLabel(jour.localDate)}</h3>
+                  <ul class="mt-2 flex flex-wrap gap-2">
+                    {#each jour.times as heure (heure)}
+                      <li>
+                        <button
+                          type="button"
+                          class="btn btn-quiet"
+                          onclick={() => choisir(jour.localDate, heure)}
+                        >
+                          {heure.replace(':', 'h')}
+                        </button>
+                      </li>
+                    {/each}
+                  </ul>
+                </li>
+              {/each}
+            </ul>
+
+            <button type="button" class="btn btn-quiet mt-4" onclick={() => boite?.close()}>
+              <span aria-hidden="true">✕</span> Fermer sans rien changer
+            </button>
+          {/if}
+        </div>
+      {/if}
+    </dialog>
   </section>
 {/if}
+
+<style>
+  /*
+    Une boîte lisible sur un téléphone comme sur un poste : elle occupe la largeur
+    disponible, sans jamais dépasser l'écran ni s'étirer sur un grand moniteur.
+  */
+  .creneaux {
+    width: min(46rem, calc(100vw - 2rem));
+    max-width: 100%;
+    /* La remise à zéro des marges du projet défait le centrage que le navigateur donne
+       aux boîtes modales : sans cette ligne, elle se colle en haut à gauche. */
+    margin: auto;
+    padding: 0;
+    border: 2px solid var(--color-line);
+    border-radius: 14px;
+    background: var(--color-surface);
+    color: var(--color-ink);
+  }
+  .creneaux::backdrop {
+    background: rgb(0 0 0 / 0.55);
+  }
+</style>
