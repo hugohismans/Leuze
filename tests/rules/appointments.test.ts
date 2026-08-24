@@ -312,3 +312,88 @@ describe('fixer un rendez-vous sans demande', () => {
     await assertFails(setDoc(doc(asVisitor(env), 'appointments', 'rdv-inconnu'), fixe()))
   })
 })
+
+/**
+ * Un rendez-vous avec une personne extérieure à l'hôpital.
+ *
+ * Certains soignants reçoivent des gens qui ne sont plus hospitalisés — d'anciens
+ * patients, le plus souvent. Ces rendez-vous occupent une vraie place dans un agenda, et
+ * les tenir hors de l'application, c'est proposer des créneaux déjà pris.
+ *
+ * Deux choses doivent tenir, et la seconde est celle qui protège vraiment :
+ *
+ *   1. l'un ou l'autre, jamais les deux, jamais aucun — un rendez-vous concerne
+ *      quelqu'un, et deux identités pour une personne finiraient par se contredire ;
+ *   2. **aucun patient ne doit pouvoir lire ce rendez-vous.** Il ne porte pas de
+ *      « patientUid » : la comparaison seule aurait fait échouer la règle au lieu de
+ *      refuser, ce qui est la même chose ici mais ne l'aurait pas été ailleurs.
+ */
+describe('un rendez-vous avec une personne extérieure', () => {
+  const base = {
+    kindId: 'psychiatre',
+    preference: 'peu-importe',
+    status: 'scheduled',
+    createdAt: new Date(),
+    localDate: '2026-09-01',
+    start: new Date('2026-09-01T09:00:00Z'),
+    end: new Date('2026-09-01T09:30:00Z'),
+    withWhom: 'Docteur Lemaire',
+    practitionerId: 'lemaire',
+  }
+
+  it("s'enregistre avec un prénom, sans patient", async () => {
+    await assertSucceeds(
+      setDoc(doc(asAdmin(env, 'u_admin'), 'appointments', 'rdv_externe'), {
+        ...base,
+        externalName: 'Sarah',
+      }),
+    )
+  })
+
+  it('refuse les deux identités à la fois', async () => {
+    await assertFails(
+      setDoc(doc(asAdmin(env, 'u_admin'), 'appointments', 'rdv_deux'), {
+        ...base,
+        patientUid: 'p_camille',
+        externalName: 'Sarah',
+      }),
+    )
+  })
+
+  it("refuse un rendez-vous qui ne concerne personne", async () => {
+    await assertFails(setDoc(doc(asAdmin(env, 'u_admin'), 'appointments', 'rdv_vide'), base))
+  })
+
+  it('refuse un prénom vide, et un nom à rallonge', async () => {
+    await assertFails(
+      setDoc(doc(asAdmin(env, 'u_admin'), 'appointments', 'rdv_v'), { ...base, externalName: '' }),
+    )
+    await assertFails(
+      setDoc(doc(asAdmin(env, 'u_admin'), 'appointments', 'rdv_l'), {
+        ...base,
+        externalName: 'x'.repeat(61),
+      }),
+    )
+  })
+
+  it('n’est lisible par aucun patient', async () => {
+    await env.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), 'appointments', 'rdv_ext'), {
+        ...base,
+        externalName: 'Sarah',
+      })
+    })
+    await assertFails(getDoc(doc(asPatient(env, 'p_camille', MAZUREL), 'appointments', 'rdv_ext')))
+  })
+
+  it("reste lisible par l'intervenant qui le tient, et par l'administrateur", async () => {
+    await env.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), 'appointments', 'rdv_ext'), {
+        ...base,
+        externalName: 'Sarah',
+      })
+    })
+    await assertSucceeds(getDoc(doc(asAdmin(env, 'u_admin'), 'appointments', 'rdv_ext')))
+    await assertSucceeds(getDoc(doc(asPractitioner(env, 'lemaire'), 'appointments', 'rdv_ext')))
+  })
+})

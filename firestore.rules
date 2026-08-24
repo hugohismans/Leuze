@@ -276,12 +276,32 @@ service cloud.firestore {
      * `hasOnly` ferme la porte à tout champ imprévu : c'est ce qui empêche qu'un texte
      * libre — donc du contenu clinique — s'installe un jour ici.
      */
+    /*
+      Un rendez-vous concerne un patient d'ici, ou une personne extérieure — jamais les
+      deux, jamais aucun.
+
+      Certains soignants reçoivent des gens qui ne sont plus hospitalisés : d'anciens
+      patients, le plus souvent. Ces rendez-vous occupent une vraie place dans un agenda,
+      et les tenir hors de l'application, c'est proposer des créneaux déjà pris.
+
+      « Un prénom » et non « un nom » : soixante caractères, la même discipline que pour
+      un patient d'ici, dont l'application n'enregistre jamais que le prénom.
+    */
+    function unePersonneOuLAutre(data) {
+      return (('patientUid' in data) != ('externalName' in data))
+        && (!('patientUid' in data) || (data.patientUid is string && data.patientUid.size() > 0))
+        && (!('externalName' in data)
+            || (data.externalName is string
+                && data.externalName.size() > 0
+                && data.externalName.size() <= 60));
+    }
+
     function validStaffAppointment(data) {
       return data.keys().hasOnly([
-          'patientUid', 'kindId', 'preference', 'status',
+          'patientUid', 'externalName', 'kindId', 'preference', 'status',
           'createdAt', 'start', 'end', 'localDate', 'withWhom', 'locationId', 'practitionerId'
         ])
-        && data.patientUid is string && data.patientUid.size() > 0
+        && unePersonneOuLAutre(data)
         && data.kindId is string && data.kindId.size() > 0
         && data.preference in ['matin', 'apres-midi', 'peu-importe']
         && data.status == 'scheduled'
@@ -293,7 +313,8 @@ service cloud.firestore {
     // Le patient peut retirer sa demande tant qu'elle n'est pas fixée. Il ne peut
     // pas la transformer en autre chose : ni changer de patient, ni la programmer.
     function patientWithdrawal() {
-      return resource.data.patientUid == request.auth.uid
+      return ('patientUid' in resource.data)
+        && resource.data.patientUid == request.auth.uid
         && resource.data.status == 'requested'
         && request.resource.data.status == 'cancelled'
         && request.resource.data.patientUid == resource.data.patientUid
@@ -312,7 +333,11 @@ service cloud.firestore {
     match /appointments/{appointmentId} {
       allow get, list: if isAdmin()
         || (isStaff() && mineAsPractitioner(resource.data))
-        || (isPatient() && resource.data.patientUid == request.auth.uid);
+        // « 'patientUid' in » d'abord : un rendez-vous avec une personne extérieure n'en
+        // porte pas, et la comparaison seule ferait échouer la règle au lieu de refuser.
+        || (isPatient()
+            && ('patientUid' in resource.data)
+            && resource.data.patientUid == request.auth.uid);
       allow create: if (isAdmin() && validStaffAppointment(request.resource.data))
         || (isStaff()
             && validStaffAppointment(request.resource.data)
