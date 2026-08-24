@@ -9,6 +9,8 @@
   } from '../../lib/domain/availability'
   import type { AvailabilityWindow, IsoWeekday, Practitioner } from '../../lib/domain/types'
   import { canSeePractitionerPlanning } from '../../lib/domain/appointmentAccess'
+  import { practitionerAudience } from '../../lib/domain/practitioners'
+  import { proposed } from '../../lib/domain/catalog'
   import type { Account } from '../../lib/domain/impersonation'
   import { navigate } from '../../lib/router.svelte'
   import { enClair } from '../../lib/erreurs'
@@ -27,6 +29,26 @@
   let nom = $state('')
   let poste = $state('')
   let motifId = $state('')
+  /**
+   * Les unités où cette personne intervient.
+   *
+   * Tout le monde ne passe pas partout : l'assistante sociale de La Couturelle ne reçoit
+   * pas les patients de L'Ancrive, tandis que l'animateur sportif passe dans toutes.
+   * C'est ce qui décide à qui l'application la propose quand un patient demande à voir
+   * quelqu'un en particulier.
+   *
+   * « Toutes les unités » reste l'état d'origine : une personne enregistrée avant ce
+   * réglage continue de couvrir tout l'hôpital, et rien ne se restreint en silence.
+   */
+  let pourToutes = $state(true)
+  let unites = $state<string[]>([])
+
+  // Un service retiré n'est plus proposé ; ceux déjà cochés restent tels quels.
+  const servicesProposes = $derived(proposed(store.services))
+
+  function basculerUnite(id: string): void {
+    unites = unites.includes(id) ? unites.filter((u) => u !== id) : [...unites, id]
+  }
   let busy = $state(false)
   let erreur = $state<string | null>(null)
 
@@ -158,6 +180,9 @@
     nom = personne?.name ?? ''
     poste = personne?.role ?? ''
     motifId = personne?.kindId ?? ''
+    const public_ = personne === null ? null : practitionerAudience(personne)
+    pourToutes = public_ === null || public_.audience === 'all'
+    unites = public_?.serviceIds ?? []
   }
 
   function fermer(): void {
@@ -165,6 +190,9 @@
     nom = ''
     poste = ''
     motifId = ''
+    // Une nouvelle personne couvre tout l'hôpital tant qu'on n'a pas dit le contraire.
+    pourToutes = true
+    unites = []
   }
 
   async function enregistrer(): Promise<void> {
@@ -176,6 +204,13 @@
         name: nom.trim(),
         role: poste.trim(),
         ...(motifId ? { kindId: motifId } : {}),
+        /*
+          Les deux champs sont toujours écrits, jamais l'un sans l'autre : l'écriture se
+          fait par fusion, et n'écrire que « audience » laisserait derrière une ancienne
+          liste d'unités qui contredirait le choix qu'on vient de faire.
+        */
+        audience: pourToutes ? ('all' as const) : ('services' as const),
+        serviceIds: pourToutes ? [] : unites,
         isActive: true,
       })
       fermer()
@@ -294,6 +329,8 @@
         Sert à proposer cette personne en premier quand on fixe un rendez-vous de ce motif.
       </p>
 
+      {@render ouUnite('nouvelle')}
+
       <p class="mt-3 text-base text-ink-soft">
         N'inscrivez ni adresse, ni téléphone, ni matricule. Un nom et un poste suffisent
         à s'y retrouver.
@@ -304,6 +341,71 @@
       </button>
     </form>
   {/if}
+
+  <!--
+    Où cette personne intervient.
+
+    Deux boutons plutôt qu'une case à cocher : « Toutes les unités » est un choix, pas
+    l'absence d'un autre — l'animateur sportif passe réellement partout, et l'écrire est
+    plus juste que de laisser une liste vide vouloir dire deux choses.
+  -->
+  {#snippet ouUnite(prefixe: string)}
+    <fieldset class="mt-4">
+      <legend class="mb-2 block text-lg font-semibold text-ink">Où cette personne intervient</legend>
+      <div class="flex flex-wrap gap-2">
+        <button
+          type="button"
+          class="btn"
+          class:btn-primary={pourToutes}
+          class:btn-secondary={!pourToutes}
+          aria-pressed={pourToutes}
+          onclick={() => (pourToutes = true)}
+        >
+          Toutes les unités
+        </button>
+        <button
+          type="button"
+          class="btn"
+          class:btn-primary={!pourToutes}
+          class:btn-secondary={pourToutes}
+          aria-pressed={!pourToutes}
+          onclick={() => (pourToutes = false)}
+        >
+          Seulement certaines
+        </button>
+      </div>
+
+      {#if !pourToutes}
+        <div class="mt-3 flex flex-wrap gap-2" id={`unites-${prefixe}`}>
+          {#each servicesProposes as service (service.id)}
+            <button
+              type="button"
+              class="btn"
+              class:btn-primary={unites.includes(service.id)}
+              class:btn-secondary={!unites.includes(service.id)}
+              aria-pressed={unites.includes(service.id)}
+              onclick={() => basculerUnite(service.id)}
+            >
+              <span aria-hidden="true">{unites.includes(service.id) ? '✓' : '·'}</span>
+              {service.name}
+            </button>
+          {/each}
+        </div>
+        {#if unites.length === 0}
+          <p class="mt-2 text-base font-semibold text-ink">
+            <span aria-hidden="true">⚠️</span>
+            Aucune unité choisie : aucun patient ne pourra demander à voir cette personne.
+          </p>
+        {/if}
+      {/if}
+
+      <p class="mt-2 text-base text-ink-soft">
+        Un patient ne peut demander à voir que quelqu'un qui passe dans son unité. Cela
+        n'empêche aucun soignant de fixer un rendez-vous : c'est ce que l'application
+        propose au patient.
+      </p>
+    </fieldset>
+  {/snippet}
 
   {#snippet plages(personne: Practitioner)}
     {@const resume = availabilityLabel(personne.availability ?? [])}
@@ -578,6 +680,8 @@
                 <option value={motif.id}>{motif.icon} {motif.name}</option>
               {/each}
             </select>
+
+            {@render ouUnite(personne.id)}
 
             <div class="mt-3 flex flex-wrap gap-2">
               <button type="submit" class="btn btn-primary" disabled={busy || nom.trim().length === 0}>

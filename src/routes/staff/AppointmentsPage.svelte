@@ -255,16 +255,33 @@
     busy = false
   }
 
-  function ouvrir(appointmentId: string, kindId: string): void {
+  function ouvrir(appointmentId: string, kindId: string, demandeId?: string): void {
     ouvert = appointmentId
     date = todayLocalDate()
     heure = '10:00'
     duree = 30
-    // La personne attitrée au motif est proposée d'office : demander « le psychiatre »
-    // désigne le psychiatre, sans qu'on ait à le rechercher.
-    const attitre = store.practitioners.find((i) => i.kindId === kindId && i.isActive)
-    intervenantFile = attitre?.id ?? ''
-    avecQui = attitre?.name ?? kindName(kinds, kindId)
+    /*
+      La personne demandée par le patient l'emporte sur l'attitrée du motif.
+
+      Il a nommé quelqu'un : le remplacer d'office par un collègue, sans le dire, ferait
+      exactement le contraire de ce qu'il a demandé. Rien n'est verrouillé pour autant —
+      la liste reste ouverte, et il arrive qu'il faille confier la demande à quelqu'un
+      d'autre. Mais c'est alors un geste, pas un défaut.
+
+      À défaut de nom, l'attitrée du motif : demander « le psychiatre » désigne le
+      psychiatre, sans qu'on ait à le rechercher.
+    */
+    const choisi = !toutVoir
+      ? // Un intervenant ne fixe que pour lui-même : les règles refusent le reste, et
+        // proposer autre chose ferait échouer l'enregistrement sans qu'on sache pourquoi.
+        (store.practitionerOf(staffStore.identity.practitionerId ?? '') ?? null)
+      : ((demandeId === undefined || demandeId === ''
+          ? null
+          : (store.practitionerOf(demandeId) ?? null)) ??
+        store.practitioners.find((i) => i.kindId === kindId && i.isActive) ??
+        null)
+    intervenantFile = choisi?.id ?? ''
+    avecQui = choisi?.name ?? kindName(kinds, kindId)
     lieu = ''
   }
 
@@ -577,6 +594,18 @@
             · {PREFERENCE_LABELS[demande.preference]}
           </p>
 
+          <!--
+            Le nom demandé, quand le patient en a donné un. Écrit noir sur blanc : c'est
+            une information qui change la réponse, et la découvrir une fois le rendez-vous
+            fixé serait le découvrir trop tard.
+          -->
+          {#if demande.practitionerId !== undefined}
+            <p class="text-base font-semibold text-ink">
+              <span aria-hidden="true">🙋</span>
+              A demandé à voir {store.practitionerOf(demande.practitionerId)?.name ?? 'quelqu’un en particulier'}.
+            </p>
+          {/if}
+
           {#if ouvert === demande.id}
             <div class="mt-3 rounded-xl border-2 border-line p-4">
               <div class="grid gap-4 sm:grid-cols-2">
@@ -604,24 +633,38 @@
                 </div>
               </div>
 
-              <label for="quel-intervenant" class="mt-4 mb-2 block text-lg font-semibold text-ink">
-                Quel intervenant — c'est ce qui met le rendez-vous dans son agenda
-              </label>
-              <select
-                id="quel-intervenant"
-                class={champ}
-                style="min-height: 56px;"
-                value={intervenantFile}
-                onchange={(event) => {
-                  intervenantFile = event.currentTarget.value
-                  avecQui = store.practitionerOf(intervenantFile)?.name ?? avecQui
-                }}
-              >
-                <option value="">Personne en particulier</option>
-                {#each proposed(store.practitioners) as intervenant (intervenant.id)}
-                  <option value={intervenant.id}>{intervenant.name} — {intervenant.role}</option>
-                {/each}
-              </select>
+              <!--
+                Répartir est le geste de la bulle. Un intervenant, lui, fixe pour
+                lui-même : les règles refusent qu'il attribue à un collègue le rendez-vous
+                qui porte son nom, et proposer la liste reviendrait à annoncer une porte
+                que le serveur referme. La phrase dit ce qui va se passer, à la place.
+              -->
+              {#if toutVoir}
+                <label for="quel-intervenant" class="mt-4 mb-2 block text-lg font-semibold text-ink">
+                  Quel intervenant — c'est ce qui met le rendez-vous dans son agenda
+                </label>
+                <select
+                  id="quel-intervenant"
+                  class={champ}
+                  style="min-height: 56px;"
+                  value={intervenantFile}
+                  onchange={(event) => {
+                    intervenantFile = event.currentTarget.value
+                    avecQui = store.practitionerOf(intervenantFile)?.name ?? avecQui
+                  }}
+                >
+                  <option value="">Personne en particulier</option>
+                  {#each proposed(store.practitioners) as intervenant (intervenant.id)}
+                    <option value={intervenant.id}>{intervenant.name} — {intervenant.role}</option>
+                  {/each}
+                </select>
+              {:else}
+                <p class="mt-4 text-lg text-ink">
+                  <span aria-hidden="true">🩺</span>
+                  Ce rendez-vous ira dans votre agenda. Pour le confier à quelqu'un d'autre,
+                  demandez à un administrateur.
+                </p>
+              {/if}
 
               {#if availabilityLabel(intervenantDeLaFile?.availability ?? []) !== ''}
                 <p class="mt-3 rounded-xl bg-surface-soft p-3 text-lg text-ink">
@@ -670,7 +713,7 @@
             </div>
           {:else}
             <div class="mt-3 flex flex-wrap gap-2">
-              <button type="button" class="btn btn-primary" onclick={() => ouvrir(demande.id, demande.kindId)}>
+              <button type="button" class="btn btn-primary" onclick={() => ouvrir(demande.id, demande.kindId, demande.practitionerId)}>
                 Fixer le rendez-vous
               </button>
               <button

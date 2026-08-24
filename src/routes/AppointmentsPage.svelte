@@ -1,6 +1,7 @@
 <script lang="ts">
   import { store } from '../lib/appState.svelte'
   import { PREFERENCE_LABELS, kindIcon, patientStatusLabel } from '../lib/domain/appointments'
+  import { practitionerChoiceNotice } from '../lib/domain/practitioners'
   import type { AppointmentPreference } from '../lib/domain/types'
   import { navigate } from '../lib/router.svelte'
 
@@ -18,11 +19,26 @@
   store.loadAppointments()
 
   let kindId = $state<string | null>(null)
+  /**
+   * La personne demandée. Vide veut dire « peu importe », et reste le choix par défaut.
+   *
+   * Souvent le patient ne veut pas « un psychiatre » mais celui qu'il connaît, et ne pas
+   * pouvoir le dire, c'est être renvoyé au bouche-à-oreille. Ce n'est pas une promesse :
+   * la demande reste une demande, et c'est l'équipe qui fixe.
+   *
+   * Le tri n'est pas fait ici : `requestablePractitioners` ne rend que les personnes en
+   * poste qui tiennent ce motif **et** passent dans l'unité du patient, et le serveur
+   * revérifie la même chose avant d'enregistrer.
+   */
+  let quiId = $state('')
   let preference = $state<AppointmentPreference>('peu-importe')
   let message = $state<string | null>(null)
   let busy = $state(false)
 
   const PREFERENCES: AppointmentPreference[] = ['matin', 'apres-midi', 'peu-importe']
+
+  const proposables = $derived(kindId === null ? [] : store.requestablePractitioners(kindId))
+  const avisChoix = $derived(practitionerChoiceNotice(proposables.length))
 
   /*
     Réveiller la fonction de demande pendant qu'on choisit son motif : on lit la page,
@@ -36,10 +52,11 @@
     if (kindId === null || busy) return
     busy = true
     try {
-      const resultat = await store.requestAppointment(kindId, preference)
+      const resultat = await store.requestAppointment(kindId, preference, quiId === '' ? undefined : quiId)
       message = resultat.message
       if (resultat.ok) {
         kindId = null
+        quiId = ''
         preference = 'peu-importe'
       }
     } finally {
@@ -125,7 +142,12 @@
           class:bg-brand-100={kindId === kind.id}
           class:border-line={kindId !== kind.id}
           aria-pressed={kindId === kind.id}
-          onclick={() => (kindId = kindId === kind.id ? null : kind.id)}
+          onclick={() => {
+            // Changer de motif efface la personne : elle ne tenait pas ce motif-là, et
+            // la garder enverrait une demande que le serveur refuserait.
+            kindId = kindId === kind.id ? null : kind.id
+            quiId = ''
+          }}
         >
           <span class="text-lg font-semibold text-ink">
             <span aria-hidden="true">{kindId === kind.id ? '✓' : kind.icon}</span>
@@ -135,6 +157,60 @@
       </li>
     {/each}
   </ul>
+
+  <!--
+    Une personne en particulier — et jamais une obligation.
+
+    « Peu importe » reste en tête et reste le choix par défaut : quelqu'un qui n'a pas
+    d'idée ne doit pas avoir à en prendre une, et la première place libre chez n'importe
+    qui vaut souvent mieux qu'une attente chez une personne précise.
+
+    La liste ne s'affiche pas quand elle serait vide : un titre suivi de rien laisse
+    croire à une panne.
+  -->
+  {#if proposables.length > 0}
+    <h2 class="mb-1 text-2xl font-bold text-ink">Avec qui ?</h2>
+    <p class="mb-2 text-lg text-ink-soft">{avisChoix}</p>
+    <ul class="mb-5 grid gap-2 sm:grid-cols-2">
+      <li>
+        <button
+          type="button"
+          class="w-full rounded-xl border-2 p-4 text-left"
+          class:border-brand-700={quiId === ''}
+          class:bg-brand-100={quiId === ''}
+          class:border-line={quiId !== ''}
+          aria-pressed={quiId === ''}
+          onclick={() => (quiId = '')}
+        >
+          <span class="text-lg font-semibold text-ink">
+            <span aria-hidden="true">{quiId === '' ? '✓' : '·'}</span>
+            Peu importe — la première personne disponible
+          </span>
+        </button>
+      </li>
+      {#each proposables as personne (personne.id)}
+        <li>
+          <button
+            type="button"
+            class="w-full rounded-xl border-2 p-4 text-left"
+            class:border-brand-700={quiId === personne.id}
+            class:bg-brand-100={quiId === personne.id}
+            class:border-line={quiId !== personne.id}
+            aria-pressed={quiId === personne.id}
+            onclick={() => (quiId = quiId === personne.id ? '' : personne.id)}
+          >
+            <span class="block text-lg font-semibold text-ink">
+              <span aria-hidden="true">{quiId === personne.id ? '✓' : '·'}</span>
+              {personne.name}
+            </span>
+            {#if personne.role !== ''}
+              <span class="block text-base text-ink-soft">{personne.role}</span>
+            {/if}
+          </button>
+        </li>
+      {/each}
+    </ul>
+  {/if}
 
   <h2 class="mb-2 text-2xl font-bold text-ink">À quel moment cela vous arrange ?</h2>
   <ul class="mb-5 grid gap-2 sm:grid-cols-3">
