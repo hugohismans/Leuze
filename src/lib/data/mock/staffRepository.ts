@@ -3,7 +3,7 @@
  * Même logique de génération que l'adapter Firestore, mêmes fonctions du domaine.
  */
 import { addLocalDays, addMinutes, instantOf, todayLocalDate } from '../../domain/time'
-import { agendaWeek, suggestSlot } from '../../domain/agenda'
+import { PLANNING_HORIZON_DAYS, agendaWeek, suggestSlot } from '../../domain/agenda'
 import { blockingConflicts, type BusyEntry } from '../../domain/conflicts'
 import { hasOverrides, type PatientActionOverrides, type PatientPermissions } from '../../domain/permissions'
 import type { ActivityProposal } from '../../domain/proposals'
@@ -547,7 +547,7 @@ export function createMockStaffApp(): StaffApp {
         const plages = intervenant?.availability ?? []
         const duree = query.durationMin ?? 30
         const depart = query.from ?? todayLocalDate()
-        const jusque = addLocalDays(depart, 21)
+        const jusque = addLocalDays(depart, PLANNING_HORIZON_DAYS)
 
         const occupeIntervenant: BusyEntry[] = []
         for (const rendezVous of world.appointments) {
@@ -573,12 +573,12 @@ export function createMockStaffApp(): StaffApp {
 
         const occupePatient: BusyEntry[] = []
         if (query.patientUid !== undefined) {
-          for (let i = 0; i <= 21; i += 1) {
+          for (let i = 0; i <= PLANNING_HORIZON_DAYS; i += 1) {
             occupePatient.push(...busyOn(query.patientUid, addLocalDays(depart, i)))
           }
         }
 
-        const jours = Array.from({ length: 7 }, (_, i) => addLocalDays(depart, i))
+        const jours = Array.from({ length: PLANNING_HORIZON_DAYS }, (_, i) => addLocalDays(depart, i))
         const semaine = agendaWeek(jours, plages, [...occupeIntervenant, ...occupePatient], duree)
         return {
           availability: plages,
@@ -594,7 +594,7 @@ export function createMockStaffApp(): StaffApp {
             patientBusy: occupePatient,
             preference: query.preference ?? 'peu-importe',
             from: depart,
-            horizonDays: 21,
+            horizonDays: PLANNING_HORIZON_DAYS,
             durationMin: duree,
           }),
         }

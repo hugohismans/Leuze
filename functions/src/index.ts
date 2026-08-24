@@ -40,7 +40,7 @@ import {
   TITLE_MAX,
   type ActivityProposal,
 } from './domain/proposals'
-import { agendaWeek, suggestSlot } from './domain/agenda'
+import { PLANNING_HORIZON_DAYS, agendaWeek, suggestSlot } from './domain/agenda'
 import { attendanceRefusal, canMarkAttendance } from './domain/attendance'
 import {
   AUTO_DURATION_MIN,
@@ -678,7 +678,7 @@ export const appointmentPlanning = onCall(async (request: CallableRequest) => {
     ? (fiche.data()!['availability'] as AvailabilityWindow[])
     : []
 
-  const jusque = addLocalDays(depart, 21)
+  const jusque = addLocalDays(depart, PLANNING_HORIZON_DAYS)
 
   // L'agenda de l'intervenant : ses rendez-vous, et les activités qu'il anime.
   const [sesRendezVous, sesSeances] = await Promise.all([
@@ -739,12 +739,21 @@ export const appointmentPlanning = onCall(async (request: CallableRequest) => {
     patientBusy: occupePatient,
     preference: moment,
     from: depart,
-    horizonDays: 21,
+    horizonDays: PLANNING_HORIZON_DAYS,
     durationMin,
   })
 
+  /*
+    Trois semaines, et non une seule.
+
+    Le créneau proposé est cherché sur trois semaines : le rendre sur sept jours laissait
+    la possibilité qu'il soit proposé sans figurer dans la liste, ce qui rend impossible
+    d'en choisir un autre le même jour. Les lectures, elles, portaient déjà sur trois
+    semaines — c'est le même agenda, découpé plus loin. L'écran n'en déroule que la
+    semaine qui vient ; le reste s'ouvre à la demande.
+  */
   const jours: LocalDate[] = []
-  for (let i = 0; i < 7; i += 1) jours.push(addLocalDays(depart, i))
+  for (let i = 0; i < PLANNING_HORIZON_DAYS; i += 1) jours.push(addLocalDays(depart, i))
   const semaine = agendaWeek(jours, plages, [...occupeIntervenant, ...occupePatient], durationMin)
 
   return {
