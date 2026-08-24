@@ -4,6 +4,7 @@ import {
   daysCovered,
   isOnLeave,
   isValidLeave,
+  leaveClashes,
   leaveRefusal,
   leavesOverlapping,
   normalizeLeaves,
@@ -137,5 +138,57 @@ describe('retirer un congé', () => {
   it('ne retire rien quand les bornes ne correspondent pas', () => {
     const conges = [{ from: '2026-08-24', to: '2026-08-28' }]
     expect(withoutLeave(conges, { from: '2026-08-24', to: '2026-08-27' })).toEqual(conges)
+  })
+})
+
+/**
+ * Poser une activité sur un congé déjà déclaré.
+ *
+ * L'inverse du cas précédent, et il s'est posé aussitôt : on peut déclarer un congé
+ * après avoir posé un atelier, mais on peut tout aussi bien poser un atelier après avoir
+ * déclaré un congé. Le second sens ne disait rien du tout.
+ */
+describe('les jours de congé qu’une activité viendrait heurter', () => {
+  const conges = [{ from: '2026-08-24', to: '2026-08-28' }] // lundi 24 → vendredi 28
+  const jourIso = (d: string): number => {
+    const [a, m, j] = d.split('-').map(Number)
+    const iso = new Date(Date.UTC(a!, m! - 1, j!)).getUTCDay()
+    return iso === 0 ? 7 : iso
+  }
+
+  it('trouve la date d’une activité ponctuelle', () => {
+    expect(leaveClashes(conges, { dates: ['2026-08-26'] }, jourIso)).toEqual(['2026-08-26'])
+  })
+
+  it('ne trouve rien à côté', () => {
+    expect(leaveClashes(conges, { dates: ['2026-08-31'] }, jourIso)).toEqual([])
+  })
+
+  it('trouve les jours d’une activité hebdomadaire qui tombent dedans', () => {
+    // Mardi et jeudi : le 25 et le 27 tombent dans le congé.
+    expect(leaveClashes(conges, { weekdays: [2, 4] }, jourIso)).toEqual([
+      '2026-08-25',
+      '2026-08-27',
+    ])
+  })
+
+  it('ne trouve rien pour un jour de semaine hors du congé', () => {
+    // Le congé va du lundi au vendredi : le dimanche n'y tombe jamais.
+    expect(leaveClashes(conges, { weekdays: [7] }, jourIso)).toEqual([])
+  })
+
+  it('rend des dates triées et sans doublon', () => {
+    const deux = [
+      { from: '2026-08-24', to: '2026-08-26' },
+      { from: '2026-08-25', to: '2026-08-28' },
+    ]
+    expect(leaveClashes(deux, { weekdays: [2], dates: ['2026-08-25'] }, jourIso)).toEqual([
+      '2026-08-25',
+    ])
+  })
+
+  it('ne dit rien sans congé, ni sans calendrier', () => {
+    expect(leaveClashes([], { weekdays: [1, 2, 3, 4, 5] }, jourIso)).toEqual([])
+    expect(leaveClashes(conges, {}, jourIso)).toEqual([])
   })
 })

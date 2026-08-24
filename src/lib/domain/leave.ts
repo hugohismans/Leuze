@@ -105,3 +105,45 @@ export function leavesOverlapping(leaves: Leave[], from: LocalDate, to: LocalDat
 export function withoutLeave(leaves: Leave[], leave: Leave): Leave[] {
   return leaves.filter((conge) => !(conge.from === leave.from && conge.to === leave.to))
 }
+
+/**
+ * Les jours de congé que le calendrier d'une activité viendrait heurter.
+ *
+ * L'inverse du cas précédent, et il s'est posé aussitôt : on peut déclarer un congé
+ * après avoir posé un atelier, mais on peut tout aussi bien poser un atelier après avoir
+ * déclaré un congé. Le second sens ne disait rien du tout — l'activité s'enregistrait,
+ * et l'on découvrait le lundi qu'elle tombait en pleine absence.
+ *
+ * Une activité ponctuelle tient en une date. Une activité hebdomadaire n'en a pas : elle
+ * a des jours de semaine, et se répète indéfiniment. On ne compare donc pas des dates à
+ * des dates — on parcourt les congés, qui sont bornés, et l'on regarde quels jours
+ * tombent sur l'un des jours retenus. C'est fini, et c'est exact.
+ *
+ * Les dates rendues sont triées et sans doublon : elles s'écrivent telles quelles.
+ */
+export function leaveClashes(
+  leaves: Leave[],
+  schedule: { dates?: LocalDate[]; weekdays?: number[] },
+  isoWeekdayOf: (localDate: LocalDate) => number,
+): LocalDate[] {
+  const heurtees = new Set<LocalDate>()
+
+  for (const jour of schedule.dates ?? []) {
+    if (isOnLeave(leaves, jour)) heurtees.add(jour)
+  }
+
+  const jours = schedule.weekdays ?? []
+  if (jours.length > 0) {
+    for (const conge of normalizeLeaves(leaves)) {
+      let curseur = conge.from
+      // Les congés sont bornés — au plus un an, `MAX_LEAVE_DAYS` y veille : le parcours
+      // se termine toujours, là où parcourir une récurrence sans fin ne le ferait pas.
+      for (let i = 0; i <= MAX_LEAVE_DAYS && curseur <= conge.to; i += 1) {
+        if (jours.includes(isoWeekdayOf(curseur))) heurtees.add(curseur)
+        curseur = addLocalDays(curseur, 1)
+      }
+    }
+  }
+
+  return [...heurtees].sort()
+}
