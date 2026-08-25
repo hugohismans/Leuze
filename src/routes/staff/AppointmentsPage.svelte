@@ -1121,9 +1121,12 @@
   {:else}
     <ul class="grid gap-3">
       <!--
-        La clef est le rang : un identifiant en double arrêterait le rendu de la liste,
-        et l'écran resterait figé sur l'affichage précédent sans un mot. La liste est
-        reconstruite en entier à chaque lecture ; le rang suffit.
+        La clef est l'identifiant du rendez-vous, et non son rang.
+
+        Sur le rang, la ligne dont le formulaire est ouvert changeait de rendez-vous dès
+        qu'une autre était fixée au-dessus : l'agenda affiché n'était plus celui de la
+        personne qu'on lisait. Un identifiant en double arrêterait le rendu — mais ces
+        listes viennent d'une lecture unique, où chaque rendez-vous ne figure qu'une fois.
       -->
       {#each aVenir as rendezVous (rendezVous.id)}
         {@render ligne(rendezVous, true)}

@@ -41,6 +41,11 @@ function dansLaPhrase(nom: string): string | null {
   return /^(le |la |l’|l'|les |un |une |des )/.test(minuscule) ? minuscule : null
 }
 
+/** La même chaîne, prête à s'insérer au milieu d'une phrase. */
+function minuscule(texte: string): string {
+  return texte === '' ? '' : texte.charAt(0).toLocaleLowerCase('fr') + texte.slice(1)
+}
+
 export function patientStatusLabel(appointment: Appointment, kinds: AppointmentKind[]): string {
   const qui = kindName(kinds, appointment.kindId)
   const nomme = dansLaPhrase(qui)
@@ -71,10 +76,28 @@ export function patientStatusLabel(appointment: Appointment, kinds: AppointmentK
       return appointment.localDate && appointment.start && appointment.end
         ? `${formatFullWhen(appointment.localDate, appointment.start, appointment.end)} avec ${appointment.withWhom ?? nomme ?? qui}`
         : `Rendez-vous fixé avec ${appointment.withWhom ?? nomme ?? qui}`
-    case 'cancelled':
-      return appointment.cancellationReason
-        ? `Rendez-vous annulé — ${appointment.cancellationReason}`
-        : 'Rendez-vous annulé. Un soignant peut vous en proposer un autre.'
+    case 'cancelled': {
+      /*
+        Lequel a été annulé ? La ligne ne le disait pas.
+
+        Elle se réduisait à « Rendez-vous annulé — La salle est prise » : ni le motif de
+        la demande, ni la date, ni le nom de la personne. Deux annulations donnaient deux
+        lignes rigoureusement identiques, et l'on ne pouvait pas savoir laquelle des deux
+        dates on avait perdue. C'est pourtant le seul écran où on l'apprend.
+      */
+      const motif = (appointment.cancellationReason ?? '').trim()
+      const entete = motif === '' ? 'Rendez-vous annulé.' : `Rendez-vous annulé — ${motif}`
+      // Les motifs sont écrits à la main : certains portent leur point, d'autres non.
+      const point = motif === '' || /[.!?…]$/.test(motif) ? '' : '.'
+      const lequel =
+        appointment.localDate && appointment.start && appointment.end
+          ? // La date est capitalisée pour ouvrir une phrase ; ici elle est au milieu d'une.
+            `Il était prévu ${minuscule(formatFullWhen(appointment.localDate, appointment.start, appointment.end))}, avec ${appointment.withWhom ?? nomme ?? qui}.`
+          : nomme === null
+            ? `C'était votre demande — ${qui}.`
+            : `C'était votre demande pour voir ${nomme}.`
+      return `${entete}${point} ${lequel} Un soignant peut vous en proposer un autre.`
+    }
   }
 }
 

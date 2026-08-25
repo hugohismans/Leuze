@@ -365,3 +365,75 @@ describe('depuis combien de jours une demande attend', () => {
     expect(waitingDays(depose('2026-08-20T20:00:00Z'), new Date('2026-08-25T07:00:00Z'))).toBe(5)
   })
 })
+
+/**
+ * Lequel de mes rendez-vous a été annulé ?
+ *
+ * La ligne se réduisait à « ✕ Rendez-vous annulé — La salle est prise ». Deux
+ * annulations donnaient deux lignes rigoureusement identiques : ni la date, ni le nom de
+ * la personne, ni même le motif de la demande. C'est pourtant le seul écran où le
+ * patient l'apprend.
+ */
+describe('la ligne d’un rendez-vous annulé', () => {
+  const kinds = [{ id: 'psychiatre', name: 'Le psychiatre', icon: '🩺', isActive: true }]
+  const base = {
+    id: 'rdv-1',
+    patientUid: 'p1',
+    kindId: 'psychiatre',
+    status: 'cancelled' as const,
+    preference: 'peu-importe' as const,
+    createdAt: new Date('2026-08-20T09:00:00.000Z'),
+  }
+
+  it('dit quand il devait avoir lieu, et avec qui', () => {
+    const ligne = patientStatusLabel(
+      {
+        ...base,
+        localDate: '2026-08-27',
+        start: new Date('2026-08-27T09:00:00.000Z'),
+        end: new Date('2026-08-27T09:30:00.000Z'),
+        withWhom: 'Docteur Lemaire',
+        cancellationReason: 'La salle est prise',
+      },
+      kinds,
+    )
+    expect(ligne).toContain('La salle est prise')
+    expect(ligne).toContain('Docteur Lemaire')
+    expect(ligne).toContain('jeudi 27 août')
+    // Et ce qu'il reste à faire — c'est-à-dire rien, sinon attendre.
+    expect(ligne).toContain('vous en proposer un autre')
+  })
+
+  it('distingue deux annulations du même motif', () => {
+    const avec = (localDate: string, heure: string) =>
+      patientStatusLabel(
+        {
+          ...base,
+          localDate,
+          start: new Date(`${localDate}T${heure}:00.000Z`),
+          end: new Date(`${localDate}T${heure}:00.000Z`),
+          withWhom: 'Docteur Lemaire',
+          cancellationReason: 'La salle est prise',
+        },
+        kinds,
+      )
+    expect(avec('2026-08-27', '09:00')).not.toBe(avec('2026-08-28', '09:00'))
+  })
+
+  it('nomme la demande quand aucune date n’avait été fixée', () => {
+    const ligne = patientStatusLabel({ ...base, cancellationReason: 'Plus de place' }, kinds)
+    expect(ligne).toContain('pour voir le psychiatre')
+    expect(ligne).toContain('Plus de place')
+  })
+
+  it('n’ajoute pas un second point à un motif qui porte le sien', () => {
+    const ligne = patientStatusLabel({ ...base, cancellationReason: 'La salle est prise.' }, kinds)
+    expect(ligne).not.toContain('prise..')
+  })
+
+  it('reste lisible sans motif', () => {
+    const ligne = patientStatusLabel({ ...base }, kinds)
+    expect(ligne).toContain('Rendez-vous annulé.')
+    expect(ligne).toContain('pour voir le psychiatre')
+  })
+})
