@@ -9,6 +9,7 @@ import {
   patientConflictNotice,
   staffConflictWarning,
   type BusyEntry,
+  myBusyAt,
 } from './conflicts'
 import { instantOf } from './time'
 
@@ -136,5 +137,79 @@ describe('ce qui justifie de s’arrêter et de demander', () => {
 
   it('ne retient rien quand rien ne gêne', () => {
     expect(blockingConflicts([])).toEqual([])
+  })
+})
+
+/**
+ * L'avertissement calculé par l'écran, avant le geste.
+ *
+ * Le serveur faisait déjà ce calcul, mais au moment de l'inscription : on l'apprenait une
+ * fois inscrit — et, le message d'une réussite étant réservé aux lecteurs d'écran,
+ * personne ne l'apprenait du tout. Un patient s'est ainsi inscrit à deux activités de la
+ * même heure. L'écran refait donc le calcul avant, sur ce qu'il a déjà sous la main.
+ */
+describe('ce que la personne a déjà, à cette heure-là', () => {
+  const seance = (id: string, titre: string, debut: string, fin: string, status = 'scheduled') => ({
+    occurrence: {
+      id,
+      title: titre,
+      start: new Date(`2026-08-26T${debut}:00.000Z`),
+      end: new Date(`2026-08-26T${fin}:00.000Z`),
+      status,
+    },
+  })
+  const regarde = { id: 'vue', start: new Date('2026-08-26T12:30:00.000Z'), end: new Date('2026-08-26T13:30:00.000Z') }
+
+  it('ne se compte jamais elle-même', () => {
+    // La séance regardée figure dans les inscriptions dès qu'on y est inscrit.
+    const miennes = [seance('vue', 'Jonglerie', '12:30', '13:30')]
+    expect(myBusyAt(regarde, miennes, [])).toEqual([])
+  })
+
+  it('trouve une autre activité au même moment', () => {
+    const miennes = [seance('autre', 'Jeux de cartes', '12:30', '13:30')]
+    const trouve = myBusyAt(regarde, miennes, [])
+    expect(trouve).toHaveLength(1)
+    expect(trouve[0]!.label).toBe('Jeux de cartes')
+    expect(trouve[0]!.kind).toBe('activity')
+  })
+
+  it('ignore une séance annulée : elle n’occupe plus personne', () => {
+    const miennes = [seance('autre', 'Jeux de cartes', '12:30', '13:30', 'cancelled')]
+    expect(myBusyAt(regarde, miennes, [])).toEqual([])
+  })
+
+  it('ignore ce qui s’enchaîne sans se toucher', () => {
+    const miennes = [seance('autre', 'Jeux de cartes', '13:30', '14:30')]
+    expect(myBusyAt(regarde, miennes, [])).toEqual([])
+  })
+
+  it('nomme un rendez-vous par la personne, ou à défaut par son motif', () => {
+    const rdv = (extra: object) => ({
+      start: new Date('2026-08-26T12:45:00.000Z'),
+      end: new Date('2026-08-26T13:15:00.000Z'),
+      status: 'scheduled',
+      ...extra,
+    })
+    expect(myBusyAt(regarde, [], [rdv({ withWhom: 'Docteur Lemaire' })])[0]!.label).toBe(
+      'Rendez-vous avec Docteur Lemaire',
+    )
+    expect(myBusyAt(regarde, [], [rdv({ kindLabel: 'Le psychiatre' })])[0]!.label).toBe(
+      'Rendez-vous avec Le psychiatre',
+    )
+    expect(myBusyAt(regarde, [], [rdv({})])[0]!.label).toBe('Rendez-vous')
+  })
+
+  it('ignore une demande qui n’a pas encore de date', () => {
+    const demande = { status: 'requested' as const }
+    expect(myBusyAt(regarde, [], [demande])).toEqual([])
+  })
+
+  it('rend l’avertissement qu’attend l’écran, et il ne bloque pas', () => {
+    const miennes = [seance('autre', 'Jeux de cartes', '12:30', '13:30')]
+    const avis = patientConflictNotice(myBusyAt(regarde, miennes, []))
+    expect(avis?.blocking).toBe(false)
+    expect(avis?.message).toContain('Jeux de cartes')
+    expect(avis?.message).toContain('Vous pouvez tout de même vous inscrire')
   })
 })

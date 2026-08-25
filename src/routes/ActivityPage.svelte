@@ -9,6 +9,8 @@
     registrationInvitation,
     unregisterActionLabel,
   } from '../lib/domain/capacity'
+  import { myBusyAt, patientConflictNotice } from '../lib/domain/conflicts'
+  import { kindName } from '../lib/domain/appointments'
   import { formatDuration, formatFullWhen } from '../lib/domain/time'
   import type { Occurrence } from '../lib/domain/types'
   import AudienceBadge from '../lib/ui/AudienceBadge.svelte'
@@ -22,6 +24,14 @@
   let notFound = $state(false)
   let busy = $state(false)
   let message = $state('')
+  /*
+    Une réussite peut porter un avertissement, et celui-là doit se voir.
+
+    « Vous êtes inscrit. Attention : vous êtes déjà inscrit à « Jonglerie »… » partait
+    dans un paragraphe caché à tous sauf aux lecteurs d'écran, parce que le message d'une
+    réussite l'est toujours. La phrase était juste, personne ne la lisait.
+  */
+  let messageAvertit = $state(false)
   /** Un message d'erreur reste visible ; une confirmation est déjà affichée par le panneau. */
   let messageIsError = $state(false)
 
@@ -75,6 +85,33 @@
   const dejaDit = $derived(
     message !== '' && block !== null && message === registrationBlockMessage(block),
   )
+  /*
+    Ce que la personne a déjà à cette heure-là, dit AVANT le geste.
+
+    L'avertissement existait, et le serveur le renvoyait — mais avec la réponse à
+    l'inscription, c'est-à-dire une fois inscrit. Et le message d'une inscription réussie
+    est « sr-only » : il n'était donc ni vu, ni lu, sauf par un lecteur d'écran. Constaté
+    en service : quelqu'un s'est inscrit à deux activités de la même heure sans que rien
+    ne l'en avertisse.
+
+    Le calcul se refait ici, à partir de ce que l'écran a déjà — ses inscriptions et ses
+    rendez-vous. Aucune lecture de plus. Le serveur reste seul juge de ce qui est refusé :
+    ceci n'est qu'un avertissement, et un avertissement se donne avant.
+  */
+  const dejaPris = $derived(
+    occurrence === null
+      ? []
+      : myBusyAt(
+          { id: occurrence.id, start: occurrence.start, end: occurrence.end },
+          store.mine,
+          store.appointments.map((rendezVous) => ({
+            ...rendezVous,
+            kindLabel: kindName(store.appointmentKinds, rendezVous.kindId),
+          })),
+        ),
+  )
+  const avertissementHoraire = $derived(mine === null ? patientConflictNotice(dejaPris) : null)
+
   const invitation = $derived(occurrence ? registrationInvitation(occurrence) : null)
   const complet = $derived(
     occurrence !== null && occurrence.capacity !== null && occurrence.confirmedCount >= occurrence.capacity,
@@ -114,8 +151,10 @@
             : `Vous êtes sur la liste d'attente, en position ${result.position}.`
         // Une autre activité tombe au même moment : l'inscription est prise, et on le dit
         // dans la foulée plutôt que de laisser la personne le découvrir le jour même.
+        messageAvertit = result.warning !== undefined
         message = result.warning === undefined ? pris : `${pris} ${result.warning}`
       } else {
+        messageAvertit = false
         message = result.message
       }
     } finally {
@@ -129,6 +168,7 @@
     try {
       const result = await store.unregisterFrom(occurrence.id)
       messageIsError = !result.ok
+      messageAvertit = false
       // Le message vient de la couche de données, comme partout ailleurs : l'écran ne
       // récrit pas une phrase que le serveur a déjà écrite, sinon les deux divergent.
       message = result.message
@@ -301,6 +341,22 @@
       {:else if !store.may('register')}
         <p class="rounded-xl bg-surface-soft p-4 text-lg text-ink">{store.refusal('register')}</p>
       {:else}
+        <!--
+          L'avertissement d'abord, le bouton ensuite : on décide en connaissance de cause.
+
+          Il ne bloque pas — deux activités qui se chevauchent, c'est souvent sans
+          importance, et on arrive parfois en retard sans que personne n'en fasse un
+          drame. Mais on ne l'apprend plus après coup.
+        -->
+        {#if avertissementHoraire !== null}
+          <p
+            class="rounded-xl p-4 text-lg font-semibold"
+            style="background: var(--color-warn-bg); color: var(--color-warn-fg);"
+          >
+            <span aria-hidden="true">⚠️</span>
+            {avertissementHoraire.message}
+          </p>
+        {/if}
         <button type="button" class="btn btn-primary btn-huge" disabled={busy} onclick={inscrire}>
           {registrationActionLabel(occurrence)}
         </button>
@@ -329,14 +385,29 @@
         écran cassé. Il reste lu à voix haute pour les lecteurs d'écran, qui n'ont pas vu
         le premier apparaître.
       -->
-      <p
-        aria-live="polite"
-        class="text-xl font-semibold"
-        class:sr-only={!messageIsError || dejaDit}
-        style={messageIsError && !dejaDit ? 'color: var(--color-stop-fg);' : ''}
-      >
-        {message}
-      </p>
+      <!--
+        Une réussite qui porte un avertissement se voit, elle aussi.
+
+        La condition ne connaissait que deux cas — réussite muette, ou refus — et cachait
+        donc « Attention : vous êtes déjà inscrit à « Jonglerie », de 14h30 à 15h30 » dans
+        le canal des lecteurs d'écran. C'est ainsi que quelqu'un a pu s'inscrire à deux
+        activités de la même heure sans qu'un mot ne le lui dise.
+      -->
+      {#if message !== '' && !dejaDit && (messageIsError || messageAvertit)}
+        <p
+          aria-live="polite"
+          class="rounded-xl p-4 text-lg font-semibold"
+          style={messageIsError
+            ? 'background: var(--color-stop-bg); color: var(--color-stop-fg);'
+            : 'background: var(--color-warn-bg); color: var(--color-warn-fg);'}
+        >
+          <span aria-hidden="true">{messageIsError ? '✕' : '⚠️'}</span>
+          {message}
+        </p>
+      {:else}
+        <!-- Muet à l'écran, mais toujours annoncé : le lecteur d'écran n'a rien vu passer. -->
+        <p aria-live="polite" class="sr-only">{message}</p>
+      {/if}
     </section>
   {:else}
     <p class="card p-6 text-lg" aria-live="polite">Chargement…</p>

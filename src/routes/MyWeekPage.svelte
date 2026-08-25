@@ -2,7 +2,7 @@
   import { store } from '../lib/appState.svelte'
   import logo from '../lib/brand/acis-logo-bleu.svg'
   import { kindIcon, kindName } from '../lib/domain/appointments'
-  import { myWeek, weekEntryCount } from '../lib/domain/myWeek'
+  import { clashLabel, myWeek, weekEntryCount } from '../lib/domain/myWeek'
   import {
     addLocalDays,
     formatDayLabel,
@@ -125,6 +125,9 @@
                   est reconstruite en entier à chaque lecture ; le rang suffit.
                 -->
                 {#each jour.entries as entree, rang (rang)}
+                  {@const chevauchement = clashLabel(jour.entries, entree, (kindId) =>
+                    kindName(store.appointmentKinds, kindId).toLowerCase(),
+                  )}
                   <li class="entree rounded-xl border-2 border-line p-3">
                     {#if entree.kind === 'activity'}
                       {@const categorie = store.categoryOf(entree.categoryId)}
@@ -170,6 +173,21 @@
                         </p>
                       {/if}
                     {/if}
+
+                    <!--
+                      Deux choses à la même heure, dites sur la feuille elle-même.
+
+                      Elles s'alignaient l'une sous l'autre sans un mot : deux activités
+                      de quatorze heures se lisent comme deux rendez-vous de la journée,
+                      et l'on ne voit le problème qu'une fois sur place. C'est ici qu'on
+                      relit sa semaine ; c'est donc ici que cela doit se voir.
+                    -->
+                    {#if chevauchement !== null}
+                      <p class="chevauche mt-1 text-lg font-semibold">
+                        <span aria-hidden="true">⚠️</span>
+                        {chevauchement}
+                      </p>
+                    {/if}
                   </li>
                 {/each}
               </ul>
@@ -204,6 +222,15 @@
 </section>
 
 <style>
+  /*
+    Le chevauchement se lit au texte ; le fond ambre ne fait que le rendre repérable
+    d'un coup d'œil sur une feuille qui compte vingt lignes. À l'impression aussi :
+    c'est justement la feuille qu'on emporte.
+  */
+  .chevauche {
+    color: var(--color-warn-fg);
+  }
+
   /* La grille n'existe que sur le papier ; la liste, qu'à l'écran. */
   .grille-papier {
     display: none;
