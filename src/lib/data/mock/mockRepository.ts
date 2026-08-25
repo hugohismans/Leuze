@@ -11,7 +11,7 @@
 import { firstBookableDay } from '../../domain/agenda'
 import { isVisibleToService } from '../../domain/audience'
 import { servesService } from '../../domain/practitioners'
-import { patientConflictNotice } from '../../domain/conflicts'
+import { patientRegistrationDecision } from '../../domain/conflicts'
 import {
   effectivePermissions,
   isAllowed,
@@ -239,7 +239,10 @@ export function createMockRepository(options: { now?: () => Date } = {}): MockRe
         return myRegistration(occurrenceId)
       },
 
-      async register(occurrenceId: string): Promise<RegisterResult> {
+      async register(
+        occurrenceId: string,
+        options: { replacing?: string[] } = {},
+      ): Promise<RegisterResult> {
         const board = boardOf(occurrenceId)
         const uid = world.session.patientUid
         if (!board || uid === null || !isVisibleToService(board.occurrence, world.session.serviceId)) {
@@ -249,13 +252,34 @@ export function createMockRepository(options: { now?: () => Date } = {}): MockRe
         if (!isAllowed(droitsDe(uid), 'register')) {
           return { ok: false, reason: 'closed', message: refusalFor('register') }
         }
-        // Un rendez-vous déjà fixé interdit de s'inscrire par-dessus ; une autre
-        // activité au même moment ne fait que prévenir. Même règle que sur le serveur.
-        const avis = patientConflictNotice(conflictsFor(uid, occurrenceId))
-        if (avis !== null && avis.blocking) {
-          return { ok: false, reason: 'conflict', message: avis.message }
+
+        /*
+          On ne peut pas être à deux endroits à la fois. Même décision que le serveur, au
+          mot près : un rendez-vous ferme la porte, une activité s'échange.
+        */
+        const decision = patientRegistrationDecision(conflictsFor(uid, occurrenceId))
+        if (decision.kind === 'rendez-vous') {
+          return { ok: false, reason: 'conflict', message: decision.message }
+        }
+        const aQuitter = decision.kind === 'activites' ? decision.aQuitter.map((e) => e.occurrenceId!) : []
+        if (decision.kind === 'activites') {
+          const demandees = options.replacing ?? []
+          const toutes =
+            aQuitter.every((id) => demandees.includes(id)) && demandees.every((id) => aQuitter.includes(id))
+          if (!toutes) {
+            return { ok: false, reason: 'conflict', message: decision.message, mustLeave: aQuitter }
+          }
+          if (!isAllowed(droitsDe(uid), 'unregister')) {
+            return {
+              ok: false,
+              reason: 'conflict',
+              message: `${decision.message} Adressez-vous à un soignant : il peut changer votre inscription.`,
+            }
+          }
         }
 
+        // La nouvelle place d'abord, l'ancienne ensuite : c'est le seul ordre qui ne fait
+        // rien perdre. Voir `register` dans les Cloud Functions.
         const outcome = domainRegister(board, uid, {
           now: clock(),
           registrationId: `${occurrenceId}--${uid}--${clock().getTime()}`,
@@ -263,11 +287,30 @@ export function createMockRepository(options: { now?: () => Date } = {}): MockRe
         })
         if (!outcome.ok) return { ok: false, reason: outcome.reason, message: REFUS[outcome.reason] }
         applyBoard(outcome.board)
+
+        const quittees: string[] = []
+        for (const id of aQuitter) {
+          const autre = boardOf(id)
+          if (autre === null) continue
+          const sortie = domainUnregister(autre, uid)
+          if (!sortie.ok) continue
+          applyBoard(sortie.board)
+          quittees.push(id)
+        }
+        const noms = decision.kind === 'activites' ? decision.aQuitter.map((e) => e.label) : []
         return {
           ok: true,
           status: outcome.status,
           position: outcome.position,
-          ...(avis !== null ? { warning: avis.message } : {}),
+          ...(quittees.length === 0
+            ? {}
+            : {
+                left: quittees,
+                swapMessage:
+                  noms.length === 1
+                    ? `Vous n’êtes plus inscrit à « ${noms[0]} ».`
+                    : `Vous n’êtes plus inscrit à ${noms.length} autres activités.`,
+              }),
         }
       },
 

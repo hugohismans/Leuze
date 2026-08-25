@@ -269,7 +269,17 @@ class AppStore {
    * même prévision — `likelyStatus` — qui sert ici. Le serveur tranche derrière, dans sa
    * transaction ; s'il dit autre chose, l'écran se corrige et le dit.
    */
-  async registerTo(occurrenceId: string): Promise<RegisterResult> {
+  /**
+   * S'inscrire. `replacing` : les séances quittées dans le même geste.
+   *
+   * On ne peut pas être à deux endroits à la fois : une inscription qui en chevauche une
+   * autre est refusée tant que la personne n'a pas dit ce qu'elle quitte. Voir
+   * `patientRegistrationDecision` dans le domaine.
+   */
+  async registerTo(
+    occurrenceId: string,
+    options: { replacing?: string[] } = {},
+  ): Promise<RegisterResult> {
     const service = (await this.repo()).registrations
     const occurrence = this.occurrences.find((o) => o.id === occurrenceId) ?? null
     const dejaInscrit = this.mine.some((r) => r.occurrence.id === occurrenceId)
@@ -282,7 +292,7 @@ class AppStore {
     this.#ecrituresInscription += 1
     let resultat: RegisterResult
     try {
-      resultat = await service.register(occurrenceId)
+      resultat = await service.register(occurrenceId, options)
     } finally {
       this.#ecrituresInscription -= 1
     }
@@ -298,6 +308,19 @@ class AppStore {
           ? { ...r, status: resultat.status, position: resultat.position }
           : r,
       )
+    }
+
+    /*
+      Les séances quittées dans le même geste s'en vont tout de suite de l'écran.
+
+      Sans cela, « Ma semaine » et « Mes inscriptions » gardaient l'ancienne à côté de la
+      nouvelle — et affichaient donc précisément les deux inscriptions simultanées qu'on
+      vient d'empêcher.
+    */
+    if (resultat.ok && (resultat.left ?? []).length > 0) {
+      const parties = new Set(resultat.left)
+      this.mine = this.mine.filter((r) => !parties.has(r.occurrence.id))
+      for (const id of parties) void this.refreshOccurrence(id)
     }
 
     // Le vrai nombre de places et la position exacte arrivent derrière, sans retenir

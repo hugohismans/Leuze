@@ -9,7 +9,7 @@
     registrationInvitation,
     unregisterActionLabel,
   } from '../lib/domain/capacity'
-  import { myBusyAt, patientConflictNotice } from '../lib/domain/conflicts'
+  import { myBusyAt, patientRegistrationDecision } from '../lib/domain/conflicts'
   import { kindName } from '../lib/domain/appointments'
   import { formatDuration, formatFullWhen } from '../lib/domain/time'
   import type { Occurrence } from '../lib/domain/types'
@@ -110,7 +110,19 @@
           })),
         ),
   )
-  const avertissementHoraire = $derived(mine === null ? patientConflictNotice(dejaPris) : null)
+  const decision = $derived(
+    mine === null ? patientRegistrationDecision(dejaPris) : ({ kind: 'libre' } as const),
+  )
+
+  /*
+    La question posée avant d'échanger.
+
+    On ne peut pas être à deux endroits à la fois : s'inscrire ici demande de quitter
+    l'autre activité, et cela ne se fait pas dans le dos de quelqu'un. Le panneau nomme ce
+    qui va être quitté, et les deux réponses sont des phrases entières — jamais « Oui » et
+    « Non », qui ne disent pas à quoi l'on répond.
+  */
+  let echangeDemande = $state(false)
 
   const invitation = $derived(occurrence ? registrationInvitation(occurrence) : null)
   const complet = $derived(
@@ -129,11 +141,12 @@
     en cas de refus ; l'écran ne fait plus que dire ce qui s'est passé. La relecture du
     nombre de places part derrière, sans que personne ne l'attende.
   */
-  async function inscrire(): Promise<void> {
+  async function inscrire(replacing: string[] = []): Promise<void> {
     if (!occurrence || busy) return
+    echangeDemande = false
     busy = true
     try {
-      const result = await store.registerTo(occurrence.id)
+      const result = await store.registerTo(occurrence.id, { replacing })
       messageIsError = !result.ok
       if (result.ok) {
         /*
@@ -149,10 +162,15 @@
           result.status === 'confirmed'
             ? `${registeredLabel(occurrence)}.`
             : `Vous êtes sur la liste d'attente, en position ${result.position}.`
-        // Une autre activité tombe au même moment : l'inscription est prise, et on le dit
-        // dans la foulée plutôt que de laisser la personne le découvrir le jour même.
-        messageAvertit = result.warning !== undefined
-        message = result.warning === undefined ? pris : `${pris} ${result.warning}`
+        /*
+          L'échange se dit, il ne se devine pas.
+
+          Quitter une activité pour en prendre une autre est un vrai changement dans la
+          semaine de quelqu'un : la phrase nomme celle qu'on vient de quitter, pour que
+          personne ne le découvre trois jours plus tard sur « Ma semaine ».
+        */
+        messageAvertit = result.swapMessage !== undefined
+        message = result.swapMessage === undefined ? pris : `${pris} ${result.swapMessage}`
       } else {
         messageAvertit = false
         message = result.message
@@ -340,26 +358,86 @@
         </p>
       {:else if !store.may('register')}
         <p class="rounded-xl bg-surface-soft p-4 text-lg text-ink">{store.refusal('register')}</p>
+      {:else if decision.kind === 'rendez-vous'}
+        <!--
+          Un rendez-vous ferme la porte, et il n'y a rien à proposer.
+
+          Un patient ne décommande pas un rendez-vous tout seul : quelqu'un a bloqué du
+          temps pour lui, et cela se parle. On ne montre donc pas de bouton d'inscription
+          — proposer un geste qui sera refusé ne sert personne — et l'on dit à qui
+          s'adresser.
+        -->
+        <p
+          role="status"
+          class="rounded-xl p-4 text-lg font-semibold"
+          style="background: var(--color-stop-bg); color: var(--color-stop-fg);"
+        >
+          <span aria-hidden="true">📅</span>
+          {decision.message}
+        </p>
       {:else}
         <!--
-          L'avertissement d'abord, le bouton ensuite : on décide en connaissance de cause.
+          Deux activités à la même heure : on ne peut pas être aux deux.
 
-          Il ne bloque pas — deux activités qui se chevauchent, c'est souvent sans
-          importance, et on arrive parfois en retard sans que personne n'en fasse un
-          drame. Mais on ne l'apprend plus après coup.
+          L'inscription n'est pas refusée sèchement — on propose l'échange, et
+          l'application le fait en un seul geste. La question est posée avant, dans un
+          panneau qui nomme ce qui va être quitté : personne ne doit découvrir trois
+          jours plus tard qu'il n'est plus inscrit ailleurs.
         -->
-        {#if avertissementHoraire !== null}
+        <!--
+          Une seule fois la même phrase.
+
+          L'avertissement et le panneau la portaient tous les deux, l'un sous l'autre : le
+          refus était juste, le doublon donnait l'impression d'un écran cassé. Le panneau
+          prend le relais quand il s'ouvre.
+        -->
+        {#if decision.kind === 'activites' && !echangeDemande}
           <p
             class="rounded-xl p-4 text-lg font-semibold"
             style="background: var(--color-warn-bg); color: var(--color-warn-fg);"
           >
             <span aria-hidden="true">⚠️</span>
-            {avertissementHoraire.message}
+            {decision.message}
           </p>
         {/if}
-        <button type="button" class="btn btn-primary btn-huge" disabled={busy} onclick={inscrire}>
-          {registrationActionLabel(occurrence)}
-        </button>
+
+        {#if decision.kind === 'activites' && echangeDemande}
+          <div
+            role="group"
+            aria-label="Vous êtes déjà pris à ce moment-là"
+            class="rounded-xl border-4 p-4"
+            style="background: var(--color-warn-bg); border-color: var(--color-warn-fg);"
+          >
+            <p class="text-lg font-semibold" style="color: var(--color-warn-fg);">
+              <span aria-hidden="true">⚠️</span>
+              {decision.message}
+            </p>
+            <p class="mt-2 text-lg" style="color: var(--color-warn-fg);">Que voulez-vous faire ?</p>
+            <div class="mt-3 grid gap-2">
+              <button
+                type="button"
+                class="btn btn-primary"
+                disabled={busy}
+                onclick={() => inscrire(decision.aQuitter.map((e) => e.occurrenceId ?? ''))}
+              >
+                {busy ? 'Un instant…' : decision.actionLabel}
+              </button>
+              <button type="button" class="btn btn-secondary" onclick={() => (echangeDemande = false)}>
+                Ne rien changer
+              </button>
+            </div>
+          </div>
+        {:else}
+          <button
+            type="button"
+            class="btn btn-primary btn-huge"
+            disabled={busy}
+            onclick={() => (decision.kind === 'activites' ? (echangeDemande = true) : inscrire())}
+          >
+            {registrationActionLabel(occurrence)}
+          </button>
+        {/if}
+
         {#if invitation !== null}
           <p class="text-lg text-ink-soft">{invitation}</p>
         {/if}

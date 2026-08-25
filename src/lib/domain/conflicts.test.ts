@@ -6,10 +6,10 @@ import {
   describeConflict,
   localDateOfOccurrenceId,
   overlaps,
-  patientConflictNotice,
   staffConflictWarning,
   type BusyEntry,
   myBusyAt,
+  patientRegistrationDecision,
 } from './conflicts'
 import { instantOf } from './time'
 
@@ -54,30 +54,6 @@ describe('ce qui gêne un créneau', () => {
   it('désigne le rendez-vous comme ce qui bloque, jamais l’activité', () => {
     expect(blockingConflict([atelier])).toBeNull()
     expect(blockingConflict([atelier, rendezVous])?.label).toBe('Rendez-vous avec le psychiatre')
-  })
-})
-
-describe('ce que lit le patient', () => {
-  it('ne dit rien quand rien ne gêne', () => {
-    expect(patientConflictNotice([])).toBeNull()
-  })
-
-  it('refuse quand un rendez-vous tombe au même moment, et dit quoi faire', () => {
-    const avis = patientConflictNotice([rendezVous])
-    expect(avis?.blocking).toBe(true)
-    expect(avis?.message).toContain('10h00')
-    expect(avis?.message).toContain('Parlez-en à un soignant')
-  })
-
-  it('prévient sans refuser quand c’est une autre activité', () => {
-    const avis = patientConflictNotice([atelier])
-    expect(avis?.blocking).toBe(false)
-    expect(avis?.message).toContain('Atelier cuisine')
-    expect(avis?.message).toContain('Vous pouvez tout de même vous inscrire')
-  })
-
-  it('parle du rendez-vous en priorité quand les deux tombent en même temps', () => {
-    expect(patientConflictNotice([atelier, rendezVous])?.blocking).toBe(true)
   })
 })
 
@@ -205,11 +181,103 @@ describe('ce que la personne a déjà, à cette heure-là', () => {
     expect(myBusyAt(regarde, [], [demande])).toEqual([])
   })
 
-  it('rend l’avertissement qu’attend l’écran, et il ne bloque pas', () => {
+  it('rend la décision qu’attend l’écran : un échange, et non un simple avis', () => {
     const miennes = [seance('autre', 'Jeux de cartes', '12:30', '13:30')]
-    const avis = patientConflictNotice(myBusyAt(regarde, miennes, []))
-    expect(avis?.blocking).toBe(false)
-    expect(avis?.message).toContain('Jeux de cartes')
-    expect(avis?.message).toContain('Vous pouvez tout de même vous inscrire')
+    const decision = patientRegistrationDecision(myBusyAt(regarde, miennes, []))
+    expect(decision.kind).toBe('activites')
+    if (decision.kind !== 'activites') throw new Error('cas impossible')
+    expect(decision.message).toContain('Jeux de cartes')
+    expect(decision.actionLabel).toContain('Me désinscrire de « Jeux de cartes »')
+  })
+})
+
+/**
+ * On ne peut pas être à deux endroits à la fois.
+ *
+ * Décision de l'hôpital, prise après un essai en service : un patient s'était inscrit à
+ * deux activités de quatorze heures. L'avertissement seul ne suffisait pas — il se lit,
+ * ou ne se lit pas.
+ *
+ * Deux refus, deux issues, et c'est toute la finesse de cette règle. Un rendez-vous ferme
+ * la porte : un patient ne le décommande pas tout seul, et lui proposer un échange serait
+ * lui promettre ce qu'il ne peut pas faire. Une activité s'échange.
+ */
+describe('ce qu’il advient d’une inscription qui en chevauche une autre', () => {
+  const activite = (id: string, titre: string, debut: string, fin: string): BusyEntry => ({
+    start: instantOf('2026-08-26', debut),
+    end: instantOf('2026-08-26', fin),
+    label: titre,
+    kind: 'activity',
+    occurrenceId: id,
+  })
+  const rendezVous = (debut: string, fin: string): BusyEntry => ({
+    start: instantOf('2026-08-26', debut),
+    end: instantOf('2026-08-26', fin),
+    label: 'Rendez-vous avec Docteur Lemaire',
+    kind: 'appointment',
+  })
+
+  it('laisse passer quand rien ne gêne', () => {
+    expect(patientRegistrationDecision([])).toEqual({ kind: 'libre' })
+  })
+
+  it('ferme la porte sur un rendez-vous, sans rien proposer', () => {
+    const decision = patientRegistrationDecision([rendezVous('14:00', '14:30')])
+    expect(decision.kind).toBe('rendez-vous')
+    if (decision.kind !== 'rendez-vous') throw new Error('cas impossible')
+    expect(decision.message).toContain('Docteur Lemaire')
+    expect(decision.message).toContain('ne s’annule pas tout seul')
+    // Et l'on dit à qui s'adresser : un refus sans issue est un cul-de-sac.
+    expect(decision.message).toContain('Parlez-en à un soignant')
+  })
+
+  it('ferme la porte même quand une activité gêne aussi', () => {
+    /*
+      Le rendez-vous l'emporte : proposer de quitter l'activité laisserait croire que
+      l'inscription passerait ensuite, alors que le rendez-vous la refuserait encore.
+    */
+    const decision = patientRegistrationDecision([
+      activite('a1', 'Jeu de société', '14:00', '15:00'),
+      rendezVous('14:00', '14:30'),
+    ])
+    expect(decision.kind).toBe('rendez-vous')
+  })
+
+  it('propose l’échange quand ce sont des activités, et nomme celle qu’on quitte', () => {
+    const decision = patientRegistrationDecision([activite('a1', 'Jeu de société', '14:00', '15:00')])
+    expect(decision.kind).toBe('activites')
+    if (decision.kind !== 'activites') throw new Error('cas impossible')
+    expect(decision.message).toContain('Jeu de société')
+    expect(decision.message).toContain('pas être aux deux')
+    expect(decision.actionLabel).toBe('Me désinscrire de « Jeu de société » pour m’inscrire ici')
+    expect(decision.aQuitter.map((e) => e.occurrenceId)).toEqual(['a1'])
+  })
+
+  it('compte, plutôt que d’énumérer, au-delà d’une', () => {
+    const decision = patientRegistrationDecision([
+      activite('a1', 'Jeu de société', '14:00', '15:00'),
+      activite('a2', 'Jonglerie', '14:30', '15:30'),
+    ])
+    if (decision.kind !== 'activites') throw new Error('cas impossible')
+    expect(decision.actionLabel).toBe('Me désinscrire des 2 autres pour m’inscrire ici')
+    expect(decision.aQuitter).toHaveLength(2)
+  })
+
+  it('ne propose pas un échange qu’on ne saurait pas faire', () => {
+    /*
+      Sans identifiant, on ne sait pas de quoi désinscrire quelqu'un. Cela n'arrive pas en
+      pratique — c'est le serveur et l'écran qui remplissent cette liste — mais promettre
+      un geste impossible serait pire que de renvoyer vers un soignant.
+    */
+    const sansId: BusyEntry = {
+      start: instantOf('2026-08-26', '14:00'),
+      end: instantOf('2026-08-26', '15:00'),
+      label: 'Jeu de société',
+      kind: 'activity',
+    }
+    const decision = patientRegistrationDecision([sansId])
+    expect(decision.kind).toBe('rendez-vous')
+    if (decision.kind !== 'rendez-vous') throw new Error('cas impossible')
+    expect(decision.message).toContain('Parlez-en à un soignant')
   })
 })

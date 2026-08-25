@@ -51,19 +51,38 @@ export type RegisterResult =
       status: 'confirmed' | 'waitlist'
       position: number | null
       /**
-       * Une autre activité tombe au même moment. L'inscription est prise — deux
-       * activités qui se chevauchent, c'est souvent sans importance — mais la personne
-       * doit le savoir. Un rendez-vous, lui, refuse l'inscription : voir `domain/conflicts`.
+       * Les séances quittées pour prendre celle-ci, et la phrase qui le dit.
+       *
+       * On ne peut pas être à deux endroits à la fois : s'inscrire à une activité qui en
+       * chevauche une autre demande de quitter la première, et l'application le fait dans
+       * le même geste. Voir `patientRegistrationDecision` dans `domain/conflicts`.
        */
-      warning?: string
+      left?: string[]
+      swapMessage?: string
     }
-  | { ok: false; reason: string; message: string }
+  | {
+      ok: false
+      reason: string
+      message: string
+      /**
+       * Ce qu'il faudrait quitter pour que l'inscription passe.
+       *
+       * Rendu quand le refus vient d'un chevauchement avec d'autres activités — jamais
+       * avec un rendez-vous, qu'un patient ne décommande pas seul. L'écran s'en sert pour
+       * proposer l'échange ; sans réponse de sa part, rien n'est quitté.
+       */
+      mustLeave?: string[]
+    }
 
 export interface RegistrationService {
   /** Uniquement les inscriptions du patient connecté. Jamais celles des autres. */
   listMine(): Promise<MyRegistration[]>
   statusFor(occurrenceId: string): Promise<MyRegistration | null>
-  register(occurrenceId: string): Promise<RegisterResult>
+  /**
+   * `replacing` : les séances que la personne accepte de quitter pour prendre celle-ci.
+   * Sans elles, une inscription qui en chevauche une autre est refusée.
+   */
+  register(occurrenceId: string, options?: { replacing?: string[] }): Promise<RegisterResult>
   unregister(occurrenceId: string): Promise<{ ok: boolean; message: string }>
 
   /**

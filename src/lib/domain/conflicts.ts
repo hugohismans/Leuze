@@ -30,6 +30,14 @@ export type BusyEntry = {
   /** Ce qu'on affiche : « Atelier cuisine », « Rendez-vous avec le psychiatre ». */
   label: string
   kind: 'activity' | 'appointment'
+  /**
+   * La séance, quand c'en est une.
+   *
+   * Elle sert à proposer d'en sortir : « Me désinscrire de « Jeu de société » pour
+   * m'inscrire ici ». Un rendez-vous n'en porte pas, et c'est voulu — il ne s'échange
+   * contre rien.
+   */
+  occurrenceId?: string
 }
 
 export type TimeSpan = { start: Date; end: Date }
@@ -69,29 +77,73 @@ export function describeConflict(entry: BusyEntry): string {
 }
 
 /**
- * Ce qu'on dit à un patient qui s'inscrit seul. `null` quand rien ne gêne.
+ * Ce qu'il advient d'une inscription prise par le patient lui-même.
  *
- * Un rendez-vous bloque ; le message dit lequel, et quoi faire — parler à un soignant,
- * qui pourra déplacer l'un ou l'autre. Une activité ne bloque pas : on prévient.
+ * **On ne peut pas être à deux endroits à la fois.** C'est la décision de l'hôpital, prise
+ * après un essai en service : quelqu'un s'était inscrit à deux activités de quatorze
+ * heures. Un simple avertissement ne suffit pas — il se lit, ou ne se lit pas.
+ *
+ * Deux refus, et ils n'ont pas la même issue.
+ *
+ * **Un rendez-vous ferme la porte.** Un patient n'annule pas un rendez-vous tout seul :
+ * quelqu'un a bloqué du temps pour lui, et le décommander se parle. Il n'y a donc rien à
+ * proposer, sinon d'en parler à un soignant.
+ *
+ * **Une activité s'échange.** On propose de quitter celle où l'on est pour prendre
+ * celle-ci — un seul geste, et la personne sait exactement ce qu'elle perd. C'est le
+ * contraire de « débrouillez-vous » : l'application fait le remplacement pour elle.
  */
-export function patientConflictNotice(
-  conflicts: BusyEntry[],
-): { blocking: true; message: string } | { blocking: false; message: string } | null {
-  if (conflicts.length === 0) return null
+export type RegistrationDecision =
+  | { kind: 'libre' }
+  | { kind: 'rendez-vous'; message: string }
+  | {
+      kind: 'activites'
+      /** Les séances à quitter pour prendre celle-ci. Jamais vide. */
+      aQuitter: BusyEntry[]
+      message: string
+      /** Le libellé du bouton qui fait l'échange. */
+      actionLabel: string
+    }
+
+export function patientRegistrationDecision(conflicts: BusyEntry[]): RegistrationDecision {
+  if (conflicts.length === 0) return { kind: 'libre' }
+
   const rendezVous = blockingConflict(conflicts)
   if (rendezVous !== null) {
     return {
-      blocking: true,
+      kind: 'rendez-vous',
       // Surtout pas de minuscule forcée : le libellé porte un nom propre, et
       // « rendez-vous avec docteur lemaire » se lit comme une faute.
-      message: `Vous avez déjà quelque chose à ce moment-là : ${describeConflict(rendezVous)}. Parlez-en à un soignant si vous préférez venir à l’activité.`,
+      message: `Vous avez un rendez-vous à ce moment-là : ${describeConflict(rendezVous)}. Un rendez-vous ne s’annule pas tout seul. Parlez-en à un soignant si vous préférez venir à cette activité.`,
     }
   }
-  const premier = conflicts[0]!
-  return {
-    blocking: false,
-    message: `Attention : vous êtes déjà inscrit à « ${premier.label} », de ${formatTime(premier.start)} à ${formatTime(premier.end)}. Vous pouvez tout de même vous inscrire.`,
+
+  /*
+    Seules les séances portant un identifiant peuvent être quittées.
+
+    Il n'en manque jamais en pratique — c'est le serveur et l'écran qui remplissent cette
+    liste. Mais sans identifiant on ne saurait pas de quoi désinscrire quelqu'un, et
+    proposer un échange qu'on ne peut pas faire serait pire que de refuser.
+  */
+  const quittables = conflicts.filter((entry) => (entry.occurrenceId ?? '') !== '')
+  if (quittables.length === 0) {
+    return {
+      kind: 'rendez-vous',
+      message: `Vous avez déjà quelque chose à ce moment-là : ${describeConflict(conflicts[0]!)}. Parlez-en à un soignant.`,
+    }
   }
+
+  const premier = quittables[0]!
+  const message =
+    quittables.length === 1
+      ? `Vous êtes déjà inscrit à « ${premier.label} », de ${formatTime(premier.start)} à ${formatTime(premier.end)}. Vous ne pouvez pas être aux deux.`
+      : `Vous êtes déjà inscrit à ${quittables.length} activités à ce moment-là. Vous ne pouvez pas être partout.`
+  const actionLabel =
+    quittables.length === 1
+      ? `Me désinscrire de « ${premier.label} » pour m’inscrire ici`
+      : `Me désinscrire des ${quittables.length} autres pour m’inscrire ici`
+
+  return { kind: 'activites', aQuitter: quittables, message, actionLabel }
 }
 
 /**
@@ -147,6 +199,8 @@ export function myBusyAt(
       end: occurrence.end,
       label: occurrence.title,
       kind: 'activity',
+      // C'est par lui qu'on proposera d'en sortir.
+      occurrenceId: occurrence.id,
     })
   }
 

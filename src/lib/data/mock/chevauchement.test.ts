@@ -7,16 +7,27 @@ import { instantOf, todayLocalDate, addLocalDays } from '../../domain/time'
 /**
  * Le chevauchement d'horaire, joué de bout en bout sur la démonstration.
  *
- * Deux poids : un rendez-vous refuse l'inscription d'un patient qui s'inscrit seul, une
- * autre activité se contente de le prévenir. Le soignant, lui, n'est jamais empêché —
- * mais l'application le lui demande avant, et lui rend la liste de ce qui tombe en même
- * temps pour qu'il puisse en juger.
+ * **On ne peut pas être à deux endroits à la fois.** Décision de l'hôpital, prise après
+ * un essai en service : un patient s'était inscrit à deux activités de quatorze heures.
+ *
+ * Deux refus, deux issues. Un rendez-vous ferme la porte : un patient ne le décommande
+ * pas tout seul, et il n'y a rien à lui proposer. Une activité s'échange : on quitte
+ * celle où l'on est pour prendre celle-ci, en un seul geste, et l'application le fait.
+ *
+ * Le soignant, lui, n'est jamais empêché — mais l'application le lui demande avant, et
+ * lui rend la liste de ce qui tombe en même temps pour qu'il puisse en juger.
  */
 const ouvrirSoignant = async () => {
   const app = createMockStaffApp()
   await app.session.signIn('soignant@exemple.test', 'peu-importe')
   return app
 }
+
+/** Le patient de démonstration est-il inscrit à cette séance ? */
+const inscritA = (occurrenceId: string): boolean =>
+  world.registrations.some(
+    (r) => r.occurrenceId === occurrenceId && r.patientUid === DEMO_PATIENT_UID && r.status !== 'cancelled',
+  )
 
 /** Une séance à venir, à laquelle le patient de démonstration a le droit de s'inscrire. */
 function seanceAVenir() {
@@ -65,32 +76,106 @@ describe('s’inscrire quand on a déjà quelque chose', () => {
     )
   })
 
-  it('est accepté, mais annoncé, quand c’est une autre activité', async () => {
-    const seance = seanceAVenir()
-    // Une seconde séance qui recouvre la première : deux activités, aucun rendez-vous.
-    const voisine = [...world.occurrences.values()].find(
-      (o) =>
-        o.id !== seance.id &&
-        o.localDate === seance.localDate &&
-        o.start < seance.end &&
-        seance.start < o.end &&
-        o.audienceKeys.includes('all'),
-    )
-    if (voisine === undefined) {
-      // Le jeu de démonstration ne contient pas toujours deux séances qui se recouvrent :
-      // on en fabrique une, plutôt que de laisser le cas non vérifié.
-      const copie = { ...seance, id: `${seance.id}-bis`, title: 'Séance qui recouvre' }
-      world.occurrences.set(copie.id, copie)
+  /** Une seconde séance qui recouvre exactement la première. */
+  const seanceQuiRecouvre = (seance: ReturnType<typeof seanceAVenir>) => {
+    const copie = {
+      ...seance,
+      id: `${seance.id}-bis`,
+      title: 'Séance qui recouvre',
+      confirmedCount: 0,
+      waitlistCount: 0,
     }
-    const chevauchante = voisine ?? world.occurrences.get(`${seance.id}-bis`)!
+    world.occurrences.set(copie.id, copie)
+    return copie
+  }
+
+  it('est refusé quand une autre activité tombe au même moment', async () => {
+    const seance = seanceAVenir()
+    const chevauchante = seanceQuiRecouvre(seance)
 
     const patient = createMockRepository()
     await patient.registrations.register(seance.id)
     const resultat = await patient.registrations.register(chevauchante.id)
 
+    expect(resultat.ok).toBe(false)
+    expect(resultat.ok === false && resultat.reason).toBe('conflict')
+    expect(resultat.ok === false && resultat.message).toContain(seance.title)
+    expect(resultat.ok === false && resultat.message).toContain('pas être aux deux')
+    // Et rien n'a bougé : ni la nouvelle, ni l'ancienne.
+    expect(inscritA(chevauchante.id)).toBe(false)
+    expect(inscritA(seance.id)).toBe(true)
+  })
+
+  it('dit ce qu’il faudrait quitter, sans le quitter', async () => {
+    const seance = seanceAVenir()
+    const chevauchante = seanceQuiRecouvre(seance)
+
+    const patient = createMockRepository()
+    await patient.registrations.register(seance.id)
+    const resultat = await patient.registrations.register(chevauchante.id)
+
+    expect(resultat.ok === false && resultat.mustLeave).toEqual([seance.id])
+    expect(inscritA(seance.id)).toBe(true)
+  })
+
+  it('échange quand la personne l’a demandé : elle quitte l’une et prend l’autre', async () => {
+    const seance = seanceAVenir()
+    const chevauchante = seanceQuiRecouvre(seance)
+
+    const patient = createMockRepository()
+    await patient.registrations.register(seance.id)
+    const resultat = await patient.registrations.register(chevauchante.id, { replacing: [seance.id] })
+
     expect(resultat.ok).toBe(true)
-    expect(resultat.ok === true && resultat.warning).toContain(seance.title)
-    expect(resultat.ok === true && resultat.warning).toContain('Vous pouvez tout de même')
+    expect(resultat.ok === true && resultat.left).toEqual([seance.id])
+    expect(resultat.ok === true && resultat.swapMessage).toContain(seance.title)
+    // Le remplacement, et non l'ajout : on est dans la nouvelle, plus dans l'ancienne.
+    expect(inscritA(chevauchante.id)).toBe(true)
+    expect(inscritA(seance.id)).toBe(false)
+  })
+
+  it('n’échange rien contre une séance qu’on n’a pas demandé de quitter', async () => {
+    /*
+      La liste rendue doit correspondre exactement à ce qui gêne. Un client qui en
+      nommerait une autre — ou aucune — n'obtient rien, et surtout ne fait sortir
+      personne d'une activité à son insu.
+    */
+    const seance = seanceAVenir()
+    const chevauchante = seanceQuiRecouvre(seance)
+
+    const patient = createMockRepository()
+    await patient.registrations.register(seance.id)
+    const resultat = await patient.registrations.register(chevauchante.id, {
+      replacing: ['une-autre-seance'],
+    })
+
+    expect(resultat.ok).toBe(false)
+    expect(inscritA(seance.id)).toBe(true)
+    expect(inscritA(chevauchante.id)).toBe(false)
+  })
+
+  it('ne fait rien perdre quand la nouvelle activité est complète', async () => {
+    /*
+      L'ordre compte : on prend la nouvelle place avant de quitter l'ancienne. Quitter
+      d'abord, ce serait se retrouver sans rien — et voir quelqu'un d'autre prendre la
+      place qu'on vient de libérer.
+    */
+    const seance = seanceAVenir()
+    const chevauchante = seanceQuiRecouvre(seance)
+    world.occurrences.set(chevauchante.id, {
+      ...world.occurrences.get(chevauchante.id)!,
+      capacity: 0,
+      waitlistEnabled: false,
+      registrationRequired: true,
+    })
+
+    const patient = createMockRepository()
+    await patient.registrations.register(seance.id)
+    const resultat = await patient.registrations.register(chevauchante.id, { replacing: [seance.id] })
+
+    expect(resultat.ok).toBe(false)
+    // L'essentiel : sa place d'origine est intacte.
+    expect(inscritA(seance.id)).toBe(true)
   })
 
   it('n’empêche rien quand les horaires ne se touchent pas', async () => {
@@ -116,7 +201,7 @@ describe('s’inscrire quand on a déjà quelque chose', () => {
     const patient = createMockRepository()
     const resultat = await patient.registrations.register(seance.id)
     expect(resultat.ok).toBe(true)
-    expect(resultat.ok === true && resultat.warning).toBeUndefined()
+    expect(resultat.ok === true && resultat.left).toBeUndefined()
   })
 })
 
