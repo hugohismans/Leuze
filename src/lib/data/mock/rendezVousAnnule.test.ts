@@ -62,15 +62,29 @@ describe('un rendez-vous annulé', () => {
   })
 
   it("s'en va sans un mot quand c'est le patient qui retire sa demande", async () => {
+    /*
+      Le retrait se pose sur une demande en attente, et le test l'exige.
+
+      Il enfermait tout son corps dans un « if » : le jour où l'acceptation automatique
+      trouvait une place, le test ne vérifiait plus rien et passait quand même. Un test
+      qui ne peut pas échouer est pire que pas de test.
+    */
     const repo = createMockRepository()
-    await repo.appointments.request('psychiatre', 'peu-importe')
-    const demande = world.appointments[0]!
-    // La demande peut avoir trouvé sa place toute seule : on ne teste que le cas en attente.
-    if (demande.status === 'requested') {
-      const retrait = await repo.appointments.withdraw(demande.id)
-      expect(retrait.ok).toBe(true)
-      expect(await lueParLePatient()).toEqual([])
-    }
+    world.appointments = [
+      {
+        id: 'rdv-en-attente',
+        patientUid: DEMO_PATIENT_UID,
+        kindId: 'psychiatre',
+        preference: 'peu-importe',
+        status: 'requested',
+        createdAt: new Date(),
+      },
+    ]
+    const retrait = await repo.appointments.withdraw('rdv-en-attente')
+    expect(retrait.ok).toBe(true)
+    // Retiré par le patient lui-même : aucun motif, donc rien à lui remontrer.
+    expect(world.appointments[0]!.status).toBe('cancelled')
+    expect(await lueParLePatient()).toEqual([])
   })
 
   it("ne montre pas le rendez-vous d'un autre patient", async () => {

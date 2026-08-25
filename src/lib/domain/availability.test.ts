@@ -197,15 +197,13 @@ describe('une plage qui se termine à minuit', () => {
     expect(windowRefusal({ weekday: 5, from: '22:00', to: '02:00' })).not.toBeNull()
   })
 
-  it('lit « 00:00 → 00:00 » comme la journée entière, et non comme une plage vide', () => {
+  it('refuse « 00:00 → 00:00 » : deux fois minuit n’est pas une façon de dire « toute la journée »', () => {
     /*
-      Minuit en fin de plage veut dire minuit au bout du jour — c'est ce qui donne son
-      sens à « 22:00 → 00:00 ». La même lecture appliquée aux deux bornes décrit une
-      journée entière, ce qui se conçoit pour quelqu'un qui reçoit toute la journée. Rien
-      n'est perdu en silence : c'est là ce qui comptait.
+      Lue comme la journée entière, cette ligne fondait toutes les autres plages du jour
+      dans la sienne à l'enregistrement : on perdait « mardi 9h–12h » et « mardi 14h–17h »
+      sans un mot. C'est le défaut que ce refus ferme.
     */
-    expect(windowRefusal({ weekday: 5, from: '00:00', to: '00:00' })).toBeNull()
-    const journee: AvailabilityWindow[] = [{ weekday: 5, from: '00:00', to: '00:00' }]
-    expect(coversAppointment(journee, 5, '13:00', 60)).toBe(true)
+    expect(windowRefusal({ weekday: 5, from: '00:00', to: '00:00' })).toContain('les heures où vous recevez')
   })
+
 })

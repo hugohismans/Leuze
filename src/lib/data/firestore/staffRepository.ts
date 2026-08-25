@@ -368,8 +368,11 @@ export function createFirestoreStaffApp(): StaffApp {
           status: 'cancelled',
           cancellationReason: reason,
           overridden: true,
-          // Annulée par un soignant, avec un motif : la régénération n'y touche pas.
+          // Annulée par un soignant, avec un motif : la régénération n'y touche pas, et
+          // le retrait d'un congé ne la rétablit pas — même si le motif choisi est
+          // « L'animateur est absent ».
           autoCancelled: false,
+          cancelledByLeave: false,
         })
       },
 
@@ -394,6 +397,7 @@ export function createFirestoreStaffApp(): StaffApp {
           cancellationReason: '',
           overridden: false,
           autoCancelled: false,
+          cancelledByLeave: false,
         })
       },
 

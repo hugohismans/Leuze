@@ -43,8 +43,14 @@ export function minutesOf(time: LocalTime): number | null {
   return heures * 60 + minutes
 }
 
-/** « 09:00 » → « 09h00 ». Jamais « 9:00 » : les deux chiffres se lisent mieux de loin. */
+/**
+ * « 09:00 » → « 09h00 ». Jamais « 9:00 » : les deux chiffres se lisent mieux de loin.
+ *
+ * Minuit se dit « minuit ». La borne de fin d'une journée s'écrit « 24:00 » à l'intérieur
+ * du domaine — elle se compare ainsi correctement — mais « 24h00 » ne se lit nulle part.
+ */
 export function formatLocalTime(time: LocalTime): string {
+  if (time === '24:00' || time === '00:00') return 'minuit'
   return time.replace(':', 'h')
 }
 
@@ -58,6 +64,15 @@ export function formatLocalTime(time: LocalTime): string {
  * que cette fonction-ci sache lire minuit.
  */
 export function endMinutesOf(time: LocalTime): number | null {
+  /*
+    « 24:00 » se lit aussi.
+
+    Les trous libres d'une journée qui va jusqu'à minuit sont rendus avec cette borne :
+    elle se compare correctement à « 23:00 » là où « 00:00 » se comparerait comme le
+    début du jour. `minutesOf` la refuse — elle n'accepte pas plus de 23 heures — et la
+    découpe en créneaux rendait alors une liste vide, silencieusement.
+  */
+  if (time === '24:00') return 24 * 60
   const minutes = minutesOf(time)
   if (minutes === null) return null
   return minutes === 0 ? 24 * 60 : minutes
@@ -82,6 +97,18 @@ export function windowRefusal(window: AvailabilityWindow): string | null {
   const debut = minutesOf(window.from)
   const fin = endMinutesOf(window.to)
   if (debut === null || fin === null) return 'Indiquez une heure de début et une heure de fin.'
+  /*
+    « 00:00 → 00:00 » se refuse, malgré la règle « minuit en fin vaut la fin du jour ».
+
+    Lue littéralement, cette ligne décrit la journée entière — et à l'enregistrement elle
+    fond toutes les autres plages du jour dans la sienne : on perdait d'un coup « mardi
+    9h–12h » et « mardi 14h–17h », sans un mot. C'est le défaut que ce refus était censé
+    fermer, réintroduit par une autre porte. Personne ne saisit deux fois minuit pour dire
+    « toute la journée » ; on saisit les heures où l'on reçoit.
+  */
+  if (minutesOf(window.from) === 0 && minutesOf(window.to) === 0) {
+    return 'Écrivez les heures où vous recevez — de 09:00 à 17:00, par exemple.'
+  }
   if (debut === fin) return "L'heure de fin est la même que l'heure de début : la plage ne dure rien."
   if (fin < debut) return "L'heure de fin est avant l'heure de début. Vérifiez les deux heures."
   return null

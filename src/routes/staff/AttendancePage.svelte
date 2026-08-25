@@ -164,6 +164,16 @@
                   {:else}
                     <span aria-hidden="true">•</span> Pas encore noté
                   {/if}
+                  <!--
+                    Noter une présence ne donne pas la place : le dire ici, sinon la
+                    feuille laisse croire que la personne est inscrite.
+                  -->
+                  {#if ligne.status === 'waitlist'}
+                    <span class="block font-normal text-ink-soft">
+                      Toujours sur la liste d'attente — la place se donne depuis la fiche
+                      de la séance.
+                    </span>
+                  {/if}
                 </p>
                 <div class="mt-1 flex flex-wrap gap-2">
                   <button

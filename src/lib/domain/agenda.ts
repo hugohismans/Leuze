@@ -12,7 +12,7 @@
  *
  * Il ne lit rien et ne décide d'aucun droit : ce sont des intervalles, rien d'autre.
  */
-import { minutesOf, normalizeAvailability, windowsOn } from './availability'
+import { endMinutesOf, minutesOf, normalizeAvailability, windowsOn } from './availability'
 import { isOnLeave, type Leave } from './leave'
 import { addLocalDays, instantOf, isoWeekdayOf, localTimeOf } from './time'
 import type { AppointmentPreference, AvailabilityWindow, LocalDate, LocalTime } from './types'
@@ -89,7 +89,14 @@ export function freeSlotsOn(
   for (const plage of plages) {
     // `normalizeAvailability` a validé les bornes : elles sont lisibles.
     let curseur = minutesOf(plage.from)!
-    const fermeture = minutesOf(plage.to)!
+    /*
+      `endMinutesOf` et non `minutesOf` : minuit en fin de plage vaut la fin du jour.
+
+      Sans cela, une garde du soir « 18h00 → 00:00 » était acceptée par l'éditeur,
+      affichée partout, et ne produisait pas un seul créneau — la fermeture valait zéro,
+      donc avant l'ouverture. L'écran répondait « aucun créneau ne convient aux deux ».
+    */
+    const fermeture = endMinutesOf(plage.to)!
     for (const creneau of pris) {
       if (creneau.fin <= curseur || creneau.debut >= fermeture) continue
       if (creneau.debut - curseur >= durationMin) {
@@ -242,7 +249,7 @@ export function bookableSlots(
     const times: LocalTime[] = []
     for (const trou of jour.free) {
       const ouverture = minutesOf(trou.from)
-      const fermeture = minutesOf(trou.to)
+      const fermeture = endMinutesOf(trou.to)
       if (ouverture === null || fermeture === null) continue
       for (let debut = ouverture; debut + durationMin <= fermeture; debut += stepMin) {
         times.push(toTime(debut))
@@ -332,7 +339,7 @@ function chercher(
     if (isOnLeave(conges, localDate)) continue
     for (const trou of freeSlotsOn(plages, tous, localDate, search.durationMin)) {
       const ouverture = minutesOf(trou.from)!
-      const fermeture = minutesOf(trou.to)!
+      const fermeture = endMinutesOf(trou.to)!
       for (let debut = ouverture; debut + search.durationMin <= fermeture; debut += pas) {
         if (respecterLaPreference && !convientAuMoment(debut, debut + search.durationMin, search.preference)) {
           continue
@@ -358,8 +365,14 @@ function chercher(
  * deux dans les trois semaines qui viennent » pour quelqu'un qui n'avait tout simplement
  * jamais dit quand il recevait. On cherchait un agenda saturé qui n'existait pas.
  */
-export function noAvailabilityDeclared(week: { windows: unknown[] }[]): boolean {
-  return week.length > 0 && week.every((jour) => jour.windows.length === 0)
+export function noAvailabilityDeclared(week: { windows: unknown[]; onLeave?: boolean }[]): boolean {
+  /*
+    Un jour de congé n'a pas de plage — et ce n'est pas la même chose que « rien n'a été
+    déclaré ». Quelqu'un en congé sur tout l'horizon s'entendait dire qu'il n'avait jamais
+    dit quand il recevait, juste au-dessus de sept lignes « 🌴 En congé ».
+  */
+  const ouvrables = week.filter((jour) => jour.onLeave !== true)
+  return ouvrables.length > 0 && ouvrables.every((jour) => jour.windows.length === 0)
 }
 
 /** Ce qu'il faut faire quand personne n'a déclaré de plage — et où le faire. */

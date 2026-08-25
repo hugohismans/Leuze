@@ -159,9 +159,19 @@ export function mergeOccurrences(
             chose. La séance n'est pas annulée : elle a changé d'heure ou de jour, et
             l'inscription ne suit pas — c'est cela qu'il faut lire.
           */
+          /*
+            Deux raisons de sortir de la série, et deux phrases.
+
+            Une activité retirée du programme n'a pas « changé d'horaire » : il n'y a
+            aucune nouvelle séance à laquelle se réinscrire, et l'envoyer en chercher une
+            fait perdre son temps à la personne. `drafts` vide veut dire « plus rien n'est
+            prévu » ; sinon, la séance a bougé.
+          */
           cancellationReason:
             current.cancellationReason ??
-            "L'horaire a changé. Inscrivez-vous de nouveau à la nouvelle séance.",
+            (drafts.length === 0
+              ? "Cette séance n'aura pas lieu. Un soignant peut vous proposer autre chose."
+              : "L'horaire a changé. Inscrivez-vous de nouveau à la nouvelle séance."),
           // Barrée par la régénération, et non par un soignant : elle se rétablit seule
           // si l'activité revient au programme.
           autoCancelled: true,

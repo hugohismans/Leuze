@@ -206,6 +206,16 @@ export type Occurrence = {
    * séance qu'un soignant a annulée avec un motif ne bouge jamais.
    */
   autoCancelled?: boolean
+  /**
+   * Vrai quand c'est la déclaration d'un congé qui a barré cette séance.
+   *
+   * Le retrait du congé reconnaissait son propre travail au motif écrit — mais
+   * « L'animateur est absent » est aussi l'un des motifs que le bouton « Annuler cette
+   * séance » propose. Un congé déclaré sans annuler, puis une séance annulée à la main
+   * avec ce motif, puis le congé retiré : la séance se rétablissait alors qu'un humain
+   * l'avait barrée. Une marque propre vaut mieux qu'une phrase reconnue au texte.
+   */
+  cancelledByLeave?: boolean
   confirmedCount: number
   waitlistCount: number
 }

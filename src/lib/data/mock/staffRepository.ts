@@ -344,8 +344,11 @@ export function createMockStaffApp(): StaffApp {
           status: 'cancelled',
           cancellationReason: reason,
           overridden: true,
-          // Annulée par un soignant, avec un motif : la régénération n'y touche pas.
+          // Annulée par un soignant, avec un motif : la régénération n'y touche pas, et
+          // le retrait d'un congé ne la rétablit pas — même si le motif choisi est
+          // « L'animateur est absent ».
           autoCancelled: false,
+          cancelledByLeave: false,
         })
       },
 
@@ -438,23 +441,19 @@ export function createMockStaffApp(): StaffApp {
             return { ok: false, message: registrationBlockMessage(outcome.reason as never) }
           }
           applyBoard(outcome.board)
-        } else if (attendance === 'present') {
-          /*
-            Une personne notée présente est inscrite, même au-delà des places.
-
-            Elle restait « en liste d'attente » alors qu'elle était dans la salle : la
-            feuille disait deux choses à la fois, et la place qu'elle occupait n'était
-            comptée nulle part. Le domaine dit déjà la règle — « la feuille doit dire qui
-            était là, pas ce qui était prévu » — mais la marque de présence ne la faisait
-            pas jouer.
-          */
-          const encore = boardOf(occurrenceId)
-          const ligne = encore?.registrations.find((r) => r.patientUid === patientUid)
-          if (encore !== null && ligne !== undefined && ligne.status === 'waitlist') {
-            const monte = domainPromote(encore, patientUid)
-            if (monte.ok) applyBoard(monte.board)
-          }
         }
+        /*
+          Noter une présence ne donne pas la place.
+
+          On l'avait fait : une personne en liste d'attente notée présente passait
+          confirmée. Mais la feuille d'appel se touche du doigt, quinze prénoms à la
+          suite, sur une tablette posée en salle — et un appui de travers faisait alors
+          passer quelqu'un devant tous ceux qui attendaient, sans retour possible :
+          « Présent — annuler » efface la présence, pas la promotion.
+
+          La feuille dit donc qui était là, et la place se donne d'un geste séparé et
+          explicite — « Donner la place », sur la fiche de la séance.
+        */
         const cle = `${occurrenceId}|${patientUid}`
         if (attendance === null) world.attendance.delete(cle)
         else world.attendance.set(cle, attendance)
@@ -903,6 +902,8 @@ export function createMockStaffApp(): StaffApp {
             status: 'cancelled',
             cancellationReason: MOTIF_ABSENCE,
             overridden: true,
+            // C'est ce congé-ci qui l'a barrée : le retirer la rétablira, et lui seul.
+            cancelledByLeave: true,
           })
         }
         const rouverts = new Set(enCours.map((a) => a.id))
@@ -970,12 +971,27 @@ export function createMockStaffApp(): StaffApp {
         let retablies = 0
         for (const [id, occurrence] of world.occurrences) {
           if (occurrence.status !== 'cancelled') continue
-          if (occurrence.cancellationReason !== MOTIF_ABSENCE) continue
+          // La marque, et non le texte du motif : « L'animateur est absent » est aussi
+          // l'un des motifs que le bouton « Annuler cette séance » propose.
+          if (occurrence.cancelledByLeave !== true) continue
           if (occurrence.facilitatorId !== practitionerId) continue
           if (occurrence.localDate < leave.from || occurrence.localDate > leave.to) continue
           if (occurrence.localDate < aujourdHui) continue
-          const { cancellationReason: _motif, ...sansMotif } = occurrence
-          world.occurrences.set(id, { ...sansMotif, status: 'scheduled' as const })
+          /*
+            La séance rentre dans sa série, et n'en sort pas.
+
+            `overridden` et `autoCancelled` se retirent tous les deux, comme dans
+            `restoreOccurrence`. Sans cela, la séance rétablie restait marquée « modifiée
+            isolément » : elle gardait à jamais l'ancien titre, l'ancien lieu et l'ancienne
+            heure, et la même activité portait deux noms dans le même programme.
+          */
+          const {
+            cancellationReason: _motif,
+            autoCancelled: _auto,
+            cancelledByLeave: _conge,
+            ...sansMotif
+          } = occurrence
+          world.occurrences.set(id, { ...sansMotif, status: 'scheduled' as const, overridden: false })
           retablies += 1
         }
 

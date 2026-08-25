@@ -124,7 +124,14 @@
         serviceIds = [staffStore.unit]
       }
       // La date vient de la case de la semaine sur laquelle le soignant a cliqué.
-      if (date !== undefined) dateUnique = date
+      /*
+        Une date passée, venue de la semaine qu'on feuillette, ne sert à rien.
+
+        « ＋ Ajouter » depuis une semaine passée — un geste courant pour relire le
+        programme — pré-remplissait une date qui ne produirait aucune séance, et
+        l'enregistrement la refusait ensuite. On propose aujourd'hui, qui marche.
+      */
+      if (date !== undefined) dateUnique = date < todayLocalDate() ? todayLocalDate() : date
 
       /*
         L'activité née d'une idée de patient arrive avec son titre et sa description.
@@ -352,7 +359,14 @@
       erreur = 'Cette date n’est pas lisible. Vérifiez le jour, le mois et l’année.'
       return
     }
-    if (repetition === 'une-fois' && dateUnique < todayLocalDate()) {
+    /*
+      Le refus ne vaut que pour une activité qu'on CRÉE.
+
+      Appliqué à la modification, il rendait impossible de toucher à une activité
+      ponctuelle déjà passée — corriger une faute de frappe, changer un lieu, la retirer
+      du programme : plus rien. Ce qui a eu lieu se relit et se corrige.
+    */
+    if (nouvelle && repetition === 'une-fois' && dateUnique < todayLocalDate()) {
       erreur =
         'Cette date est passée : aucune séance ne serait créée. Choisissez aujourd’hui ou un jour à venir.'
       return
@@ -811,9 +825,13 @@
             C'est ce qui est coché plus bas : l'activité n'aura pas d'appel. Si un soignant
             doit en être responsable, choisissez-le à la place — et parlez-en avec
             {venuDUneIdee.patientFirstName ?? 'la personne'}.
+          {:else if facilitatorId !== ''}
+            Vous avez désigné {facilitator === '' ? 'un soignant' : facilitator} : c'est lui
+            qui fera l'appel. Parlez-en avec {venuDUneIdee.patientFirstName ?? 'la personne'}.
           {:else}
-            Vous avez désigné un soignant : c'est lui qui fera l'appel. Parlez-en avec
-            {venuDUneIdee.patientFirstName ?? 'la personne'}.
+            Désignez un soignant responsable plus bas — c'est lui qui fera l'appel — ou
+            cochez « Un patient, seul » si {venuDUneIdee.patientFirstName ?? 'la personne'}
+            l'anime sans appel.
           {/if}
         </p>
       {/if}
@@ -1008,7 +1026,7 @@
         <input
           id="date"
           type="date"
-          min={todayLocalDate()}
+          min={nouvelle ? todayLocalDate() : undefined}
           bind:value={dateUnique}
           class={champ}
           style="min-height: 56px;"

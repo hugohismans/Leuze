@@ -191,7 +191,7 @@ service cloud.firestore {
       // conclure au refus. Le refus est bien le résultat — les tests le vérifient,
       // ainsi que le fait qu'une annulation légitime, elle, passe.
       return request.resource.data.diff(resource.data).affectedKeys()
-               .hasOnly(['status', 'cancellationReason', 'locationId', 'overridden', 'autoCancelled'])
+               .hasOnly(['status', 'cancellationReason', 'locationId', 'overridden', 'autoCancelled', 'cancelledByLeave'])
         && request.resource.data.status in ['scheduled', 'cancelled', 'moved'];
     }
 

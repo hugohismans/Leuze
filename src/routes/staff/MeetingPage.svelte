@@ -193,8 +193,18 @@
    */
   let chevauchement = $state<{ patientUid: string; conflicts: TimeConflict[] } | null>(null)
 
-  /** Les inscriptions parties mais pas encore revenues. Volontairement non réactif. */
-  let enVol = 0
+  /*
+    Les prénoms dont l'inscription est partie mais pas encore revenue.
+
+    Un simple compteur comptait deux fois : dès que l'inscription optimiste apparaissait
+    dans la liste, la personne était comptée à la fois par `registrations` et par le
+    compteur. À la réunion, où l'on clique dix prénoms à la suite, l'écran réclamait un
+    dépassement là où il restait des places. On retient les identifiants, et l'on ne
+    compte que ceux que la liste ne montre pas encore.
+
+    Volontairement non réactif : ce n'est qu'un garde-fou de saisie.
+  */
+  const enVolPour = new Set<string>()
 
   async function basculer(
     patientUid: string,
@@ -217,11 +227,13 @@
       voyage.
     */
     const places = courante.capacity
+    const confirmes = board.registrations.filter((r) => r.status === 'confirmed')
+    const dejaVus = new Set(confirmes.map((r) => r.patientUid))
+    const enVolInvisibles = [...enVolPour].filter((uid) => !dejaVus.has(uid)).length
     const depasserait =
       places !== null &&
       !staffStore.isRegistered(patientUid) &&
-      (wouldExceedCapacity(board, patientUid) ||
-        board.registrations.filter((r) => r.status === 'confirmed').length + enVol >= places)
+      (wouldExceedCapacity(board, patientUid) || confirmes.length + enVolInvisibles >= places)
     if (options.depassement !== true && depasserait) {
       aConfirmer = patientUid
       return
@@ -230,7 +242,7 @@
     chevauchement = null
     enCours = patientUid
     const inscrit = !staffStore.isRegistered(patientUid)
-    if (inscrit) enVol += 1
+    if (inscrit) enVolPour.add(patientUid)
     let resultat
     try {
       resultat = await staffStore.togglePatient(courante.id, patientUid, {
@@ -241,7 +253,7 @@
       // Quoi qu'il arrive — y compris une erreur qu'on n'attendait pas — le prénom
       // redevient cliquable. Sans cela, un seul incident le figeait pour toute la réunion.
       enCours = null
-      if (inscrit) enVol -= 1
+      enVolPour.delete(patientUid)
     }
     // Refusé faute de confirmation : on montre ce qui tombe en même temps, on demande.
     if (resultat.conflicts !== undefined && resultat.conflicts.length > 0) {

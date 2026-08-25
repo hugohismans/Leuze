@@ -248,6 +248,15 @@
     }
     const motif = quelKind
     if (motif === '' || motif === intervenantSemePour) return
+    /*
+      On ne sème pas sur un catalogue vide.
+
+      Au rechargement de la page, l'écran se monte pendant que les lectures partent : le
+      motif arrivait avant les intervenants. L'effet marquait alors le motif comme semé
+      sans avoir rien trouvé, et ne repassait jamais — le formulaire restait sur « sans
+      préciser qui », sans agenda croisé, jusqu'à ce qu'on change de motif à la main.
+    */
+    if (store.practitioners.length === 0) return
     intervenantSemePour = motif
     const attitre = store.practitioners.find((i) => i.kindId === motif && i.isActive)
     intervenantDirect = attitre?.id ?? ''
@@ -807,7 +816,7 @@
     </p>
   {:else}
     <ul class="grid gap-4">
-      {#each enAttente as demande, rang (rang)}
+      {#each enAttente as demande (demande.id)}
         {@const jours = waitingDays(demande)}
         {@const personne = demande.patientUid === undefined ? undefined : patient(demande.patientUid)}
         <li class="card p-4">
@@ -1100,7 +1109,7 @@
         et l'écran resterait figé sur l'affichage précédent sans un mot. La liste est
         reconstruite en entier à chaque lecture ; le rang suffit.
       -->
-      {#each aVenir as rendezVous, rang (rang)}
+      {#each aVenir as rendezVous (rendezVous.id)}
         {@render ligne(rendezVous, true)}
       {/each}
     </ul>
@@ -1120,7 +1129,7 @@
 
     {#if voirLePasse}
       <ul class="mt-2 grid gap-3">
-        {#each passes as rendezVous, rang (rang)}
+        {#each passes as rendezVous (rendezVous.id)}
           {@render ligne(rendezVous, false)}
         {/each}
       </ul>

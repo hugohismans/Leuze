@@ -537,17 +537,16 @@ export const markAttendance = onCall(async (request: CallableRequest) => {
     const resultat = await registerTx(db(), { occurrenceId, patientUid, by: 'staff', walkIn: true })
     if (!resultat.ok) return resultat
     cibleId = resultat.registrationId
-  } else if (valeur === 'present' && active?.data()['status'] === 'waitlist') {
-    /*
-      Une personne notée présente est inscrite, même au-delà des places.
-
-      Elle restait « en liste d'attente » alors qu'elle était dans la salle : la feuille
-      disait deux choses à la fois, et la place qu'elle occupait n'était comptée nulle
-      part. Le domaine dit déjà la règle — « la feuille doit dire qui était là, pas ce qui
-      était prévu » — mais la marque de présence ne la faisait pas jouer.
-    */
-    await promoteTx(db(), { occurrenceId, patientUid }).catch(() => undefined)
   }
+  /*
+    Noter une présence ne donne pas la place.
+
+    On l'avait fait : une personne en liste d'attente notée présente passait confirmée.
+    Mais la feuille d'appel se touche du doigt, quinze prénoms à la suite, sur une
+    tablette posée en salle — et un appui de travers faisait alors passer quelqu'un devant
+    tous ceux qui attendaient, sans retour possible : « Présent — annuler » efface la
+    présence, pas la promotion. La place se donne d'un geste séparé et explicite.
+  */
 
   await db().collection(COLLECTIONS.registrations).doc(cibleId).set(
     {
@@ -1973,6 +1972,8 @@ export const declareLeave = onCall(async (request: CallableRequest) => {
       // Annulée par une décision humaine, et non par la régénération : elle ne se
       // rétablit pas toute seule quand la série repasse dessus.
       autoCancelled: false,
+      // C'est ce congé-ci qui l'a barrée : le retirer la rétablira, et lui seul.
+      cancelledByLeave: true,
     })
   }
   for (const rendezVous of enCours) {
@@ -2098,13 +2099,26 @@ async function retablirLesSeancesDuConge(practitionerId: string, leave: Leave): 
       status?: string
       cancellationReason?: string
       facilitatorId?: string
+      cancelledByLeave?: boolean
     }
     if (data.status !== 'cancelled') continue
-    if (data.cancellationReason !== MOTIF_ABSENCE) continue
+    // La marque, et non le texte du motif : « L'animateur est absent » est aussi l'un
+    // des motifs que le bouton « Annuler cette séance » propose.
+    if (data.cancelledByLeave !== true) continue
     if (data.facilitatorId !== practitionerId) continue
+    /*
+      La séance rentre dans sa série, et n'en sort pas.
+
+      `overridden` et `autoCancelled` se retirent tous les deux, comme au rétablissement
+      à la main. Sans cela, la séance rétablie restait marquée « modifiée isolément » :
+      elle gardait à jamais l'ancien titre, l'ancien lieu et l'ancienne heure.
+    */
     lot.update(document.ref, {
       status: 'scheduled',
       cancellationReason: FieldValue.delete(),
+      overridden: false,
+      autoCancelled: false,
+      cancelledByLeave: FieldValue.delete(),
     })
     retablies += 1
   }

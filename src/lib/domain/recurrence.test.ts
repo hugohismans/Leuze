@@ -223,11 +223,30 @@ describe('retirer une activité du programme, puis l’y remettre', () => {
   })
 
   it('dit à la personne inscrite quoi faire quand l’horaire change', () => {
+    /*
+      L'horaire a bougé : il existe une nouvelle séance, et l'on y renvoie.
+      On déplace l'activité d'une heure — les identifiants changent, les anciennes séances
+      sortent de la série.
+    */
+    const prevues = expand(activite, '2026-08-25', '2026-09-08')
+    const avecInscrits = prevues.map((o, i) => (i === 0 ? { ...o, confirmedCount: 3 } : o))
+    const deplacee = { ...activite, recurrence: { ...activite.recurrence!, startTime: '16:00' } }
+    const plan = mergeOccurrences(expand(deplacee, '2026-08-25', '2026-09-08'), avecInscrits)
+    // Le projet impose des messages qui disent quoi faire.
+    expect(plan.cancel[0]!.cancellationReason).toContain('Inscrivez-vous')
+    expect(plan.cancel[0]!.autoCancelled).toBe(true)
+  })
+
+  it('ne renvoie vers aucune nouvelle séance quand l’activité quitte le programme', () => {
+    /*
+      Rien n'est prévu : « l'horaire a changé, inscrivez-vous à la nouvelle séance »
+      envoyait chercher une séance qui n'existe pas. Deux sorties de série, deux phrases.
+    */
     const prevues = expand(activite, '2026-08-25', '2026-09-08')
     const avecInscrits = prevues.map((o, i) => (i === 0 ? { ...o, confirmedCount: 3 } : o))
     const plan = mergeOccurrences([], avecInscrits)
-    // Le projet impose des messages qui disent quoi faire.
-    expect(plan.cancel[0]!.cancellationReason).toContain('Inscrivez-vous')
+    expect(plan.cancel[0]!.cancellationReason).toContain("n'aura pas lieu")
+    expect(plan.cancel[0]!.cancellationReason).not.toContain('Inscrivez-vous')
     expect(plan.cancel[0]!.autoCancelled).toBe(true)
   })
 })
