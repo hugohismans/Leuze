@@ -1,4 +1,5 @@
 import { config } from '../config'
+import { accorde, motAccorde } from './francais'
 import type { Occurrence } from './types'
 
 export type CapacityState =
@@ -90,10 +91,14 @@ export function staffCapacityLabel(occurrence: Occurrence): string {
     // Zéro prend le singulier en français : « 0 personne notée ».
     return `Sans inscription — ${n} ${n > 1 ? 'personnes notées' : 'personne notée'}`
   }
-  if (occurrence.capacity === null) return `${occurrence.confirmedCount} inscrits, places illimitées`
+  if (occurrence.capacity === null) {
+    return `${accorde(occurrence.confirmedCount, 'inscrit', 'inscrits')}, places illimitées`
+  }
   const remaining = remainingSeats(occurrence) ?? 0
   const waitlist = occurrence.waitlistCount > 0 ? `, ${occurrence.waitlistCount} en attente` : ''
-  return `${occurrence.confirmedCount} / ${occurrence.capacity} inscrits (${remaining} restantes)${waitlist}`
+  // « 1 / 8 inscrits (1 restantes) » : l'accord manquait, à côté d'une phrase correcte.
+  const inscrits = motAccorde(occurrence.confirmedCount, 'inscrit', 'inscrits')
+  return `${occurrence.confirmedCount} / ${occurrence.capacity} ${inscrits} (${accorde(remaining, 'restante', 'restantes')})${waitlist}`
 }
 
 export type RegistrationBlock = 'cancelled' | 'past' | 'full-no-waitlist'

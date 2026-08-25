@@ -3,6 +3,7 @@
   import { store } from '../../lib/appState.svelte'
   import { myWeek } from '../../lib/domain/myWeek'
   import { kindName } from '../../lib/domain/appointments'
+  import { de } from '../../lib/domain/francais'
   import {
     addLocalDays,
     formatDayLabel,
@@ -136,7 +137,7 @@
     {:else if planning === null}
       <p class="card p-5 text-lg text-ink-soft">Cette personne n'a pas été trouvée.</p>
     {:else}
-      <h1 class="mb-1 text-3xl font-bold text-ink">La semaine de {planning.firstName}</h1>
+      <h1 class="mb-1 text-3xl font-bold text-ink">La semaine {de(planning.firstName)}</h1>
       {#if !staffStore.isAdmin}
         <!--
         Les rendez-vous individuels ne sont plus lisibles que par la personne qu'ils

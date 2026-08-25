@@ -16,7 +16,12 @@ export const appointmentKindsSeed: AppointmentKind[] = [
   { id: 'kinesitherapeute', name: 'Le kinésithérapeute', icon: '🤸', isActive: true },
   { id: 'assistant-social', name: "L'assistant social", icon: '📋', isActive: true },
   { id: 'infirmier-referent', name: "L'infirmier référent", icon: '🧑‍⚕️', isActive: true },
-  // Le fourre-tout assumé : tout ce qui ne rentre dans aucune case. Placé en dernier,
-  // pour qu'on lise d'abord les autres.
-  { id: 'autre', name: 'Autre', icon: '👤', isActive: true },
+  /*
+    Le fourre-tout assumé : tout ce qui ne rentre dans aucune case. Placé en dernier, pour
+    qu'on lise d'abord les autres.
+
+    « Un autre professionnel » et non « Autre » : l'intitulé se retrouve au milieu d'une
+    phrase — « Demande envoyée pour voir autre » — et il doit s'y lire.
+  */
+  { id: 'autre', name: 'Un autre professionnel', icon: '👤', isActive: true },
 ]

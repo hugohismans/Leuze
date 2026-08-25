@@ -1,5 +1,6 @@
 <script lang="ts">
   import { staffStore } from '../../lib/staffState.svelte'
+  import { de } from '../../lib/domain/francais'
   import { store } from '../../lib/appState.svelte'
   import { myWeek, type WeekEntry } from '../../lib/domain/myWeek'
   import { kindIcon, kindName } from '../../lib/domain/appointments'
@@ -136,7 +137,7 @@
     {:else if intervenant === null}
       <p class="card p-5 text-lg text-ink-soft">Cet intervenant n'a pas été trouvé.</p>
     {:else}
-      <h1 class="mb-1 text-3xl font-bold text-ink">La semaine de {intervenant.name}</h1>
+      <h1 class="mb-1 text-3xl font-bold text-ink">La semaine {de(intervenant.name)}</h1>
       <p class="mb-4 text-lg text-ink-soft">
         {intervenant.role} · du {formatDayLabel(staffStore.week[0]!)} au {formatDayLabel(staffStore.week[6]!)}
       </p>

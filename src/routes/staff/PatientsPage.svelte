@@ -17,6 +17,7 @@
     sharedFirstNames,
     sharesFirstName,
   } from '../../lib/domain/patientList'
+  import { que } from '../../lib/domain/francais'
   import { formatLongDayLabel, formatTime, localDateOf, todayLocalDate } from '../../lib/domain/time'
   import type { Occurrence } from '../../lib/domain/types'
   import type { NewPatientCode, PatientPlanning } from '../../lib/data/staffPorts'
@@ -447,7 +448,7 @@
                     onclick={() => (droitsOuverts = droitsOuverts === patient.uid ? null : patient.uid)}
                   >
                     <!-- Le prénom plutôt qu'un pronom : on ne présume pas du genre. -->
-                    Ce que {patient.firstName} peut faire{particulier(patient.uid) ? ' · réglage particulier' : ''}
+                    Ce {que(patient.firstName)} peut faire{particulier(patient.uid) ? ' · réglage particulier' : ''}
                   </button>
                   <button
                     type="button"
@@ -506,7 +507,7 @@
               -->
               <div class="mt-3 border-t-2 border-line pt-3">
                 <p class="mb-1 text-lg font-semibold text-ink">
-                  Ce que {patient.firstName} peut faire dans l'application
+                  Ce {que(patient.firstName)} peut faire dans l'application
                 </p>
                 <p class="mb-3 text-base text-ink-soft">
                   Sans réglage particulier, cette personne suit ce qui est décidé dans

@@ -116,14 +116,30 @@ export function todayLocalDate(now: Date = new Date()): LocalDate {
 
 const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 
-/** « Mardi 12 août ». */
-export function formatDayLabel(localDate: LocalDate): string {
-  return capitalize(format(calendarDate(localDate), 'EEEE d MMMM', { locale: fr }))
+/**
+ * Le premier jour du mois s'écrit « 1er », et jamais « 1 ».
+ *
+ * « Mardi 1 septembre » se lit de travers : en français, seul le premier du mois porte un
+ * ordinal. Le reste des jours ne change pas.
+ */
+function premierDuMois(localDate: LocalDate, texte: string): string {
+  return parts(localDate).d === 1 ? texte.replace(/\b1\b/, '1er') : texte
 }
 
-/** « Mardi 12 août 2025 ». */
+/** « Mardi 12 août », « Mardi 1er septembre ». */
+export function formatDayLabel(localDate: LocalDate): string {
+  return premierDuMois(
+    localDate,
+    capitalize(format(calendarDate(localDate), 'EEEE d MMMM', { locale: fr })),
+  )
+}
+
+/** « Mardi 12 août 2025 », « Mardi 1er septembre 2026 ». */
 export function formatLongDayLabel(localDate: LocalDate): string {
-  return capitalize(format(calendarDate(localDate), 'EEEE d MMMM yyyy', { locale: fr }))
+  return premierDuMois(
+    localDate,
+    capitalize(format(calendarDate(localDate), 'EEEE d MMMM yyyy', { locale: fr })),
+  )
 }
 
 /** « Mardi ». */

@@ -183,7 +183,12 @@
         onclick={() => window.print()}
       >
         <span aria-hidden="true">🖨️</span>
-        {chargement ? 'Lecture des inscriptions…' : `Imprimer les ${plannings.length} plannings`}
+        <!-- « Imprimer les 1 plannings » : l'accord manquait sur le bouton principal. -->
+        {chargement
+          ? 'Lecture des inscriptions…'
+          : plannings.length === 1
+            ? 'Imprimer le planning'
+            : `Imprimer les ${plannings.length} plannings`}
       </button>
 
       <ul class="grid gap-2">

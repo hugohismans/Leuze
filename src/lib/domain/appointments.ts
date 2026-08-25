@@ -25,8 +25,25 @@ export function kindIcon(kinds: AppointmentKind[], kindId: string): string {
  * Ce que le patient lit sur sa demande. Toujours dire où l'on en est, sans jamais
  * promettre un délai que personne ne peut tenir.
  */
+/**
+ * L'intitulé d'un motif, tel qu'il se glisse au milieu d'une phrase.
+ *
+ * Les motifs du catalogue portent leur article — « Le psychiatre », « L'assistant
+ * social » — parce qu'ils s'affichent aussi seuls, en tête de liste. Au milieu d'une
+ * phrase ils passent en minuscule. Un intitulé saisi sans article donnait « Demande
+ * envoyée pour voir autre » : quand il n'y a rien à insérer proprement, la phrase se
+ * passe du nom plutôt que de mal l'écrire.
+ */
+function dansLaPhrase(nom: string): string | null {
+  const propre = nom.trim()
+  if (propre === '') return null
+  const minuscule = propre.charAt(0).toLocaleLowerCase('fr') + propre.slice(1)
+  return /^(le |la |l’|l'|les |un |une |des )/.test(minuscule) ? minuscule : null
+}
+
 export function patientStatusLabel(appointment: Appointment, kinds: AppointmentKind[]): string {
   const qui = kindName(kinds, appointment.kindId)
+  const nomme = dansLaPhrase(qui)
   switch (appointment.status) {
     case 'requested':
       /*
@@ -38,13 +55,17 @@ export function patientStatusLabel(appointment: Appointment, kinds: AppointmentK
         regarde pas, et l'application ne le sait pas.
       */
       if (appointment.reopenedForLeave === true) {
-        return `La personne que vous deviez voir sera absente ce jour-là. Votre demande pour voir ${qui.toLowerCase()} est de nouveau en attente : un soignant vous dira quand.`
+        return nomme === null
+          ? 'La personne que vous deviez voir sera absente ce jour-là. Votre demande est de nouveau en attente : un soignant vous dira quand.'
+          : `La personne que vous deviez voir sera absente ce jour-là. Votre demande pour voir ${nomme} est de nouveau en attente : un soignant vous dira quand.`
       }
-      return `Demande envoyée pour voir ${qui.toLowerCase()}. Un soignant vous dira quand.`
+      return nomme === null
+        ? 'Demande envoyée. Un soignant vous dira quand.'
+        : `Demande envoyée pour voir ${nomme}. Un soignant vous dira quand.`
     case 'scheduled':
       return appointment.localDate && appointment.start && appointment.end
-        ? `${formatFullWhen(appointment.localDate, appointment.start, appointment.end)} avec ${appointment.withWhom ?? qui.toLowerCase()}`
-        : `Rendez-vous fixé avec ${qui.toLowerCase()}`
+        ? `${formatFullWhen(appointment.localDate, appointment.start, appointment.end)} avec ${appointment.withWhom ?? nomme ?? qui}`
+        : `Rendez-vous fixé avec ${appointment.withWhom ?? nomme ?? qui}`
     case 'cancelled':
       return appointment.cancellationReason
         ? `Rendez-vous annulé — ${appointment.cancellationReason}`

@@ -38,6 +38,7 @@ import {
   waitlistPosition,
 } from '../../domain/waitlist'
 import { slugify } from '../../domain/slug'
+import { phrase } from '../../domain/francais'
 
 /**
  * Le motif écrit sur une séance annulée pour cause d'absence.
@@ -842,8 +843,8 @@ export function createMockStaffApp(): StaffApp {
           if (animees.length > 0) {
             bouts.push(
               animees.length === 1
-                ? 'une séance que vous animez'
-                : `${animees.length} séances que vous animez`,
+                ? 'une séance animée par cette personne'
+                : `${animees.length} séances animées par cette personne`,
             )
           }
           if (enCours.length > 0) {
@@ -918,7 +919,9 @@ export function createMockStaffApp(): StaffApp {
           message:
             faits.length === 0
               ? 'Le congé est enregistré. Aucun rendez-vous ne sera proposé sur ces jours.'
-              : `Le congé est enregistré. ${faits.join(', et ')}.`,
+              // La majuscule se remet ici : les morceaux sont fabriqués en minuscule,
+              // et « Le congé est enregistré. un rendez-vous… » se lisait mal.
+              : `Le congé est enregistré. ${phrase(faits.join(', et '))}.`,
         }
       },
 

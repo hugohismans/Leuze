@@ -5,7 +5,9 @@
   import { byChronology } from '../../lib/domain/activityOrder'
   import { activityEditRefusal, canEditActivity } from '../../lib/domain/activityAccess'
   import { deletionConsequences, deletionCosts } from '../../lib/domain/catalog'
-  import { formatDuration, todayLocalDate } from '../../lib/domain/time'
+  import { formatDuration, formatLongDayLabel, todayLocalDate } from '../../lib/domain/time'
+  import { formatLocalTime } from '../../lib/domain/availability'
+  import { enumeration } from '../../lib/domain/francais'
   import type { Activity } from '../../lib/domain/types'
   import { navigate } from '../../lib/router.svelte'
   import { enClair } from '../../lib/erreurs'
@@ -77,10 +79,22 @@
   function quand(activity: Activity): string {
     const regle = activity.recurrence
     if (regle === null) {
-      return activity.singleStart ? `Le ${activity.singleStart.date} à ${activity.singleStart.time}` : 'Sans date'
+      /*
+        Une date se lit en français, jamais en format informatique.
+
+        « Le 2026-12-25 à 14:00 » demandait de déchiffrer une date et une heure au lieu de
+        les lire — sur l'écran où l'on cherche une activité des yeux.
+      */
+      return activity.singleStart
+        ? `${formatLongDayLabel(activity.singleStart.date)} à ${formatLocalTime(activity.singleStart.time)}`
+        : 'Sans date'
     }
-    const jours = regle.byWeekday.map((j) => JOURS[j]).join(', ')
-    return `Tous les ${jours} à ${regle.startTime.replace(':', 'h')} — ${formatDuration(regle.durationMin)}`
+    /*
+      « Tous les lundi et le jeudi » : le jour de la semaine s'accorde, et l'énumération
+      se lit à voix haute. « Tous les lundi, jeudi » ne se dit pas.
+    */
+    const jours = enumeration(regle.byWeekday.map((j) => `${JOURS[j] ?? ''}s`))
+    return `Tous les ${jours} à ${formatLocalTime(regle.startTime)} — ${formatDuration(regle.durationMin)}`
   }
 
   /*

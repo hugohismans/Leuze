@@ -794,7 +794,15 @@
                 atelier où onze personnes sont inscrites ne sont pas le même geste.
               -->
               {#if (aConfirmer.sessions ?? []).length > 0}
-                <h5 class="mt-3 text-base font-bold text-ink">Séances que vous animez</h5>
+                <!--
+                  « Séances que vous animez » s'écrivait même quand on déclare le congé de
+                  quelqu'un d'autre — ce qui est le cas courant pour un administrateur.
+                -->
+                <h5 class="mt-3 text-base font-bold text-ink">
+                  {personne.id === staffStore.identity.practitionerId
+                    ? 'Séances que vous animez'
+                    : `Séances qu’anime ${personne.name}`}
+                </h5>
                 <ul class="mt-1 grid gap-1">
                   {#each aConfirmer.sessions ?? [] as seance (seance.occurrenceId)}
                     <li class="text-base text-ink">

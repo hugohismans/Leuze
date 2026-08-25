@@ -4,7 +4,12 @@
   import { store } from '../../lib/appState.svelte'
   import { audienceLabelForStaff, isPublished } from '../../lib/domain/audience'
   import { staffCapacityLabel } from '../../lib/domain/capacity'
-  import { formatLongDayLabel, formatTimeRange, todayLocalDate } from '../../lib/domain/time'
+  import {
+    formatDuration,
+    formatLongDayLabel,
+    formatTimeRange,
+    todayLocalDate,
+  } from '../../lib/domain/time'
   import CancelButton from './CancelButton.svelte'
   import type { Activity, IsoWeekday, LocalDate, LocalTime } from '../../lib/domain/types'
   import type { RosterLine } from '../../lib/data/staffPorts'
@@ -970,7 +975,12 @@
           <label for="duree" class="mb-2 block text-lg font-semibold text-ink">Durée</label>
           <select id="duree" bind:value={duree} class={champ} style="min-height: 56px;">
             {#each DUREES as minutes (minutes)}
-              <option value={minutes}>{minutes >= 60 ? `${minutes / 60} h${minutes % 60 ? ` ${minutes % 60}` : ''}` : `${minutes} minutes`}</option>
+              <!--
+                `formatDuration` plutôt qu'un calcul sur place : « 1.5 h 30 » s'affichait
+                pour une heure et demie, la division rendant « 1.5 » avant qu'on n'ajoute
+                les minutes restantes. Le domaine sait déjà écrire une durée.
+              -->
+              <option value={minutes}>{formatDuration(minutes)}</option>
             {/each}
           </select>
         </div>

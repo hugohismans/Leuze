@@ -42,6 +42,7 @@ import {
 } from './domain/proposals'
 import { PLANNING_HORIZON_DAYS, agendaWeek, firstBookableDay, suggestSlot } from './domain/agenda'
 import { leaveRefusal, normalizeLeaves, withoutLeave, type Leave } from './domain/leave'
+import { phrase } from './domain/francais'
 import { attendanceRefusal, canMarkAttendance } from './domain/attendance'
 import {
   AUTO_DURATION_MIN,
@@ -1801,7 +1802,13 @@ const MOTIF_ABSENCE = "L'animateur est absent"
  */
 function cePeriodePorte(rendezVous: number, seances: number): string {
   const bouts: string[] = []
-  if (seances > 0) bouts.push(seances === 1 ? 'une séance que vous animez' : `${seances} séances que vous animez`)
+  // « que vous animez » s'écrivait même quand un administrateur déclare le congé de
+  // quelqu'un d'autre, ce qui est le cas courant.
+  if (seances > 0) {
+    bouts.push(
+      seances === 1 ? 'une séance animée par cette personne' : `${seances} séances animées par cette personne`,
+    )
+  }
   if (rendezVous > 0) bouts.push(rendezVous === 1 ? 'un rendez-vous fixé' : `${rendezVous} rendez-vous fixés`)
   return `Ce congé tombe sur ${bouts.join(' et ')}.`
 }
@@ -1992,7 +1999,9 @@ function congeEnregistre(rouverts: number, seances: number): string {
   if (bouts.length === 0) {
     return 'Le congé est enregistré. Aucun rendez-vous ne sera proposé sur ces jours.'
   }
-  return `Le congé est enregistré. ${bouts.join(', et ')}.`
+  // La majuscule se remet ici : les morceaux sont fabriqués en minuscule, et
+  // « Le congé est enregistré. un rendez-vous… » se lisait mal.
+  return `Le congé est enregistré. ${phrase(bouts.join(', et '))}.`
 }
 
 /**

@@ -15,6 +15,7 @@
     formatTime,
     instantOf,
   } from '../../lib/domain/time'
+  import { de } from '../../lib/domain/francais'
   import type { LocalDate, LocalTime } from '../../lib/domain/types'
 
   /**
@@ -329,10 +330,20 @@
         {/each}
       </ul>
 
+      <!--
+        « les deux agendas : celui de Docteur Lemaire . » — la phrase promettait deux
+        agendas puis n'en nommait qu'un, avec un espace avant le point. Sans patient
+        désigné, il n'y en a qu'un, et la phrase le dit.
+      -->
       <p class="mt-3 text-base text-ink-soft">
-        « Pris » rassemble les deux agendas : celui de {practitionerName}
-        {#if patientFirstName !== ''}et celui de {patientFirstName}{/if}. Ci-dessus, la
-        semaine qui vient ; « Voir tous les créneaux possibles » va jusqu'à trois semaines.
+        {#if patientFirstName !== ''}
+          « Pris » rassemble les deux agendas : celui {de(practitionerName)} et celui
+          {de(patientFirstName)}.
+        {:else}
+          « Pris », c'est l'agenda {de(practitionerName)}.
+        {/if}
+        Ci-dessus, la semaine qui vient ; « Voir tous les créneaux possibles » va jusqu'à
+        trois semaines.
       </p>
 
       {#snippet failed()}

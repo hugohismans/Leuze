@@ -300,3 +300,20 @@ describe('les rendez-vous annulés que le patient doit encore lire', () => {
     expect(liste).toEqual([])
   })
 })
+
+describe('un motif sans article', () => {
+  const sansArticle: AppointmentKind[] = [
+    { id: 'autre', name: 'Autre', icon: '👤', isActive: true },
+  ]
+
+  it('ne produit pas « pour voir autre » : la phrase se passe du nom', () => {
+    const texte = patientStatusLabel(demande({ kindId: 'autre' }), sansArticle)
+    expect(texte).not.toContain('pour voir autre')
+    expect(texte).toContain('Demande envoyée')
+    expect(texte).toContain('Un soignant vous dira quand')
+  })
+
+  it('garde le nom quand il porte son article', () => {
+    expect(patientStatusLabel(demande(), kinds)).toContain('le psychiatre')
+  })
+})
