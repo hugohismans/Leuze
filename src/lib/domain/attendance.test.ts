@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   attendanceLabel,
+  attendanceOpen,
   attendanceRefusal,
   isLedByPatient,
   canMarkAttendance,
@@ -128,5 +129,29 @@ describe('ce que l’écran dit quand l’appel n’est pas possible', () => {
 
   it('reste compréhensible quand le compte existe mais pas le nom', () => {
     expect(attendanceRefusal({ facilitatorId: 'marc' })).toContain('réservé à la personne')
+  })
+})
+
+describe('une séance annulée', () => {
+  it("n'a pas d'appel : le bouton ne doit même pas être proposé", () => {
+    expect(attendanceOpen({ facilitatorId: 'marc', status: 'cancelled' })).toBe(false)
+    expect(attendanceOpen({ facilitatorId: 'marc', status: 'scheduled' })).toBe(true)
+  })
+
+  it('refuse de noter, à l’administrateur comme à l’animateur', () => {
+    const seance = { facilitatorId: 'marc', status: 'cancelled' }
+    expect(canMarkAttendance({ role: 'admin', practitionerId: null }, seance)).toBe(false)
+    expect(canMarkAttendance({ role: 'staff', practitionerId: 'marc' }, seance)).toBe(false)
+  })
+
+  it('dit pourquoi, avec le motif quand il y en a un', () => {
+    const texte = attendanceRefusal({
+      facilitatorId: 'marc',
+      status: 'cancelled',
+      cancellationReason: "L'animateur est absent",
+    })
+    expect(texte).toContain('annulée')
+    expect(texte).toContain("L'animateur est absent")
+    expect(attendanceRefusal({ facilitatorId: 'marc', status: 'cancelled' })).toContain('annulée')
   })
 })

@@ -825,6 +825,14 @@ class StaffStore {
       this.message = resultat.message
       return
     }
+    /*
+      L'écran patient vit dans la même page : il doit voir le changement tout de suite.
+
+      Le réglage du service le faisait déjà ; le réglage particulier, non. Le bouton
+      restait donc affiché pendant dix secondes — le temps du cache — la personne
+      appuyait, et l'inscription était refusée sous un écran qui l'y invitait encore.
+    */
+    void store.loadPatientPermissions(true)
     this.message =
       valeur === null
         ? `« ${actionLabel(action)} » suit de nouveau le réglage du service.`

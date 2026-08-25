@@ -50,13 +50,27 @@ export function isLedByPatient(occurrence: { ledByPatient?: boolean }): boolean 
  * donnée incohérente — un intervenant resté renseigné sur une activité animée par un
  * patient ne doit pas rouvrir un appel dont personne n'a voulu.
  */
-export function attendanceOpen(occurrence: { facilitatorId?: string; ledByPatient?: boolean }): boolean {
+export function attendanceOpen(occurrence: {
+  facilitatorId?: string
+  ledByPatient?: boolean
+  status?: string
+}): boolean {
+  /*
+    Une séance annulée n'a pas d'appel.
+
+    Le bouton « Faire l'appel » restait proposé sur une carte pourtant marquée
+    « Annulée », l'écran d'appel ne disait nulle part qu'elle l'était, et l'on pouvait y
+    noter des présences sur une séance qui n'aurait pas lieu. Seul l'ajout d'une personne
+    échouait — avec un message écrit pour le patient, affiché à un soignant, dans le
+    bandeau vert des réussites.
+  */
+  if (occurrence.status === 'cancelled') return false
   return hasFacilitator(occurrence) && !isLedByPatient(occurrence)
 }
 
 export function canMarkAttendance(
   actor: Marker,
-  occurrence: { facilitatorId?: string; ledByPatient?: boolean },
+  occurrence: { facilitatorId?: string; ledByPatient?: boolean; status?: string },
 ): boolean {
   /*
     Une activité animée par un patient n'a pas d'appel, pour personne — pas même pour
@@ -66,6 +80,8 @@ export function canMarkAttendance(
     pas pouvoir se rouvrir par une donnée oubliée.
   */
   if (isLedByPatient(occurrence)) return false
+  // Ni sur une séance annulée : elle n'aura pas lieu, il n'y a personne à cocher.
+  if (occurrence.status === 'cancelled') return false
   // L'administrateur reste le recours : sans lui, l'absence de la personne qui anime
   // laisserait la feuille inachevée jusqu'à son retour.
   if (actor.role === 'admin') return hasFacilitator(occurrence)
@@ -90,7 +106,17 @@ export function attendanceRefusal(occurrence: {
   facilitator?: string
   facilitatorId?: string
   ledByPatient?: boolean
+  status?: string
+  cancellationReason?: string
 }): string {
+  // L'annulation passe avant tout le reste : c'est la raison la plus visible, et la seule
+  // qui explique pourquoi il n'y a personne à cocher.
+  if (occurrence.status === 'cancelled') {
+    const motif = occurrence.cancellationReason
+    return motif === undefined || motif === ''
+      ? "Cette séance est annulée : il n'y a pas d'appel à faire."
+      : `Cette séance est annulée — ${motif}. Il n'y a pas d'appel à faire.`
+  }
   if (isLedByPatient(occurrence)) {
     // Ni un manque ni une erreur : on ne propose pas de « corriger » quoi que ce soit.
     const qui = occurrence.facilitator

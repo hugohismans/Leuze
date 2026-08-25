@@ -35,8 +35,18 @@
    * Le choix est mémorisé sur l'appareil : la tablette du Mazurel rouvre sur Le Mazurel.
    */
   const MEMOIRE = 'leuze.reunion.service'
+  /*
+    « Tous les services » est un choix, et il s'enregistre comme les autres.
+
+    Il s'effaçait de la mémoire de l'appareil au lieu de s'y écrire : au retour suivant,
+    l'écran ne trouvait rien et l'unité du compte reprenait la main. Le choix était donc
+    impossible à conserver, et l'équipe qui passe l'hôpital entier en revue devait le
+    redemander sur chaque écran. Une étoile ne peut pas être un identifiant de service :
+    elle dit « tous », sans se confondre avec « rien de retenu ».
+  */
+  const TOUS = '*'
   const retenu = typeof localStorage === 'undefined' ? null : localStorage.getItem(MEMOIRE)
-  let serviceId = $state<string | null>(retenu)
+  let serviceId = $state<string | null>(retenu === TOUS ? null : retenu)
 
   /*
     À défaut d'un choix retenu sur l'appareil, l'unité du compte fait le premier choix.
@@ -64,8 +74,7 @@
     serviceId = valeur === '' ? null : valeur
     changerDActivite(null)
     if (typeof localStorage !== 'undefined') {
-      if (serviceId === null) localStorage.removeItem(MEMOIRE)
-      else localStorage.setItem(MEMOIRE, serviceId)
+      localStorage.setItem(MEMOIRE, serviceId ?? TOUS)
     }
   }
 
@@ -371,8 +380,14 @@
           <p class="mt-2 text-lg font-semibold text-ink">
             {staffCapacityLabel(courante)}
             {#if etat?.kind === 'full'}
+              <!--
+                Le badge annonçait « les suivants passent en liste d'attente », alors que
+                la réunion ne propose rien de tel : le seul geste offert est « Oui,
+                dépasser », qui inscrit en confirmé. Il dit maintenant ce qui se passe
+                vraiment ici.
+              -->
               <span class="badge ml-2" style="background: var(--color-surface-soft); color: var(--color-ink);">
-                <span aria-hidden="true">⏳</span> Complet — les suivants passent en liste d'attente
+                <span aria-hidden="true">⏳</span> Complet — inscrire quelqu'un dépassera le nombre de places
               </span>
             {/if}
           </p>

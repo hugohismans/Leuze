@@ -255,9 +255,20 @@
             {store.refusal('unregister')}
           </p>
         {/if}
+      {:else if block !== null}
+        <!--
+          Le motif qui compte l'emporte sur la phrase de refus.
+
+          « Les inscriptions se prennent avec un soignant » passait avant tout : pour une
+          séance d'hier ou une séance annulée, on envoyait quelqu'un parler d'une activité
+          qui n'aurait pas lieu — et lui faire perdre son temps, au soignant comme à lui.
+        -->
+        <p class="rounded-xl bg-surface-soft p-4 text-lg text-ink">
+          {registrationBlockMessage(block)}
+        </p>
       {:else if !store.may('register')}
         <p class="rounded-xl bg-surface-soft p-4 text-lg text-ink">{store.refusal('register')}</p>
-      {:else if block === null}
+      {:else}
         <button type="button" class="btn btn-primary btn-huge" disabled={busy} onclick={inscrire}>
           {registrationActionLabel(occurrence)}
         </button>
@@ -275,8 +286,6 @@
           pour toutes les fois suivantes et ne revienne pas.
         -->
         <p class="text-lg text-ink-soft">Vous vous inscrivez pour cette séance seulement.</p>
-      {:else}
-        <p class="card p-5 text-xl">{registrationBlockMessage(block)}</p>
       {/if}
 
       <p
