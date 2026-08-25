@@ -13,6 +13,9 @@
   import StaffApp from './routes/staff/StaffApp.svelte'
   import MyRegistrationsPage from './routes/MyRegistrationsPage.svelte'
   import ProposePage from './routes/ProposePage.svelte'
+  import Tutoriel from './lib/ui/Tutoriel.svelte'
+  import { comptesAyantVuLeTutoriel, retenirTutorielVu } from './lib/tutorielVu'
+  import { shouldOfferTutorial } from './lib/domain/tutoriel'
 
   // Le catalogue n'est lisible qu'une fois la session ouverte (règles Firestore).
   $effect(() => {
@@ -88,6 +91,35 @@
 
   /** L'espace soignant est une application à part : sa propre navigation, sa propre session. */
   const espaceSoignant = $derived(router.path.startsWith('/soignant'))
+
+  /*
+    Le petit tour, à la première connexion.
+
+    « proposePour » retient le compte auquel on l'a déjà proposé. C'est volontairement un
+    `let` ordinaire, non réactif : le lire et l'écrire dans le même effet en ferait une
+    dépendance de cet effet, qui se relancerait aussitôt. C'est le piège que ce projet a
+    déjà payé trois fois.
+
+    Le compte, et non un simple « déjà fait ». Une tablette posée dans une unité voit
+    passer plusieurs personnes sans jamais recharger la page : quelqu'un ferme son accès,
+    la suivante entre son code, et c'est bien pour elle une première connexion. Avec un
+    drapeau unique, elle n'aurait rien vu — et c'est exactement la situation pour laquelle
+    ce petit tour existe.
+  */
+  let proposePour: string | null = null
+  $effect(() => {
+    if (espaceSoignant || !store.signedIn) return
+    const uid = store.patientUid
+    const ouvrir = shouldOfferTutorial(uid, proposePour, comptesAyantVuLeTutoriel())
+    proposePour = uid
+    if (ouvrir) store.tutorielOuvert = true
+  })
+
+  /** Fermer le petit tour vaut « vu » : on ne le remettra plus tout seul sur cet appareil. */
+  function fermerLeTutoriel(): void {
+    store.tutorielOuvert = false
+    retenirTutorielVu(store.patientUid)
+  }
 </script>
 
 <a class="skip-link" href="#contenu">Aller au contenu</a>
@@ -98,6 +130,18 @@
   l'application se décale d'autant. En dessous, elle redevient un tiroir — la largeur ne
   suffit pas à porter les deux.
 -->
+<!--
+  Le petit tour passe par-dessus tout le reste, et hors de la mise en page soignante :
+  c'est une fenêtre, pas un écran de plus. Il n'ajoute donc aucun niveau de profondeur
+  côté patient — la règle des deux niveaux tient.
+-->
+{#if store.tutorielOuvert && !espaceSoignant}
+  <Tutoriel
+    serviceName={store.serviceOf(store.serviceId)?.name ?? null}
+    onclose={fermerLeTutoriel}
+  />
+{/if}
+
 <div class="application" class:soignant={espaceSoignant}>
 <AppHeader />
 <ImpersonationBanner />

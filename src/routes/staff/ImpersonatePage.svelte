@@ -10,6 +10,7 @@
   } from '../../lib/domain/impersonation'
   import { navigate } from '../../lib/router.svelte'
   import { enClair } from '../../lib/erreurs'
+  import Tutoriel from '../../lib/ui/Tutoriel.svelte'
 
   /**
    * « Voir à leur place » — un écran de mise au point, et rien d'autre.
@@ -23,6 +24,15 @@
    * L'écran est réservé à l'administrateur, et le serveur le revérifie : rien ici
    * n'accorde de droit. Chaque passage est écrit au journal des fonctions.
    */
+  /*
+    Le petit tour, montré depuis cet écran.
+
+    Le nom d'unité qu'on y lit est celui du compte, faute de mieux : l'administrateur
+    regarde ce qu'un patient de son unité verrait. Sans unité rattachée, la phrase se lit
+    très bien sans nom — c'est prévu dans le texte.
+  */
+  let tutorielOuvert = $state(false)
+
   let comptes = $state<Account[]>([])
   let recherche = $state('')
   let chargement = $state(true)
@@ -80,6 +90,13 @@
   const champ = 'w-full rounded-xl border-2 border-line bg-white p-3 text-lg text-ink'
 </script>
 
+{#if tutorielOuvert}
+  <Tutoriel
+    serviceName={staffStore.unitLabel}
+    onclose={() => (tutorielOuvert = false)}
+  />
+{/if}
+
 <section class="mx-auto max-w-4xl px-4 py-6">
   <h1 class="mb-2 text-3xl font-bold text-ink">Voir à leur place</h1>
   <p class="mb-4 text-lg text-ink-soft">
@@ -100,6 +117,29 @@
       droits de cette personne — vos propres droits sont mis de côté le temps du détour, et
       chaque passage est inscrit au journal.
     </p>
+
+    <!--
+      Le petit tour, tel qu'un patient le découvre.
+
+      Il s'ouvre tout seul à la première connexion d'une personne, et une fois vu il ne
+      revient plus : sans ce bouton, personne dans l'équipe ne pourrait le relire pour
+      savoir ce qu'on a promis à un patient. Le voir ici, à côté de « Voir à leur place »,
+      va de soi — c'est le même geste, se mettre à la place de quelqu'un.
+
+      Il ne prend la place de personne et n'ouvre aucune session : c'est une simple
+      lecture.
+    -->
+    <div class="mb-5 rounded-xl border-2 border-line p-4">
+      <h2 class="mb-1 text-xl font-bold text-ink">Le petit tour de l'application</h2>
+      <p class="mb-3 text-base text-ink-soft">
+        Ce que voit une personne à sa toute première connexion. Six écrans, une minute.
+        Le montrer ici n'ouvre aucune session et ne change rien pour personne.
+      </p>
+      <button type="button" class="btn btn-secondary" onclick={() => (tutorielOuvert = true)}>
+        <span aria-hidden="true">💡</span>
+        <span>Voir le petit tour</span>
+      </button>
+    </div>
 
     {#if erreur !== null}
       <p role="alert" class="mb-4 rounded-xl bg-red-50 p-3 text-lg font-semibold text-red-900">
