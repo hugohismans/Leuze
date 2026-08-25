@@ -1712,18 +1712,25 @@ async function rendezVousPendant(
     .where('localDate', '>=', leave.from)
     .where('localDate', '<=', leave.to)
     .get()
-  return snapshot.docs.map((document) => {
-    const data = document.data()
-    const debut = data['start'] as Timestamp | undefined
-    const fin = data['end'] as Timestamp | undefined
-    return {
-      id: document.id,
-      patientUid: (data['patientUid'] as string | undefined) ?? '',
-      localDate: (data['localDate'] as LocalDate | undefined) ?? leave.from,
-      ...(debut === undefined ? {} : { start: debut.toDate() }),
-      ...(fin === undefined ? {} : { end: fin.toDate() }),
-    }
-  })
+  const maintenant = Date.now()
+  return snapshot.docs
+    .map((document) => {
+      const data = document.data()
+      const debut = data['start'] as Timestamp | undefined
+      const fin = data['end'] as Timestamp | undefined
+      return {
+        id: document.id,
+        patientUid: (data['patientUid'] as string | undefined) ?? '',
+        localDate: (data['localDate'] as LocalDate | undefined) ?? leave.from,
+        ...(debut === undefined ? {} : { start: debut.toDate() }),
+        ...(fin === undefined ? {} : { end: fin.toDate() }),
+      }
+    })
+    // Un rendez-vous déjà passé n'a pas à retourner dans la file : il a eu lieu.
+    .filter((rendezVous) => {
+      const fin = rendezVous.end ?? rendezVous.start
+      return fin === undefined || fin.getTime() >= maintenant
+    })
 }
 
 /**
@@ -1773,7 +1780,7 @@ export const declareLeave = onCall(async (request: CallableRequest) => {
     from: requireString(request.data?.from, 'from', 10),
     to: requireString(request.data?.to, 'to', 10),
   }
-  const refus = leaveRefusal(leave)
+  const refus = leaveRefusal(leave, todayLocalDate())
   if (refus !== null) throw new HttpsError('invalid-argument', refus)
 
   const fiche = await db().collection(COLLECTIONS.practitioners).doc(practitionerId).get()
@@ -1795,9 +1802,20 @@ export const declareLeave = onCall(async (request: CallableRequest) => {
     demandait donc rien du tout, et l'atelier restait au programme sans personne pour
     l'animer. Constaté en service.
   */
+  /*
+    Seulement les séances qui n'ont pas encore eu lieu.
+
+    « Annuler » veut dire « n'aura pas lieu » : une séance de ce matin a eu lieu, et les
+    personnes qui y sont allées n'ont pas à lire qu'elle a été annulée. Le cas se pose dès
+    qu'un congé a commencé — on tombe malade sans prévenir, et c'est le lendemain qu'on
+    le déclare.
+  */
+  const maintenant = Date.now()
   const animees = seances.docs
     .filter((d) => {
       const data = d.data()
+      const fin = (data['end'] as Timestamp | undefined) ?? (data['start'] as Timestamp | undefined)
+      if (fin !== undefined && fin.toMillis() < maintenant) return false
       return data['facilitatorId'] === practitionerId && data['status'] === 'scheduled'
     })
     .map((d) => {
@@ -1927,10 +1945,20 @@ function congeEnregistre(rouverts: number, seances: number): string {
 /**
  * Retirer un congé.
  *
- * Les rendez-vous rouverts ne se referment pas d'eux-mêmes : ils sont retournés dans la
- * file, quelqu'un s'en occupe peut-être déjà, et les remettre à leur ancienne date sans
- * prévenir ferait deux rendez-vous là où il n'en faut qu'un. Le congé s'annule ; ce
- * qu'il a déplacé se refixe à la main.
+ * Les séances que ce congé avait annulées sont rétablies. Elles restaient barrées, avec
+ * le motif « L'animateur est absent », alors que l'animateur n'était plus en congé — et
+ * le message ne parlait que des rendez-vous, laissant croire que tout le reste était
+ * revenu à la normale. Un soignant qui se trompe de personne ou de dates doit pouvoir
+ * revenir en arrière.
+ *
+ * Seules celles-là : une séance annulée pour une autre raison, ou par quelqu'un d'autre,
+ * n'a rien à voir avec ce congé. Et seules celles à venir : rétablir une séance de la
+ * semaine dernière ne rétablit rien.
+ *
+ * Les rendez-vous rouverts, eux, ne se referment pas : ils sont retournés dans la file,
+ * quelqu'un s'en occupe peut-être déjà, et les remettre à leur ancienne date sans
+ * prévenir ferait deux rendez-vous là où il n'en faut qu'un. Ce qu'un congé a déplacé se
+ * refixe à la main.
  */
 export const removeLeave = onCall(async (request: CallableRequest) => {
   const practitionerId = requireString(request.data?.practitionerId, 'practitionerId')
@@ -1946,12 +1974,52 @@ export const removeLeave = onCall(async (request: CallableRequest) => {
     .doc(practitionerId)
     .set({ leaves: suivants, updatedAt: FieldValue.serverTimestamp() }, { merge: true })
 
+  const retablies = await retablirLesSeancesDuConge(practitionerId, leave)
+  const seances =
+    retablies === 0
+      ? ''
+      : retablies === 1
+        ? ' Une séance annulée pour ce congé est rétablie.'
+        : ` ${retablies} séances annulées pour ce congé sont rétablies.`
+
   return {
     ok: true,
-    message:
-      'Le congé est retiré. Les rendez-vous déjà remis dans la file y restent : ils se refixent à la main.',
+    message: `Le congé est retiré.${seances} Les rendez-vous déjà remis dans la file y restent : ils se refixent à la main.`,
   }
 })
+
+/** Rétablit les séances à venir que ce congé avait barrées, et rend leur nombre. */
+async function retablirLesSeancesDuConge(practitionerId: string, leave: Leave): Promise<number> {
+  const aujourdHui = todayLocalDate()
+  const depart = leave.from > aujourdHui ? leave.from : aujourdHui
+  if (depart > leave.to) return 0
+
+  const seances = await db()
+    .collection(COLLECTIONS.occurrences)
+    .where('localDate', '>=', depart)
+    .where('localDate', '<=', leave.to)
+    .get()
+
+  const lot = db().batch()
+  let retablies = 0
+  for (const document of seances.docs) {
+    const data = document.data() as {
+      status?: string
+      cancellationReason?: string
+      facilitatorId?: string
+    }
+    if (data.status !== 'cancelled') continue
+    if (data.cancellationReason !== MOTIF_ABSENCE) continue
+    if (data.facilitatorId !== practitionerId) continue
+    lot.update(document.ref, {
+      status: 'scheduled',
+      cancellationReason: FieldValue.delete(),
+    })
+    retablies += 1
+  }
+  if (retablies > 0) await lot.commit()
+  return retablies
+}
 
 // ---------------------------------------------------------------------------
 // « Voir à leur place » — outil de mise au point, réservé à l'administrateur

@@ -18,6 +18,7 @@
     seesEveryAppointment,
   } from '../../lib/domain/appointmentAccess'
   import { availabilityLabel, availabilityWarning } from '../../lib/domain/availability'
+  import { leaveWarning } from '../../lib/domain/leave'
   import UnitFilter from './UnitFilter.svelte'
   import { firstBookableDay } from '../../lib/domain/agenda'
   import AppointmentAgenda from './AppointmentAgenda.svelte'
@@ -309,6 +310,22 @@
   const alerteDirecte = $derived(
     availabilityWarning(plagesDe, isoWeekdayOf(dateDirecte), heureDirecte, dureeDirecte),
   )
+  /*
+    Le congé passe avant la plage.
+
+    Le formulaire ne connaissait que les plages : il écrivait « Docteur Lemaire reçoit :
+    mardi de 09h00 à 12h00 » pour un mardi tombant en plein congé — une phrase qui rassure
+    au moment où elle devrait alerter. Le rendez-vous s'enregistrait sans réserve, et
+    c'est le patient qui l'apprenait devant une porte fermée : exactement ce que les
+    congés devaient éviter.
+  */
+  const congeDirect = $derived(
+    leaveWarning(
+      staffStore.leavesOf(intervenantDirect),
+      dateDirecte,
+      intervenantChoisi?.name ?? 'Cette personne',
+    ),
+  )
 
   /**
    * L'agenda croisé : ce que l'intervenant annonce, ce qu'il a déjà, ce que le patient a
@@ -344,6 +361,13 @@
       isoWeekdayOf(date),
       heure,
       duree,
+    ),
+  )
+  const congeDeLaFile = $derived(
+    leaveWarning(
+      staffStore.leavesOf(intervenantFile),
+      date,
+      intervenantDeLaFile?.name ?? 'Cette personne',
     ),
   )
 
@@ -689,6 +713,11 @@
         validationLabel="Enregistrer ce rendez-vous"
         onchoisir={poserDansLeFormulaireDirect}
       />
+      {#if congeDirect !== null}
+        <p role="status" class="mt-3 rounded-xl bg-amber-50 p-3 text-lg font-semibold text-ink">
+          <span aria-hidden="true">🌴</span> {congeDirect}
+        </p>
+      {/if}
       {#if alerteDirecte !== null}
         <p role="status" class="mt-3 rounded-xl bg-amber-50 p-3 text-lg font-semibold text-ink">
           <span aria-hidden="true">⚠️</span> {alerteDirecte}
@@ -865,6 +894,11 @@
                 onchoisir={poserDansLaFile}
               />
 
+              {#if congeDeLaFile !== null}
+                <p role="status" class="mt-3 rounded-xl bg-amber-50 p-3 text-lg font-semibold text-ink">
+                  <span aria-hidden="true">🌴</span> {congeDeLaFile}
+                </p>
+              {/if}
               {#if alerteFile !== null}
                 <p role="status" class="mt-3 rounded-xl bg-amber-50 p-3 text-lg font-semibold text-ink">
                   <span aria-hidden="true">⚠️</span> {alerteFile}

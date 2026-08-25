@@ -55,6 +55,35 @@ function valide(fenetre: AvailabilityWindow): boolean {
 }
 
 /**
+ * Ce qui cloche dans une plage, en français simple. `null` quand elle est enregistrable.
+ *
+ * `normalizeAvailability` jette les plages invalides, et c'est ce qu'il doit faire — mais
+ * il le faisait en silence : l'éditeur se fermait, aucun message ne s'affichait, et la
+ * saisie avait disparu. Pire, corriger « 09:00 → 17:00 » en « 17:00 → 09:00 » sur une
+ * ligne existante faisait perdre d'un coup toutes les plages valides de la fiche, et
+ * l'acceptation automatique avec elles, sans que rien ne l'annonce.
+ */
+export function windowRefusal(window: AvailabilityWindow): string | null {
+  const debut = minutesOf(window.from)
+  const fin = minutesOf(window.to)
+  if (debut === null || fin === null) return 'Indiquez une heure de début et une heure de fin.'
+  if (debut === fin) return "L'heure de fin est la même que l'heure de début : la plage ne dure rien."
+  if (fin < debut) return "L'heure de fin est avant l'heure de début. Vérifiez les deux heures."
+  return null
+}
+
+/** Le premier refus rencontré dans une liste de plages, avec le rang de la ligne fautive. */
+export function firstWindowRefusal(
+  windows: AvailabilityWindow[],
+): { index: number; message: string } | null {
+  for (const [index, fenetre] of windows.entries()) {
+    const refus = windowRefusal(fenetre)
+    if (refus !== null) return { index, message: refus }
+  }
+  return null
+}
+
+/**
  * Remet de l'ordre : les plages mal formées ou vides disparaissent, le reste est trié et
  * les chevauchements d'un même jour sont fondus. « Mardi 9h–11h » et « mardi 10h–12h »
  * deviennent « mardi 9h–12h » — c'est ce que la personne voulait dire.

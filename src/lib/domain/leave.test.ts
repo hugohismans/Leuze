@@ -6,6 +6,7 @@ import {
   isValidLeave,
   leaveClashes,
   leaveRefusal,
+  leaveWarning,
   leavesOverlapping,
   normalizeLeaves,
   withoutLeave,
@@ -190,5 +191,72 @@ describe('les jours de congé qu’une activité viendrait heurter', () => {
   it('ne dit rien sans congé, ni sans calendrier', () => {
     expect(leaveClashes([], { weekdays: [1, 2, 3, 4, 5] }, jourIso)).toEqual([])
     expect(leaveClashes(conges, {}, jourIso)).toEqual([])
+  })
+})
+
+describe('un congé posé sur le passé', () => {
+  it('est refusé quand il est entièrement passé : il ne réécrit rien', () => {
+    const refus = leaveRefusal({ from: '2026-08-10', to: '2026-08-21' }, '2026-08-25')
+    expect(refus).not.toBeNull()
+    expect(refus).toContain('entièrement passé')
+  })
+
+  it('reste accepté quand il a commencé hier et court encore', () => {
+    // On tombe malade sans prévenir : c'est le lendemain qu'on le déclare.
+    expect(leaveRefusal({ from: '2026-08-24', to: '2026-08-28' }, '2026-08-25')).toBeNull()
+  })
+
+  it('accepte un congé qui se termine aujourd’hui', () => {
+    expect(leaveRefusal({ from: '2026-08-20', to: '2026-08-25' }, '2026-08-25')).toBeNull()
+  })
+
+  it('ne juge rien du passé quand on ne lui dit pas quel jour on est', () => {
+    expect(leaveRefusal({ from: '2020-01-01', to: '2020-01-05' })).toBeNull()
+  })
+})
+
+describe('les séances qu’un congé viendrait heurter', () => {
+  const conges = [{ from: '2026-08-20', to: '2026-08-30' }]
+  const jourDe = (localDate: string): number => {
+    const [a, m, j] = localDate.split('-').map(Number)
+    return ((new Date(Date.UTC(a!, m! - 1, j!)).getUTCDay() + 6) % 7) + 1
+  }
+
+  it('écarte celles qui ont déjà eu lieu', () => {
+    const heurtees = leaveClashes(conges, { dates: ['2026-08-21', '2026-08-27'] }, jourDe, '2026-08-25')
+    expect(heurtees).toEqual(['2026-08-27'])
+  })
+
+  it('garde celles d’aujourd’hui : la séance de cet après-midi n’a pas encore eu lieu', () => {
+    const heurtees = leaveClashes(conges, { dates: ['2026-08-25'] }, jourDe, '2026-08-25')
+    expect(heurtees).toEqual(['2026-08-25'])
+  })
+
+  it('écarte aussi le passé d’une récurrence hebdomadaire', () => {
+    // Jeudi : le 20 et le 27 août 2026 tombent tous deux dans le congé.
+    const heurtees = leaveClashes(conges, { weekdays: [4] }, jourDe, '2026-08-25')
+    expect(heurtees).toEqual(['2026-08-27'])
+  })
+
+  it('garde tout quand on ne lui dit pas quel jour on est', () => {
+    const heurtees = leaveClashes(conges, { weekdays: [4] }, jourDe)
+    expect(heurtees).toEqual(['2026-08-20', '2026-08-27'])
+  })
+})
+
+describe('l’avertissement de congé au moment de fixer un rendez-vous', () => {
+  const conges = [{ from: '2026-08-31', to: '2026-09-04' }]
+
+  it('prévient, en nommant la personne', () => {
+    const texte = leaveWarning(conges, '2026-09-01', 'Docteur Lemaire')
+    expect(texte).toContain('Docteur Lemaire')
+    expect(texte).toContain('en congé')
+    // Il avertit, il n'interdit pas : une urgence se cale où l'on veut.
+    expect(texte).toContain('Vous pouvez tout de même')
+  })
+
+  it('se tait les autres jours', () => {
+    expect(leaveWarning(conges, '2026-09-05', 'Docteur Lemaire')).toBeNull()
+    expect(leaveWarning([], '2026-09-01', 'Docteur Lemaire')).toBeNull()
   })
 })

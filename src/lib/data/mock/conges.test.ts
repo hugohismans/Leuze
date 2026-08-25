@@ -2,7 +2,9 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { createMockStaffApp } from './index'
 import { mockCatalog } from './catalog'
 import { resetWorld, world, DEMO_PATIENT_UID } from './state'
-import { addLocalDays, todayLocalDate } from '../../domain/time'
+import { addMinutes, addLocalDays, instantOf, todayLocalDate } from '../../domain/time'
+import type { LocalDate } from '../../domain/types'
+import { makeOccurrence } from '../../domain/fixtures'
 import { firstBookableDay } from '../../domain/agenda'
 
 /**
@@ -343,5 +345,92 @@ describe('un congé qui tombe sur une séance', () => {
       { force: true, cancelSessions: true },
     )
     expect(world.occurrences.get(id)?.status).toBe('scheduled')
+  })
+})
+
+describe('retirer un congé', () => {
+  beforeEach(() => {
+    resetWorld()
+    mockCatalog.reset()
+    world.occurrences.clear()
+    world.leaves = {}
+  })
+
+  const admin = async () => {
+    const app = createMockStaffApp()
+    await app.session.signIn('admin@exemple.test', 'peu-importe')
+    return app
+  }
+
+  /** Une séance animée par le Docteur Lemaire, à la date demandée. */
+  const poserUneSeance = (localDate: string) => {
+    const debut = instantOf(localDate as LocalDate, '14:30')
+    const id = `groupe-de-parole_${localDate.replaceAll('-', '')}T1430`
+    world.occurrences.set(
+      id,
+      makeOccurrence({
+        id,
+        activityId: 'groupe-de-parole',
+        title: 'Groupe de parole',
+        localDate: localDate as LocalDate,
+        start: debut,
+        end: addMinutes(debut, 90),
+        status: 'scheduled',
+        facilitatorId: 'docteur-lemaire',
+      }),
+    )
+    return id
+  }
+
+  it('rétablit les séances que ce congé avait annulées', async () => {
+    const app = await admin()
+    const dans = addLocalDays(todayLocalDate(), 7)
+    const id = poserUneSeance(dans)
+
+    const conge = { from: dans, to: dans }
+    await app.repository.declareLeave('docteur-lemaire', conge, { force: true, cancelSessions: true })
+    expect(world.occurrences.get(id)?.status).toBe('cancelled')
+
+    const retrait = await app.repository.removeLeave('docteur-lemaire', conge)
+    expect(retrait.ok).toBe(true)
+    expect(retrait.message).toContain('rétablie')
+    expect(world.occurrences.get(id)?.status).toBe('scheduled')
+    expect(world.occurrences.get(id)?.cancellationReason).toBeUndefined()
+  })
+
+  it('ne rétablit pas une séance annulée pour une autre raison', async () => {
+    const app = await admin()
+    const dans = addLocalDays(todayLocalDate(), 7)
+    const id = poserUneSeance(dans)
+    await app.repository.cancelOccurrence(id, 'La salle est prise')
+
+    const conge = { from: dans, to: dans }
+    await app.repository.declareLeave('docteur-lemaire', conge, { force: true, cancelSessions: true })
+    await app.repository.removeLeave('docteur-lemaire', conge)
+
+    expect(world.occurrences.get(id)?.status).toBe('cancelled')
+    expect(world.occurrences.get(id)?.cancellationReason).toBe('La salle est prise')
+  })
+})
+
+describe('un congé qui a déjà commencé', () => {
+  beforeEach(() => {
+    resetWorld()
+    mockCatalog.reset()
+    world.occurrences.clear()
+    world.leaves = {}
+  })
+
+  it('est refusé quand il est entièrement passé', async () => {
+    const app = createMockStaffApp()
+    await app.session.signIn('admin@exemple.test', 'peu-importe')
+    const hier = addLocalDays(todayLocalDate(), -1)
+    const resultat = await app.repository.declareLeave(
+      'docteur-lemaire',
+      { from: addLocalDays(todayLocalDate(), -8), to: hier },
+      { force: true, cancelSessions: true },
+    )
+    expect(resultat.ok).toBe(false)
+    expect(resultat.message).toContain('passé')
   })
 })

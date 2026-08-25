@@ -3,9 +3,11 @@ import {
   availabilityLabel,
   availabilityWarning,
   coversAppointment,
+  firstWindowRefusal,
   formatLocalTime,
   minutesOf,
   normalizeAvailability,
+  windowRefusal,
   windowsOn,
   type AvailabilityWindow,
 } from './availability'
@@ -144,5 +146,35 @@ describe('la phrase qui résume', () => {
 
   it('est vide quand rien n’est renseigné', () => {
     expect(availabilityLabel([])).toBe('')
+  })
+})
+
+describe('une plage qui ne tient pas debout', () => {
+  it('dit ce qui cloche plutôt que de disparaître en silence', () => {
+    expect(windowRefusal({ weekday: 5, from: '16:00', to: '08:00' })).toContain(
+      "L'heure de fin est avant l'heure de début",
+    )
+    expect(windowRefusal({ weekday: 1, from: '10:00', to: '10:00' })).toContain('ne dure rien')
+    expect(windowRefusal({ weekday: 1, from: 'n’importe quoi', to: '10:00' })).toContain(
+      'Indiquez une heure',
+    )
+  })
+
+  it('se tait quand la plage est bonne', () => {
+    expect(windowRefusal({ weekday: 2, from: '09:00', to: '12:00' })).toBeNull()
+  })
+
+  it('désigne la ligne fautive, pour qu’on sache laquelle corriger', () => {
+    const refus = firstWindowRefusal([
+      { weekday: 2, from: '09:00', to: '12:00' },
+      { weekday: 4, from: '17:00', to: '09:00' },
+    ])
+    expect(refus?.index).toBe(1)
+    expect(refus?.message).toContain('avant')
+  })
+
+  it('ne trouve rien à redire à une liste vide ou entièrement valide', () => {
+    expect(firstWindowRefusal([])).toBeNull()
+    expect(firstWindowRefusal([{ weekday: 2, from: '09:00', to: '12:00' }])).toBeNull()
   })
 })

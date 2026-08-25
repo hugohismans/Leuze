@@ -38,6 +38,15 @@ import {
   waitlistPosition,
 } from '../../domain/waitlist'
 import { slugify } from '../../domain/slug'
+
+/**
+ * Le motif écrit sur une séance annulée pour cause d'absence.
+ *
+ * « L'animateur est absent », et non « Congé » : c'est la personne inscrite qui le lira,
+ * et la raison d'une absence ne la regarde pas. Écrit une fois, pour que le retrait du
+ * congé reconnaisse exactement ce que la déclaration a posé.
+ */
+const MOTIF_ABSENCE = "L'animateur est absent"
 import type {
   NewPatientCode,
   ActivityDraft,
@@ -50,7 +59,15 @@ import type {
 } from '../staffPorts'
 
 const DEMO_STAFF: StaffIdentity = {
-  uid: 'demo-soignant',
+  /*
+    L'identifiant est celui du compte, `staff-marc`, et non un `demo-soignant` à part.
+
+    Les deux ne se rejoignaient jamais : la fiche de son propre compte, dans « Le
+    personnel », se croyait donc celle de quelqu'un d'autre. La case « Administrateur »
+    y restait active, et l'on pouvait se retirer ses propres droits — le garde-fou prévu
+    par l'écran ne se déclenchait pas une seule fois.
+  */
+  uid: 'staff-marc',
   email: 'soignant@exemple.test',
   firstName: 'Marc',
   role: 'admin',
@@ -82,7 +99,14 @@ const pourLaFeuille = (code: string): string => code.replace(/(.{3})(?=.)/g, '$1
  * Qui est administrateur, dans la démonstration. Les comptes n'y existent pas vraiment ;
  * ce petit registre tient lieu de jeton, le temps de la visite.
  */
-const rolesDeDemonstration = new Map<string, 'staff' | 'admin'>()
+/*
+  Le rôle de chaque intervenant, dans la démonstration.
+
+  « Marc » y est administrateur dès le départ : c'est le compte avec lequel on se
+  connecte. Sans cette ligne, les six fiches affichaient « Administrateur » décochée et
+  l'écran prétendait que personne ne l'était.
+*/
+const rolesDeDemonstration = new Map<string, 'staff' | 'admin'>([['marc', 'admin']])
 
 /** Un numéro qui ne se répète pas, pour fabriquer des identifiants uniques. */
 let compteur = 0
@@ -713,7 +737,7 @@ export function createMockStaffApp(): StaffApp {
             message: 'Vous ne pouvez déclarer un congé que pour vous-même. Demandez à un administrateur.',
           }
         }
-        const refus = leaveRefusal(leave)
+        const refus = leaveRefusal(leave, todayLocalDate())
         if (refus !== null) return { ok: false, message: refus }
 
         const enCours = world.appointments.filter(
@@ -722,17 +746,29 @@ export function createMockStaffApp(): StaffApp {
             a.status === 'scheduled' &&
             a.localDate !== undefined &&
             a.localDate >= leave.from &&
-            a.localDate <= leave.to,
+            a.localDate <= leave.to &&
+            // Un rendez-vous déjà passé n'a pas à retourner dans la file : il a eu lieu.
+            (a.end ?? a.start)!.getTime() >= Date.now(),
         )
-        // Les séances animées pendant le congé : la liste, et non le seul compte. Un
-        // congé posé sur une journée qui ne portait qu'un atelier ne demandait rien.
+        /*
+          Les séances animées pendant le congé : la liste, et non le seul compte. Un
+          congé posé sur une journée qui ne portait qu'un atelier ne demandait rien.
+
+          Seulement celles qui n'ont pas encore eu lieu. « Annuler » veut dire « n'aura
+          pas lieu » : une séance de ce matin a eu lieu, et les personnes qui y sont
+          allées n'ont pas à lire qu'elle a été annulée. Le cas se pose dès qu'on déclare
+          un congé qui a commencé — on tombe malade sans prévenir, et c'est le lendemain
+          qu'on le déclare.
+        */
+        const maintenant = Date.now()
         const animees = [...world.occurrences.values()]
           .filter(
             (o) =>
               o.facilitatorId === practitionerId &&
               o.status === 'scheduled' &&
               o.localDate >= leave.from &&
-              o.localDate <= leave.to,
+              o.localDate <= leave.to &&
+              o.end.getTime() >= maintenant,
           )
           .map((o) => ({
             occurrenceId: o.id,
@@ -787,7 +823,7 @@ export function createMockStaffApp(): StaffApp {
           world.occurrences.set(seance.occurrenceId, {
             ...occurrence,
             status: 'cancelled',
-            cancellationReason: "L'animateur est absent",
+            cancellationReason: MOTIF_ABSENCE,
             overridden: true,
           })
         }
@@ -829,6 +865,18 @@ export function createMockStaffApp(): StaffApp {
         }
       },
 
+      /**
+       * Retirer un congé rétablit les séances que ce congé avait annulées.
+       *
+       * Elles restaient barrées, avec le motif « L'animateur est absent », alors que
+       * l'animateur n'était plus en congé — et le message ne parlait que des rendez-vous,
+       * laissant croire que tout le reste était revenu à la normale. Un soignant qui se
+       * trompe de personne ou de dates doit pouvoir revenir en arrière.
+       *
+       * Seules celles-là : une séance annulée pour une autre raison, ou par quelqu'un
+       * d'autre, n'a rien à voir avec ce congé. Et seules celles à venir : rétablir une
+       * séance de la semaine dernière ne rétablit rien.
+       */
       async removeLeave(practitionerId: string, leave: Leave) {
         if (identity.role !== 'admin' && identity.practitionerId !== practitionerId) {
           return { ok: false, message: 'Vous ne pouvez retirer que vos propres congés.' }
@@ -837,10 +885,29 @@ export function createMockStaffApp(): StaffApp {
           ...world.leaves,
           [practitionerId]: withoutLeave(world.leaves[practitionerId] ?? [], leave),
         }
+
+        const aujourdHui = todayLocalDate()
+        let retablies = 0
+        for (const [id, occurrence] of world.occurrences) {
+          if (occurrence.status !== 'cancelled') continue
+          if (occurrence.cancellationReason !== MOTIF_ABSENCE) continue
+          if (occurrence.facilitatorId !== practitionerId) continue
+          if (occurrence.localDate < leave.from || occurrence.localDate > leave.to) continue
+          if (occurrence.localDate < aujourdHui) continue
+          const { cancellationReason: _motif, ...sansMotif } = occurrence
+          world.occurrences.set(id, { ...sansMotif, status: 'scheduled' as const })
+          retablies += 1
+        }
+
+        const seances =
+          retablies === 0
+            ? ''
+            : retablies === 1
+              ? ' Une séance annulée pour ce congé est rétablie.'
+              : ` ${retablies} séances annulées pour ce congé sont rétablies.`
         return {
           ok: true,
-          message:
-            'Le congé est retiré. Les rendez-vous déjà remis dans la file y restent : ils se refixent à la main.',
+          message: `Le congé est retiré.${seances} Les rendez-vous déjà remis dans la file y restent : ils se refixent à la main.`,
         }
       },
 

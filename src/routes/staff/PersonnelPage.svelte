@@ -4,6 +4,7 @@
   import { uniqueSlug } from '../../lib/domain/slug'
   import {
     availabilityLabel,
+    firstWindowRefusal,
     normalizeAvailability,
     weekdayName,
   } from '../../lib/domain/availability'
@@ -129,7 +130,7 @@
       aConfirmer = null
       return
     }
-    const refus = leaveRefusal(conge)
+    const refus = leaveRefusal(conge, todayLocalDate())
     if (refus !== null) {
       congeErreur = refus
       return
@@ -247,6 +248,21 @@
   const peutModifierLesPlages = (practitionerId: string): boolean =>
     staffStore.isAdmin || staffStore.identity.practitionerId === practitionerId
 
+  /**
+   * Est-ce le compte avec lequel on est connecté ?
+   *
+   * Deux façons de le reconnaître, et il en faut deux : l'identifiant du compte, et
+   * l'intervenant auquel il est relié. Les deux ne se rejoignaient pas en démonstration —
+   * l'identité portait « demo-soignant », les comptes « staff-marc » — et le garde-fou
+   * ne se déclenchait jamais : on pouvait se retirer ses propres droits sur sa propre
+   * fiche, qui se croyait celle de quelqu'un d'autre.
+   */
+  const cEstMonCompte = (compte: { uid: string; practitionerId?: string }): boolean =>
+    compte.uid === staffStore.identity.uid ||
+    (compte.practitionerId !== undefined &&
+      compte.practitionerId !== '' &&
+      compte.practitionerId === staffStore.identity.practitionerId)
+
   function ouvrirLesPlages(personne: Practitioner): void {
     plagesOuvertes = personne.id
     const existantes = personne.availability ?? []
@@ -263,7 +279,21 @@
     })
   }
 
+  /*
+    Ce qui cloche dans le brouillon, ligne par ligne.
+
+    Le domaine remettait de l'ordre en silence : une plage inversée ou de zéro minute
+    disparaissait, l'éditeur se fermait, et rien ne le disait. Corriger une ligne
+    existante en « 17:00 → 09:00 » — la faute de frappe courante quand on voulait
+    « 09:00 → 17:00 » — faisait perdre d'un coup toutes les plages de la fiche.
+  */
+  const refusDesPlages = $derived(firstWindowRefusal(brouillon))
+
   async function enregistrerLesPlages(practitionerId: string): Promise<void> {
+    if (refusDesPlages !== null) {
+      erreur = refusDesPlages.message
+      return
+    }
     // Le domaine remet de l'ordre avant l'enregistrement : tri, fusion, rejet du vide.
     const propres = normalizeAvailability(brouillon)
     await tenter(async () => {
@@ -584,6 +614,17 @@
             {/each}
           </ul>
 
+          <!--
+            Ce qui cloche se dit avant d'enregistrer, et sur place. L'éditeur se fermait
+            en silence et la plage saisie avait disparu.
+          -->
+          {#if refusDesPlages !== null}
+            <p role="alert" class="mt-3 rounded-xl bg-amber-50 p-3 text-lg font-semibold text-ink">
+              <span aria-hidden="true">⚠️</span>
+              Plage {refusDesPlages.index + 1} : {refusDesPlages.message}
+            </p>
+          {/if}
+
           <div class="mt-3 flex flex-wrap gap-2">
             <button
               type="button"
@@ -595,7 +636,7 @@
             <button
               type="button"
               class="btn btn-primary"
-              disabled={busy}
+              disabled={busy || refusDesPlages !== null}
               onclick={() => enregistrerLesPlages(personne.id)}
             >
               {busy ? 'Un instant…' : 'Enregistrer'}
@@ -921,12 +962,12 @@
             <input
               type="checkbox"
               checked={compte.role === 'admin'}
-              disabled={busy || compte.uid === staffStore.identity.uid}
+              disabled={busy || cEstMonCompte(compte)}
               onchange={(event) => basculerAdministrateur(compte, event.currentTarget.checked)}
             />
             <span>
               <strong>Administrateur.</strong>
-              {#if compte.uid === staffStore.identity.uid}
+              {#if cEstMonCompte(compte)}
                 C'est votre compte : vous ne pouvez pas retirer vos propres droits.
               {:else}
                 Voit tous les plannings et tous les rendez-vous, gère les patients, le
