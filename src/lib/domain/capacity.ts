@@ -1,6 +1,6 @@
 import { config } from '../config'
 import { accorde, motAccorde } from './francais'
-import type { Occurrence } from './types'
+import type { Occurrence, RegistrationStatus } from './types'
 
 export type CapacityState =
   | { kind: 'cancelled' }
@@ -87,6 +87,18 @@ export function registrationActionLabel(occurrence: Occurrence): string {
  */
 export function registeredLabel(occurrence: Occurrence): string {
   return occurrence.registrationRequired ? 'Vous êtes inscrit' : 'Vous avez noté que vous venez'
+}
+
+/**
+ * Ce qu'on lit sur une séance annulée, à propos de ce qu'on avait fait.
+ *
+ * Le bandeau écrivait « Vous étiez inscrit » à tout le monde : à qui s'était noté sur
+ * une activité sans inscription, comme à qui attendait une place. C'est la faute que le
+ * reste de l'écran venait d'apprendre à ne plus faire.
+ */
+export function wasRegisteredLabel(occurrence: Occurrence, status: RegistrationStatus): string {
+  if (status === 'waitlist') return "Vous étiez sur la liste d'attente"
+  return occurrence.registrationRequired ? 'Vous étiez inscrit' : 'Vous aviez noté que vous veniez'
 }
 
 /** Le geste inverse, dans les mêmes mots. */

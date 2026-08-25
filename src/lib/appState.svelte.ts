@@ -119,6 +119,20 @@ class AppStore {
     return this.visible.filter((o) => o.localDate === date)
   }
 
+  /**
+   * Combien d'activités le filtre écarte, ce jour-là.
+   *
+   * Un jour vide sous un filtre se dit de deux façons — « il n'y en a pas » ou « le
+   * filtre les cache » — et l'écran choisissait sur la seule présence d'un filtre. Un
+   * dimanche sans rien au programme invitait donc à retirer le filtre pour ne rien
+   * découvrir de plus : on cherche, on retire, il ne se passe rien, et l'on doute de
+   * l'application plutôt que du dimanche.
+   */
+  hiddenOn(date: LocalDate): number {
+    if (!this.hasFilters) return 0
+    return this.occurrences.filter((o) => o.localDate === date).length - this.byDay(date).length
+  }
+
   categoryOf(id: string): Category | null {
     return this.categories.find((c) => c.id === id) ?? null
   }

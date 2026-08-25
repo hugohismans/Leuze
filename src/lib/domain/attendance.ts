@@ -102,13 +102,22 @@ export function canMarkAttendance(
  * contredisent à l'écran font douter de tout le reste. On distingue donc : il n'y a
  * personne, ou il y a quelqu'un mais sans compte — et l'on dit quoi faire dans les deux cas.
  */
-export function attendanceRefusal(occurrence: {
-  facilitator?: string
-  facilitatorId?: string
-  ledByPatient?: boolean
-  status?: string
-  cancellationReason?: string
-}): string {
+export function attendanceRefusal(
+  occurrence: {
+    facilitator?: string
+    facilitatorId?: string
+    ledByPatient?: boolean
+    status?: string
+    cancellationReason?: string
+  },
+  /*
+    Qui lit compte : la phrase disait « Modifiez l'activité pour désigner quelqu'un » à
+    un soignant à qui l'écran venait de retirer le bouton « Modifier l'activité ». Une
+    consigne qu'on ne peut pas suivre est pire que pas de consigne du tout — elle laisse
+    croire à une maladresse de sa part.
+  */
+  canEditActivity = true,
+): string {
   // L'annulation passe avant tout le reste : c'est la raison la plus visible, et la seule
   // qui explique pourquoi il n'y a personne à cocher.
   if (occurrence.status === 'cancelled') {
@@ -127,9 +136,13 @@ export function attendanceRefusal(occurrence: {
   if (!hasFacilitator(occurrence)) {
     const nomme = occurrence.facilitator
     if (nomme !== undefined && nomme !== '') {
-      return `${nomme} n'a pas de compte dans l'application : l'appel n'est pas possible. Créez son compte dans « Le personnel », puis rattachez cette personne à l'activité.`
+      return canEditActivity
+        ? `${nomme} n'a pas de compte dans l'application : l'appel n'est pas possible. Créez son compte dans « Le personnel », puis rattachez cette personne à l'activité.`
+        : `${nomme} n'a pas de compte dans l'application : l'appel n'est pas possible. Demandez à un administrateur de lui en créer un.`
     }
-    return "Personne n'anime cette activité : l'appel n'est pas possible. Modifiez l'activité pour désigner quelqu'un."
+    return canEditActivity
+      ? "Personne n'anime cette activité : l'appel n'est pas possible. Modifiez l'activité pour désigner quelqu'un."
+      : "Personne n'anime cette activité : l'appel n'est pas possible. Demandez à un administrateur de désigner quelqu'un."
   }
   const qui = occurrence.facilitator
   return qui === undefined || qui === ''

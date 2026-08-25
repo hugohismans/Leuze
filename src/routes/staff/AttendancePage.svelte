@@ -2,6 +2,7 @@
   import { staffStore } from '../../lib/staffState.svelte'
   import { store } from '../../lib/appState.svelte'
   import { attendanceLabel, attendanceRefusal, countAttendance } from '../../lib/domain/attendance'
+  import { canEditActivity } from '../../lib/domain/activityAccess'
   import { isVisibleToService } from '../../lib/domain/audience'
   import { staffCapacityLabel } from '../../lib/domain/capacity'
   import { formatLongDayLabel, formatTimeRange } from '../../lib/domain/time'
@@ -115,10 +116,18 @@
       </p>
     {/if}
 
-    {#if !staffStore.canMarkAttendance}
+    <!--
+      Le cadenas se tait sur une séance annulée : le bandeau au-dessus vient de le dire.
+
+      Les deux corrections ont été posées le même jour sans se voir — le bandeau ici,
+      la branche « annulée » dans `attendanceRefusal` — et l'écran écrivait la même
+      phrase deux fois de suite, la seconde sous un cadenas qui parle d'un droit
+      refusé, servi à un administrateur qui a tous les droits.
+    -->
+    {#if !staffStore.canMarkAttendance && occurrence.status !== 'cancelled'}
       <p role="status" class="card mb-4 p-4 text-lg text-ink">
         <span aria-hidden="true">🔒</span>
-        {attendanceRefusal(occurrence)}
+        {attendanceRefusal(occurrence, canEditActivity(staffStore.identity, occurrence))}
         Vous voyez la liste des inscrits, sans les présences.
       </p>
     {:else if attendanceLabel(compte) !== ''}

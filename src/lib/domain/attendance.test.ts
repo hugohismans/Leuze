@@ -160,3 +160,32 @@ describe('une séance annulée', () => {
     expect(attendanceRefusal({ facilitatorId: 'marc', status: 'cancelled' })).toContain('annulée')
   })
 })
+
+/**
+ * Une consigne qu'on ne peut pas suivre.
+ *
+ * L'écran « Aujourd'hui » disait « Modifiez l'activité pour désigner quelqu'un » à un
+ * soignant à qui il venait de retirer le bouton « Modifier l'activité » : la phrase et
+ * les boutons, corrigés le même jour, ne se sont pas vus. Une consigne impossible est
+ * pire que pas de consigne — elle laisse croire à une maladresse de sa part.
+ */
+describe('le refus d’appel, selon qui le lit', () => {
+  const sansPersonne = { status: 'scheduled' }
+  const nommeSansCompte = { status: 'scheduled', facilitator: 'Fatima' }
+
+  it('dit de modifier l’activité à qui le peut', () => {
+    expect(attendanceRefusal(sansPersonne, true)).toContain("Modifiez l'activité")
+    expect(attendanceRefusal(nommeSansCompte, true)).toContain('« Le personnel »')
+  })
+
+  it('renvoie vers un administrateur à qui ne le peut pas', () => {
+    expect(attendanceRefusal(sansPersonne, false)).toContain('Demandez à un administrateur')
+    expect(attendanceRefusal(sansPersonne, false)).not.toContain("Modifiez l'activité")
+    expect(attendanceRefusal(nommeSansCompte, false)).toContain('Demandez à un administrateur')
+    expect(attendanceRefusal(nommeSansCompte, false)).not.toContain('« Le personnel »')
+  })
+
+  it('nomme quand même la personne qui anime, dans les deux cas', () => {
+    expect(attendanceRefusal(nommeSansCompte, false)).toContain('Fatima')
+  })
+})

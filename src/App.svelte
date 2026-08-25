@@ -102,7 +102,14 @@
 <AppHeader />
 <ImpersonationBanner />
 
-{#if !espaceSoignant && (occurrenceId !== null || router.path === '/mes-inscriptions' || router.path === '/rendez-vous' || router.path === '/ma-semaine' || router.path === '/proposer')}
+<!--
+  Pas de « Retour » sur l'écran du code : il n'y a rien derrière.
+
+  La condition ne regardait que l'adresse. Après « Fermer mon accès » en démonstration,
+  l'adresse restait « /mes-inscriptions » alors que l'écran affiché était celui du code :
+  on lisait « Retour au programme » au-dessus d'un champ qui demandait un code.
+-->
+{#if !espaceSoignant && store.signedIn && (occurrenceId !== null || router.path === '/mes-inscriptions' || router.path === '/rendez-vous' || router.path === '/ma-semaine' || router.path === '/proposer')}
   <BackLink />
 {/if}
 
@@ -114,8 +121,8 @@
 
     Il était sauté : après « Fermer mon accès », la démonstration continuait de proposer
     de s'inscrire, et répondait « Cette activité n'a pas été trouvée ». On y montre donc
-    ce qu'un patient voit vraiment — et le bouton de démonstration, plus bas, rouvre la
-    session d'un geste.
+    ce qu'un patient voit vraiment. L'écran du code dit, en démonstration seulement,
+    quel code taper pour revenir.
   -->
   {:else if !store.signedIn}
     <!--

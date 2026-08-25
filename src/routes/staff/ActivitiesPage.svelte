@@ -205,9 +205,20 @@
             >
               {activity.isActive ? 'Retirer du programme' : 'Mettre au programme'}
             </button>
-            <button type="button" class="btn btn-secondary" onclick={() => (aSupprimer = activity.id)}>
-              Supprimer
-            </button>
+            <!--
+              Le bouton disparaît pendant que la question définitive est posée.
+
+              Il restait cliquable derrière le panneau « Effacer pour de bon ? » : le clic
+              n'affichait rien — l'autre panneau le masquait — mais notait la demande.
+              En répondant « Non, la laisser retirée du programme », on voyait alors
+              surgir « Supprimer cette activité et toutes ses séances ? », comme si
+              l'application n'avait pas entendu.
+            -->
+            {#if aEffacer?.id !== activity.id}
+              <button type="button" class="btn btn-secondary" onclick={() => (aSupprimer = activity.id)}>
+                Supprimer
+              </button>
+            {/if}
           </div>
           {/if}
 
@@ -247,7 +258,16 @@
                 >
                   {busy ? 'Un instant…' : 'Oui, tout effacer'}
                 </button>
-                <button type="button" class="btn btn-secondary" onclick={() => (aEffacer = null)}>
+                <button
+                  type="button"
+                  class="btn btn-secondary"
+                  onclick={() => {
+                    aEffacer = null
+                    // Les deux questions se referment ensemble : « non » vaut pour la
+                    // suppression tout entière, pas pour la seule moitié qu'on lisait.
+                    aSupprimer = null
+                  }}
+                >
                   Non, la laisser retirée du programme
                 </button>
               </div>

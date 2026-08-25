@@ -2,6 +2,7 @@
   import { store } from '../lib/appState.svelte'
   import {
     registeredLabel,
+    wasRegisteredLabel,
     registrationActionLabel,
     registrationBlock,
     registrationBlockMessage,
@@ -98,9 +99,18 @@
       const result = await store.registerTo(occurrence.id)
       messageIsError = !result.ok
       if (result.ok) {
+        /*
+          Les mêmes mots que la carte, et pour la même raison.
+
+          Ce paragraphe est `sr-only` quand tout va bien : il n'est pas vu, il est
+          **entendu**. Il annonçait « Vous êtes inscrit » sur une activité sans
+          inscription, dont la carte affiche « Vous avez noté que vous venez » — la
+          contradiction corrigée à l'écran survivait dans le canal audio, là où
+          justement personne ne pouvait la relever.
+        */
         const pris =
           result.status === 'confirmed'
-            ? 'Vous êtes inscrit.'
+            ? `${registeredLabel(occurrence)}.`
             : `Vous êtes sur la liste d'attente, en position ${result.position}.`
         // Une autre activité tombe au même moment : l'inscription est prise, et on le dit
         // dans la foulée plutôt que de laisser la personne le découvrir le jour même.
@@ -215,9 +225,15 @@
         >
           <p><strong>Cette séance n'aura pas lieu.</strong></p>
           {#if mine}
+            <!--
+              Ce que la personne avait fait, dans les mots qu'elle a lus en le faisant.
+              La phrase était « Vous étiez inscrit » pour tout le monde — y compris pour
+              qui s'était noté sur une activité sans inscription, et pour qui attendait
+              une place.
+            -->
             <p class="mt-1">
-              Vous étiez inscrit. Il n'y a rien à faire : un soignant peut vous proposer
-              autre chose.
+              {wasRegisteredLabel(occurrence, mine.status)}. Il n'y a rien à faire : un
+              soignant peut vous proposer autre chose.
             </p>
           {:else}
             <p class="mt-1">Un soignant peut vous proposer autre chose.</p>

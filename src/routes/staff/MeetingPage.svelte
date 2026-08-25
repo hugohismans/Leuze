@@ -63,7 +63,10 @@
   */
   let semee = retenu !== null
   $effect(() => {
-    const unite = staffStore.unit
+    // `accountUnit` et non `unit` : la réunion est celle de sa propre unité. Cocher
+    // « Voir toutes les unités » pour jeter un œil ailleurs ne doit pas empêcher le
+    // semis — c'est justement le lundi matin qu'on voudrait ne pas y penser.
+    const unite = staffStore.accountUnit
     if (semee || unite === null) return
     semee = true
     serviceId = unite

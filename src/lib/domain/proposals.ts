@@ -21,6 +21,8 @@
  * remplace pas la parole, il ne transporte pas de message à un soignant, et il n'y a rien
  * à y répondre sinon oui ou non.
  */
+import { accorde } from './francais'
+
 export type ProposalStatus = 'proposed' | 'accepted' | 'declined'
 
 export type ActivityProposal = {
@@ -74,6 +76,23 @@ export const PROPOSAL_IDEAS: readonly string[] = [
 ]
 
 /** Ce que le formulaire dit de lui-même, pour que le texte libre reste à sa place. */
+/**
+ * À partir de combien de caractères restants on annonce la limite.
+ *
+ * Les deux champs de l'écran ne suivaient pas la même règle : le nom se taisait jusqu'aux
+ * vingt derniers caractères, la description annonçait « Il vous reste 300 caractères »
+ * sur un champ vide. Trois cents ne veut rien dire avant d'avoir écrit, et cette phrase
+ * de plus se lit comme une consigne pour qui lit avec effort.
+ */
+export const REMAINING_NOTICE_FROM = 20
+
+/** Ce qu'on écrit sous un champ dont la longueur est limitée. `null` tant qu'il reste de la place. */
+export function remainingNotice(restant: number, atteint: string): string | null {
+  if (restant > REMAINING_NOTICE_FROM) return null
+  if (restant <= 0) return atteint
+  return `Il vous reste ${accorde(restant, 'caractère', 'caractères')}.`
+}
+
 export const PROPOSAL_GUIDANCE =
   'Décrivez l’activité : ce qu’on y ferait, et ce qu’il faudrait pour la faire. Ce n’est pas un message à un soignant : ce que vous écrivez ici sert seulement à comprendre votre idée.'
 

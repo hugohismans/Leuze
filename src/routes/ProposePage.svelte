@@ -5,6 +5,7 @@
     PROPOSAL_GUIDANCE,
     PROPOSAL_IDEAS,
     TITLE_MAX,
+    remainingNotice,
     cleanProposal,
     patientProposalLabel,
     validateProposal,
@@ -62,8 +63,18 @@
   /** Le même contrôle que le serveur, avec les mêmes phrases : voir `domain/proposals`. */
   const controle = $derived(validateProposal(cleanProposal(brouillon)))
 
-  const restantTitre = $derived(TITLE_MAX - store.proposalDraft.title.length)
-  const restantDescription = $derived(DESCRIPTION_MAX - store.proposalDraft.description.length)
+  const avisTitre = $derived(
+    remainingNotice(
+      TITLE_MAX - store.proposalDraft.title.length,
+      'Vous avez atteint la longueur maximale du nom.',
+    ),
+  )
+  const avisDescription = $derived(
+    remainingNotice(
+      DESCRIPTION_MAX - store.proposalDraft.description.length,
+      'Vous avez atteint la longueur maximale. Le texte ne s’allongera plus.',
+    ),
+  )
 
   async function envoyer(event: SubmitEvent): Promise<void> {
     event.preventDefault()
@@ -176,12 +187,12 @@
           placeholder="Tournoi d'échecs"
           autocomplete="off"
         />
-        {#if restantTitre <= 20}
-          <p role="status" class="mt-1 text-base text-ink-soft">
-            {restantTitre === 0
-              ? 'Vous avez atteint la longueur maximale du nom.'
-              : `Il vous reste ${restantTitre} caractères.`}
-          </p>
+        <!--
+          Le compte ne paraît que sur la fin. Les deux champs de cet écran suivaient deux
+          règles différentes ; c'est la même, maintenant, et elle vit dans le domaine.
+        -->
+        {#if avisTitre !== null}
+          <p role="status" class="mt-1 text-base text-ink-soft">{avisTitre}</p>
         {/if}
       </div>
 
@@ -204,13 +215,12 @@
         <!--
           Le champ s'arrête à trois cents caractères. Il le faisait en silence : un texte
           collé perdait les trois quarts sans un mot, et la coupe tombait au milieu d'un
-          mot. Le compte restant se lit avant d'écrire, et se met à jour en écrivant.
+          mot. Le compte paraît donc à l'approche de la limite — et pas avant, où
+          « Il vous reste 300 caractères » sous un champ vide se lit comme une consigne.
         -->
-        <p role="status" class="mt-1 text-base text-ink-soft">
-          {restantDescription === 0
-            ? 'Vous avez atteint la longueur maximale. Le texte ne s’allongera plus.'
-            : `Il vous reste ${restantDescription} caractères.`}
-        </p>
+        {#if avisDescription !== null}
+          <p role="status" class="mt-1 text-base text-ink-soft">{avisDescription}</p>
+        {/if}
       </div>
 
       <!--

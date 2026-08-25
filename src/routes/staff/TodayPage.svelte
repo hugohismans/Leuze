@@ -83,7 +83,7 @@
             -->
             <p class="mt-2 text-base font-semibold text-ink">
               <span aria-hidden="true">⚠️</span>
-              {attendanceRefusal(occurrence)}
+              {attendanceRefusal(occurrence, canEditActivity(staffStore.identity, occurrence))}
             </p>
           {/if}
 

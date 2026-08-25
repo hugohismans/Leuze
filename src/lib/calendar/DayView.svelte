@@ -17,13 +17,16 @@
 
   {#if activities.length === 0}
     <!--
-      « Il n'y a pas d'activité ce jour-là » est faux quand un filtre est posé : il y en
-      a, elles sont simplement écartées. Le patient en concluait qu'il n'y avait rien, et
-      ne venait pas. La phrase dit maintenant laquelle des deux situations il lit, et
-      comment en sortir.
+      « Il n'y a pas d'activité ce jour-là » est faux quand un filtre écarte quelque
+      chose : il y en a, elles sont simplement cachées. Le patient en concluait qu'il
+      n'y avait rien, et ne venait pas. La phrase dit maintenant laquelle des deux
+      situations il lit, et comment en sortir.
+
+      C'est bien `hiddenOn` et non `hasFilters` : un dimanche réellement vide sous un
+      filtre invitait à retirer ce filtre pour ne rien découvrir de plus.
     -->
     <p class="card p-6 text-lg">
-      {#if store.hasFilters}
+      {#if store.hiddenOn(date) > 0}
         Aucune activité ne correspond à votre choix ce jour-là. Retirez le filtre, plus
         haut, pour voir tout le programme.
       {:else}

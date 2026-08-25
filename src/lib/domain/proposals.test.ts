@@ -10,6 +10,7 @@ import {
   validateProposal,
   waitingDays,
   type ActivityProposal,
+  remainingNotice,
 } from './proposals'
 
 const idee = (overrides: Partial<ActivityProposal> = {}): ActivityProposal => ({
@@ -133,5 +134,36 @@ describe('les exemples proposés au patient', () => {
     for (const interdit of ['médic', 'soin', 'traitement', 'diagnostic', 'symptôme']) {
       expect(tout).not.toContain(interdit)
     }
+  })
+})
+
+/**
+ * Le compte de caractères, sous les deux champs de « Proposer une activité ».
+ *
+ * Ils ne suivaient pas la même règle : le nom se taisait jusqu'aux vingt derniers
+ * caractères, la description annonçait « Il vous reste 300 caractères » sous un champ
+ * encore vide. Trois cents ne veut rien dire avant d'avoir écrit, et cette phrase de
+ * plus se lit comme une consigne pour qui lit avec effort.
+ */
+describe('le compte de caractères restants', () => {
+  const atteint = 'Vous avez atteint la longueur maximale du nom.'
+
+  it('se tait tant qu’il reste de la place', () => {
+    expect(remainingNotice(300, atteint)).toBeNull()
+    expect(remainingNotice(21, atteint)).toBeNull()
+  })
+
+  it('paraît à l’approche de la limite', () => {
+    expect(remainingNotice(20, atteint)).toBe('Il vous reste 20 caractères.')
+  })
+
+  it('accorde le singulier — « 1 caractère », et non « 1 caractères »', () => {
+    expect(remainingNotice(1, atteint)).toBe('Il vous reste 1 caractère.')
+  })
+
+  it('dit que c’est fini, plutôt que « il vous reste 0 »', () => {
+    expect(remainingNotice(0, atteint)).toBe(atteint)
+    // Un texte collé plus long que la limite : le champ le coupe, le compte reste juste.
+    expect(remainingNotice(-12, atteint)).toBe(atteint)
   })
 })

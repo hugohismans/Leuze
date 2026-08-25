@@ -120,9 +120,15 @@
       if (!staffStore.unitLoaded) return
       categoryId = categories[0]!.id
       locationId = lieux[0]!.id
-      if (staffStore.unit !== null) {
+      /*
+        `accountUnit` et non `unit` : c'est la bulle où l'on travaille, pas ce qu'on
+        regarde en ce moment. Cocher « Voir toutes les unités » pour jeter un œil au
+        programme d'à côté vidait `unit` : l'activité créée ensuite s'ouvrait à tout
+        l'hôpital, à rebours de ce que ce paragraphe dit faire.
+      */
+      if (staffStore.accountUnit !== null) {
         pourTous = false
-        serviceIds = [staffStore.unit]
+        serviceIds = [staffStore.accountUnit]
       }
       // La date vient de la case de la semaine sur laquelle le soignant a cliqué.
       /*
@@ -328,6 +334,22 @@
     !nouvelle && horaireInitial !== '' && horaireCourant !== horaireInitial,
   )
   let avertissementHoraire = $state(false)
+
+  /**
+   * Ce que porte le bouton d'enregistrement, écrit une seule fois.
+   *
+   * L'avertissement d'horaire disait « Appuyez de nouveau sur « Enregistrer » » pendant
+   * que le bouton portait « Enregistrer sans appel » ou « Enregistrer malgré le congé » —
+   * ce qui arrive dès qu'on change l'horaire d'une activité sans animateur désigné. On
+   * cherchait alors un bouton qui n'existait pas.
+   */
+  const libelleEnregistrer = $derived(
+    avertissementConge && congesHeurtes.length > 0
+      ? 'Enregistrer malgré le congé'
+      : avertissementAnimateur && facilitatorId === ''
+        ? 'Enregistrer sans appel'
+        : 'Enregistrer',
+  )
 
   async function enregistrer(event: SubmitEvent): Promise<void> {
     event.preventDefault()
@@ -1228,7 +1250,7 @@
           et il vaut mieux les prévenir de vive voix.
         </p>
         <p class="mt-2 text-lg font-semibold text-ink">
-          Appuyez de nouveau sur « Enregistrer » pour continuer.
+          Appuyez de nouveau sur « {libelleEnregistrer} » pour continuer.
         </p>
       </div>
     {/if}
@@ -1266,13 +1288,7 @@
 
     <div class="flex flex-wrap gap-3">
       <button type="submit" class="btn btn-primary" disabled={busy || refusDeModifier !== null}>
-        {busy
-          ? 'Enregistrement…'
-          : avertissementConge && congesHeurtes.length > 0
-            ? 'Enregistrer malgré le congé'
-            : avertissementAnimateur && facilitatorId === ''
-              ? 'Enregistrer sans appel'
-              : 'Enregistrer'}
+        {busy ? 'Enregistrement…' : libelleEnregistrer}
       </button>
       <!-- « Quitter sans enregistrer » : « Annuler » prêtait à confusion sur un écran
            où l'on annule aussi des séances. -->

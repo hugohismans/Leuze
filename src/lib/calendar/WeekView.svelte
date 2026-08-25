@@ -34,9 +34,13 @@
       </h2>
 
       {#if activities.length === 0}
-        <!-- Voir la vue jour : avec un filtre, « pas d'activité » serait faux. -->
+        <!--
+          Voir la vue jour : quand le filtre écarte quelque chose, « pas d'activité »
+          serait faux ; quand la journée est réellement vide, « Rien avec ce filtre »
+          l'est tout autant.
+        -->
         <p class="px-3 text-base text-ink-soft">
-          {store.hasFilters ? 'Rien avec ce filtre' : "Pas d'activité"}
+          {store.hiddenOn(day) > 0 ? 'Rien avec ce filtre' : "Pas d'activité"}
         </p>
       {:else}
         <ul class="grid grid-cols-1 gap-3">

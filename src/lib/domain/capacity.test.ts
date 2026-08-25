@@ -9,6 +9,7 @@ import {
   registrationInvitation,
   staffCapacityLabel,
   unregisterActionLabel,
+  wasRegisteredLabel,
 } from './capacity'
 import { makeOccurrence } from './fixtures'
 import { instantOf } from './time'
@@ -145,5 +146,33 @@ describe('les mots de l’inscription se répondent', () => {
     expect(registrationActionLabel(libre)).toBe('Je note que je viens')
     expect(registeredLabel(libre)).not.toContain('inscrit')
     expect(unregisterActionLabel(libre)).not.toContain('inscri')
+  })
+})
+
+/**
+ * Ce qu'on lit sur une séance annulée.
+ *
+ * Le bandeau écrivait « Vous étiez inscrit » à tout le monde — y compris à qui s'était
+ * seulement noté sur une activité sans inscription, et à qui attendait une place. C'est
+ * exactement la contradiction que `registeredLabel` venait de corriger trois lignes plus
+ * bas, sur le même écran.
+ */
+describe('ce qu’on avait fait, sur une séance qui n’aura pas lieu', () => {
+  const avecInscription = makeOccurrence({ registrationRequired: true })
+  const sansInscription = makeOccurrence({ registrationRequired: false })
+
+  it('dit « inscrit » là où l’on s’inscrivait', () => {
+    expect(wasRegisteredLabel(avecInscription, 'confirmed')).toBe('Vous étiez inscrit')
+  })
+
+  it('dit « noté » là où l’on notait qu’on venait', () => {
+    expect(wasRegisteredLabel(sansInscription, 'confirmed')).toBe('Vous aviez noté que vous veniez')
+    // Les mêmes mots que la carte, au passé.
+    expect(registeredLabel(sansInscription)).toBe('Vous avez noté que vous venez')
+  })
+
+  it('n’annonce pas une inscription à qui attendait une place', () => {
+    expect(wasRegisteredLabel(avecInscription, 'waitlist')).toContain("liste d'attente")
+    expect(wasRegisteredLabel(sansInscription, 'waitlist')).toContain("liste d'attente")
   })
 })

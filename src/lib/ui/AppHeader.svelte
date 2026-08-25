@@ -46,7 +46,12 @@
       les critères de revue du projet interdisent. Le laisser en place règle les deux
       choses à la fois — la hauteur ne bouge plus, et l'on lit où l'on se trouve.
     -->
-    {#if !router.path.startsWith('/soignant') && (store.isDemo || store.signedIn)}
+    <!--
+      Sans session, pas de bouton : l'écran du code n'a pas d'inscriptions à montrer.
+      En démonstration, `isDemo` le laissait en place après « Fermer mon accès » ; il
+      changeait l'adresse, faisait paraître un « Retour », et ramenait au même champ.
+    -->
+    {#if !router.path.startsWith('/soignant') && store.signedIn}
       {@const ici = router.path === '/mes-inscriptions'}
       <button
         type="button"
