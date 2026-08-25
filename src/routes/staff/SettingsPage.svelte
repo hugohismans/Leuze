@@ -9,6 +9,9 @@
   } from '../../lib/domain/permissions'
   import { navigate } from '../../lib/router.svelte'
   import { proposed } from '../../lib/domain/catalog'
+  import { hasOverrides } from '../../lib/domain/permissions'
+  import { unitName } from '../../lib/domain/unit'
+  import { store } from '../../lib/appState.svelte'
 
   /**
    * Ce que les patients ont le droit de faire.
@@ -27,6 +30,16 @@
   let enCours = $state<string | null>(null)
 
   if (staffStore.isAdmin) staffStore.loadPatientPermissions()
+
+  /** L'unité du compte, indépendamment de la case « Voir toutes les unités ». */
+  const uniteDuCompte = $derived(
+    unitName(store.services, staffStore.accountUnit),
+  )
+
+  /** Combien de personnes portent un réglage qui l'emporte sur celui-ci. */
+  const reglagesParticuliers = $derived(
+    Object.values(staffStore.patientActions).filter((sien) => hasOverrides(sien)).length,
+  )
 
   /**
    * L'unité de rattachement du compte.
@@ -78,9 +91,17 @@
     sept autres. Ce n'est pas un droit qu'on s'accorde — c'est le réglage de son écran.
   -->
   <h2 class="mt-6 mb-1 text-2xl font-bold text-ink">Votre unité</h2>
+  <!--
+    La phrase lisait `unitLabel`, qui vaut « rien » dès que la case « Voir toutes les
+    unités » est cochée : on lisait donc « Vos écrans s'ouvrent sur tout l'hôpital »
+    au-dessus d'un menu affichant « La Couturelle ». Les deux se contredisaient.
+  -->
   <p class="mb-3 text-lg text-ink-soft">
-    {#if staffStore.unitLabel !== null}
-      Vos écrans s'ouvrent sur {staffStore.unitLabel}.
+    {#if uniteDuCompte !== null}
+      Vos écrans s'ouvrent sur {uniteDuCompte}.
+      {#if staffStore.voirToutesLesUnites}
+        Pour l'instant, la case « Voir toutes les unités » les ouvre sur tout l'hôpital.
+      {/if}
     {:else}
       Vos écrans s'ouvrent sur tout l'hôpital.
     {/if}
@@ -114,7 +135,7 @@
     <p class="card mt-6 p-5 text-lg text-ink">
       <span aria-hidden="true">🔒</span>
       Ce que les patients ont le droit de faire est réglé par l'administrateur : cela
-      engage tout le service, pas une activité en particulier.
+      engage tout l'hôpital, pas une activité en particulier.
     </p>
     <button type="button" class="btn btn-secondary mt-4" onclick={() => navigate('/soignant')}>
       <span aria-hidden="true">←</span> Retour à la semaine
@@ -123,10 +144,21 @@
     <h2 class="mt-8 mb-1 text-2xl font-bold text-ink">Ce que les patients peuvent faire</h2>
     <p class="mb-4 text-lg text-ink-soft">{permissionsSummary(staffStore.patientPermissions)}</p>
 
+    <!--
+      Deux précisions manquaient, et l'écran promettait plus qu'il ne tient : le réglage
+      vaut pour tout l'hôpital et non pour la seule unité du compte, et une personne peut
+      porter un réglage particulier qui l'emporte sur celui-ci.
+    -->
     <p class="mb-5 rounded-xl border-2 border-line bg-surface-soft p-4 text-lg text-ink">
-      Ces réglages valent pour tous les patients, et prennent effet en une demi-minute.
-      Un geste fermé n'est pas caché : la personne lit à la place ce qu'elle doit faire,
-      et à qui s'adresser.
+      Ces réglages valent pour <strong>tout l'hôpital</strong>, toutes unités confondues,
+      et prennent effet en une demi-minute. Un geste fermé n'est pas caché : la personne
+      lit à la place ce qu'elle doit faire, et à qui s'adresser.
+      {#if reglagesParticuliers > 0}
+        {reglagesParticuliers === 1
+          ? 'Une personne a un réglage particulier, qui l’emporte sur celui-ci'
+          : `${reglagesParticuliers} personnes ont un réglage particulier, qui l’emporte sur celui-ci`} —
+        voir « Les patients ».
+      {/if}
     </p>
 
     <ul class="grid gap-4">

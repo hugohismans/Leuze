@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createMockStaffApp } from './index'
 import { createMockRepository } from './mockRepository'
 import { resetWorld, world } from './state'
@@ -96,5 +96,101 @@ describe('voir l’application à la place de quelqu’un', () => {
 
     expect((await app.repository.roster(sienne.id)).canMarkAttendance).toBe(true)
     expect((await app.repository.roster(autre.id)).canMarkAttendance).toBe(false)
+  })
+})
+
+/**
+ * Le rôle réel du compte, au rechargement.
+ *
+ * « Voir à leur place » recharge la page. L'adapter se reconstruit alors, et c'est un
+ * bloc de reprise — et non `impersonate` — qui refabrique l'identité : il posait
+ * « soignant » en dur. On prenait donc la place de quelqu'un pour voir ce qu'il voit, et
+ * l'on voyait autre chose. Le rôle donné pendant la visite se perdait par-dessus le
+ * marché, puisqu'il ne vivait qu'en mémoire.
+ */
+describe('reprendre un détour après un rechargement', () => {
+  /*
+    Un `sessionStorage` en mémoire.
+
+    Les tests tournent sous Node, qui n'en a pas : sans lui, tout ce qui doit survivre au
+    rechargement disparaît en silence et le test passerait sans rien prouver. Celui-ci se
+    comporte comme celui du navigateur, et rien de plus.
+  */
+  const memoire = new Map<string, string>()
+  const faux = {
+    getItem: (cle: string) => memoire.get(cle) ?? null,
+    setItem: (cle: string, valeur: string) => void memoire.set(cle, valeur),
+    removeItem: (cle: string) => void memoire.delete(cle),
+    clear: () => memoire.clear(),
+    key: (i: number) => [...memoire.keys()][i] ?? null,
+    get length() {
+      return memoire.size
+    },
+  }
+
+  beforeAll(() => {
+    Object.defineProperty(globalThis, 'sessionStorage', { value: faux, configurable: true })
+  })
+  afterAll(() => {
+    Reflect.deleteProperty(globalThis, 'sessionStorage')
+  })
+
+  beforeEach(() => {
+    memoire.clear()
+    resetWorld()
+  })
+
+  const ouvrir = async () => {
+    const app = createMockStaffApp()
+    await app.session.signIn('soignant@exemple.test', 'peu-importe')
+    return app
+  }
+
+  it('rend l’administrateur administrateur, et pas simple soignant', async () => {
+    const app = await ouvrir()
+    await app.catalogAdmin.setStaffRole('staff-claire', 'admin')
+    await app.superAdmin.impersonate('staff-claire')
+
+    // Le rechargement : un adapter tout neuf, qui ne connaît que le stockage de session.
+    const apres = createMockStaffApp()
+    expect(apres.session.current().practitionerId).toBe('claire')
+    expect(apres.session.current().role).toBe('admin')
+  })
+
+  it('laisse simple soignant celui qui l’est', async () => {
+    const app = await ouvrir()
+    await app.superAdmin.impersonate('staff-julien')
+
+    const apres = createMockStaffApp()
+    expect(apres.session.current().practitionerId).toBe('julien')
+    expect(apres.session.current().role).toBe('staff')
+  })
+
+  it('n’accorde le rôle qu’à qui l’a reçu', async () => {
+    const app = await ouvrir()
+    await app.catalogAdmin.setStaffRole('staff-claire', 'admin')
+    await app.superAdmin.impersonate('staff-sophie')
+
+    expect(createMockStaffApp().session.current().role).toBe('staff')
+  })
+
+  it('garde le rôle donné pendant la visite, module rechargé compris', async () => {
+    /*
+      Le vrai rechargement, celui que « Voir à leur place » déclenche.
+
+      Les deux appels précédents partagent l'état du module : ils ne prouvent donc rien
+      sur ce qui survit à un `location.reload()`. Ici le module est réellement rejoué —
+      le registre des rôles repart de zéro, et seul le stockage de session peut encore
+      dire que Claire est administratrice.
+    */
+    const app = await ouvrir()
+    await app.catalogAdmin.setStaffRole('staff-claire', 'admin')
+    await app.superAdmin.impersonate('staff-claire')
+
+    vi.resetModules()
+    const rejoue = await import('./index')
+    const apres = rejoue.createMockStaffApp()
+    expect(apres.session.current().practitionerId).toBe('claire')
+    expect(apres.session.current().role).toBe('admin')
   })
 })

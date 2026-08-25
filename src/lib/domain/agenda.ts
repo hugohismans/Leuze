@@ -12,9 +12,9 @@
  *
  * Il ne lit rien et ne décide d'aucun droit : ce sont des intervalles, rien d'autre.
  */
-import { minutesOf, normalizeAvailability, windowsOn } from './availability'
+import { endMinutesOf, minutesOf, normalizeAvailability, windowsOn } from './availability'
 import { isOnLeave, type Leave } from './leave'
-import { addLocalDays, instantOf, isoWeekdayOf } from './time'
+import { addLocalDays, instantOf, isoWeekdayOf, localTimeOf } from './time'
 import type { AppointmentPreference, AvailabilityWindow, LocalDate, LocalTime } from './types'
 import type { BusyEntry } from './conflicts'
 
@@ -43,15 +43,30 @@ function toTime(minutes: number): LocalTime {
   return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`
 }
 
-/** Les minutes occupées ce jour-là, fondues et triées. */
+/**
+ * Les minutes occupées ce jour-là, fondues et triées.
+ *
+ * Les bornes du jour se prennent à minuit et à minuit du lendemain, et les minutes se
+ * lisent à l'horloge locale — jamais par soustraction de millisecondes. Les deux dimanches
+ * de changement d'heure durent vingt-trois ou vingt-cinq heures : l'ancienne arithmétique
+ * décalait alors d'une heure tout ce qui était déjà pris, et proposait un créneau occupé.
+ */
 function occupeDuJour(busy: BusyEntry[], localDate: LocalDate): { debut: number; fin: number }[] {
   const jour = instantOf(localDate, '00:00').getTime()
-  const finDuJour = jour + 86_400_000
+  const finDuJour = instantOf(addLocalDays(localDate, 1), '00:00').getTime()
+  const minutesLocales = (instant: Date): number => {
+    const [h, m] = localTimeOf(instant).split(':')
+    return Number(h) * 60 + Number(m)
+  }
   return busy
     .filter((entry) => entry.end.getTime() > jour && entry.start.getTime() < finDuJour)
     .map((entry) => ({
-      debut: Math.max(0, Math.round((entry.start.getTime() - jour) / 60_000)),
-      fin: Math.min(1440, Math.round((entry.end.getTime() - jour) / 60_000)),
+      debut: entry.start.getTime() <= jour ? 0 : minutesLocales(entry.start),
+      // Une fin qui déborde sur le lendemain, ou qui tombe pile à minuit, vaut la fin du jour.
+      fin:
+        entry.end.getTime() >= finDuJour || minutesLocales(entry.end) === 0
+          ? 1440
+          : minutesLocales(entry.end),
     }))
     .sort((a, b) => a.debut - b.debut)
 }
@@ -74,7 +89,14 @@ export function freeSlotsOn(
   for (const plage of plages) {
     // `normalizeAvailability` a validé les bornes : elles sont lisibles.
     let curseur = minutesOf(plage.from)!
-    const fermeture = minutesOf(plage.to)!
+    /*
+      `endMinutesOf` et non `minutesOf` : minuit en fin de plage vaut la fin du jour.
+
+      Sans cela, une garde du soir « 18h00 → 00:00 » était acceptée par l'éditeur,
+      affichée partout, et ne produisait pas un seul créneau — la fermeture valait zéro,
+      donc avant l'ouverture. L'écran répondait « aucun créneau ne convient aux deux ».
+    */
+    const fermeture = endMinutesOf(plage.to)!
     for (const creneau of pris) {
       if (creneau.fin <= curseur || creneau.debut >= fermeture) continue
       if (creneau.debut - curseur >= durationMin) {
@@ -100,13 +122,53 @@ export function freeSlotsOn(
  * le même libellé. Rien de plus : deux ateliers différents à la même heure restent deux.
  */
 export function dedupeBusy(entries: BusyEntry[]): BusyEntry[] {
-  const vues = new Set<string>()
-  return entries.filter((entry) => {
-    const clef = `${entry.start.getTime()}|${entry.end.getTime()}|${entry.kind}|${entry.label}`
-    if (vues.has(clef)) return false
-    vues.add(clef)
-    return true
-  })
+  /*
+    Deux ateliers différents à la même heure restent deux : leur nom les distingue, et
+    l'un ne remplace pas l'autre.
+
+    Un rendez-vous, lui, arrivait deux fois sous deux noms : « Rendez-vous » depuis
+    l'agenda de l'intervenant, « Rendez-vous avec Docteur Lemaire » depuis celui du
+    patient. Un seul événement, à la minute près, compté deux fois.
+
+    Le libellé n'a d'abord plus compté du tout pour les rendez-vous, et c'était trop
+    large : deux rendez-vous réellement distincts aux mêmes bornes — un double emploi
+    dans l'agenda de l'un ou de l'autre — se fondaient alors en un seul. Or c'est
+    exactement ce que cet écran existe pour montrer. On ne fond donc que ce qui se
+    ressemble : un libellé qui prolonge l'autre, « Rendez-vous » et « Rendez-vous avec
+    Docteur Lemaire ». « Rendez-vous avec Claire » et « Rendez-vous avec Docteur
+    Lemaire » restent deux lignes, et le double emploi se voit.
+  */
+  const gardes: BusyEntry[] = []
+  for (const entry of entries) {
+    const jumeau = gardes.findIndex((garde) => leMemeEvenement(garde, entry))
+    if (jumeau === -1) {
+      gardes.push(entry)
+      continue
+    }
+    // On garde le nom le plus explicite : c'est celui qui apprend quelque chose.
+    if (entry.label.length > gardes[jumeau]!.label.length) gardes[jumeau] = entry
+  }
+  // L'ordre d'arrivée est conservé : c'est celui de la journée.
+  const retenus = new Set(gardes)
+  return entries.filter((entry) => retenus.has(entry))
+}
+
+/**
+ * Deux entrées désignent-elles le même événement ?
+ *
+ * Mêmes bornes et même nature, d'abord. Ensuite le libellé : identique pour tout le
+ * monde, ou — pour un rendez-vous seulement — l'un qui prolonge l'autre, « Rendez-vous »
+ * et « Rendez-vous avec Docteur Lemaire ». La souplesse s'arrête là : deux ateliers dont
+ * l'un s'appelle « Atelier » et l'autre « Atelier cuisine » sont deux ateliers.
+ */
+function leMemeEvenement(a: BusyEntry, b: BusyEntry): boolean {
+  if (a.start.getTime() !== b.start.getTime()) return false
+  if (a.end.getTime() !== b.end.getTime()) return false
+  if (a.kind !== b.kind) return false
+  if (a.label === b.label) return true
+  if (a.kind !== 'appointment') return false
+  const [court, long] = a.label.length <= b.label.length ? [a.label, b.label] : [b.label, a.label]
+  return long.startsWith(`${court} `)
 }
 
 export function agendaWeek(
@@ -133,8 +195,11 @@ export function agendaWeek(
       taken: dedupeBusy(
         busy
           .filter((entry) => {
+            // Minuit à minuit, et non « plus vingt-quatre heures » : les deux dimanches
+            // de changement d'heure durent vingt-trois ou vingt-cinq heures.
             const jour = instantOf(localDate, '00:00').getTime()
-            return entry.end.getTime() > jour && entry.start.getTime() < jour + 86_400_000
+            const lendemain = instantOf(addLocalDays(localDate, 1), '00:00').getTime()
+            return entry.end.getTime() > jour && entry.start.getTime() < lendemain
           })
           .sort((a, b) => a.start.getTime() - b.start.getTime()),
       ),
@@ -208,7 +273,7 @@ export function bookableSlots(
     const times: LocalTime[] = []
     for (const trou of jour.free) {
       const ouverture = minutesOf(trou.from)
-      const fermeture = minutesOf(trou.to)
+      const fermeture = endMinutesOf(trou.to)
       if (ouverture === null || fermeture === null) continue
       for (let debut = ouverture; debut + durationMin <= fermeture; debut += stepMin) {
         times.push(toTime(debut))
@@ -298,7 +363,7 @@ function chercher(
     if (isOnLeave(conges, localDate)) continue
     for (const trou of freeSlotsOn(plages, tous, localDate, search.durationMin)) {
       const ouverture = minutesOf(trou.from)!
-      const fermeture = minutesOf(trou.to)!
+      const fermeture = endMinutesOf(trou.to)!
       for (let debut = ouverture; debut + search.durationMin <= fermeture; debut += pas) {
         if (respecterLaPreference && !convientAuMoment(debut, debut + search.durationMin, search.preference)) {
           continue
@@ -314,6 +379,46 @@ function chercher(
     }
   }
   return null
+}
+
+/**
+ * Vrai quand l'intervenant n'a déclaré aucune plage : pas une seule sur trois semaines.
+ *
+ * La différence avec « rien ne convient » est celle entre un agenda plein et un agenda
+ * jamais rempli, et l'écran les confondait : il annonçait « aucun créneau ne convient aux
+ * deux dans les trois semaines qui viennent » pour quelqu'un qui n'avait tout simplement
+ * jamais dit quand il recevait. On cherchait un agenda saturé qui n'existait pas.
+ */
+export function noAvailabilityDeclared(week: { windows: unknown[]; onLeave?: boolean }[]): boolean {
+  /*
+    Un jour de congé n'a pas de plage — et ce n'est pas la même chose que « rien n'a été
+    déclaré ». Quelqu'un en congé sur tout l'horizon s'entendait dire qu'il n'avait jamais
+    dit quand il recevait, juste au-dessus de sept lignes « 🌴 En congé ».
+  */
+  const ouvrables = week.filter((jour) => jour.onLeave !== true)
+  return ouvrables.length > 0 && ouvrables.every((jour) => jour.windows.length === 0)
+}
+
+/**
+ * Vrai quand l'intervenant est en congé sur tout l'horizon.
+ *
+ * Troisième cas, longtemps confondu avec les deux autres : ce n'est ni un agenda plein
+ * ni un agenda jamais rempli. « Aucun créneau ne convient aux deux dans les trois
+ * semaines qui viennent » laisse chercher un trou ; « il est en congé » dit tout de
+ * suite qu'il n'y en aura pas, et pourquoi.
+ */
+export function onLeaveThroughout(week: { onLeave?: boolean }[]): boolean {
+  return week.length > 0 && week.every((jour) => jour.onLeave === true)
+}
+
+/** Ce qu'on dit alors, en nommant la personne. */
+export function onLeaveThroughoutMessage(practitionerName: string): string {
+  return `${practitionerName} est en congé sur les trois semaines qui viennent : l'application ne peut rien proposer d'ici là. Vous pouvez tout de même fixer le rendez-vous à l'heure de votre choix, ou attendre son retour.`
+}
+
+/** Ce qu'il faut faire quand personne n'a déclaré de plage — et où le faire. */
+export function noAvailabilityMessage(practitionerName: string): string {
+  return `${practitionerName} n'a déclaré aucune plage de disponibilité : l'application ne peut donc rien proposer. Les plages se déclarent dans « Le personnel », sur sa fiche. Vous pouvez tout de même fixer le rendez-vous à l'heure de votre choix.`
 }
 
 /** Ce que l'écran dit du créneau proposé. Le refus d'une préférence se dit, il ne se tait pas. */

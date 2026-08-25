@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { presenceOf } from './presence'
+import { nextLabel, presenceOf } from './presence'
 import { makeOccurrence } from './fixtures'
 
 const seance = (debut: string, fin: string, titre: string, reste: Record<string, unknown> = {}) => ({
@@ -59,5 +59,38 @@ describe('où en est une personne', () => {
   it('une séance qui vient de finir ne retient plus personne', () => {
     const etat = presenceOf([seance('2026-08-21T13:00:00Z', '2026-08-21T14:15:00Z', 'Atelier')], maintenant)
     expect(etat.kind).toBe('free')
+  })
+})
+
+describe('« Ensuite » nomme son jour', () => {
+  const suivante = (localDate: string, debut: string) => ({
+    title: 'Sport collectif',
+    start: new Date(debut),
+    localDate,
+  })
+
+  it("tait le jour quand c'est aujourd'hui : « à 10h00 » se comprend tout seul", () => {
+    expect(nextLabel(suivante('2026-08-25', '2026-08-25T08:00:00Z'), '2026-08-25')).toBe(
+      'Sport collectif à 10h00',
+    )
+  })
+
+  it('dit « demain » plutôt qu’une date', () => {
+    expect(nextLabel(suivante('2026-08-26', '2026-08-26T08:00:00Z'), '2026-08-25')).toBe(
+      'Sport collectif demain à 10h00',
+    )
+  })
+
+  it('nomme le jour au-delà, pour qu’on ne lise pas « dans deux heures »', () => {
+    expect(nextLabel(suivante('2026-08-28', '2026-08-28T08:00:00Z'), '2026-08-25')).toBe(
+      'Sport collectif vendredi 28 août à 10h00',
+    )
+  })
+
+  it('rend le jour à la personne quand la séance est passée dans la semaine consultée', () => {
+    // Une date antérieure ne se cache pas non plus : elle se nomme.
+    expect(nextLabel(suivante('2026-08-21', '2026-08-21T08:00:00Z'), '2026-08-25')).toContain(
+      'vendredi 21 août',
+    )
   })
 })

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { hourRange, weekGrid } from './weekGrid'
+import { instantOf } from './time'
 import type { WeekDay, WeekEntry } from './myWeek'
 
 /** Heures données en heure locale de Bruxelles (été : UTC+2). */
@@ -68,5 +69,29 @@ describe('placement dans la grille', () => {
   it('laisse les journées vides entièrement libres', () => {
     const grille = weekGrid([jour([])], { from: 9, to: 18 })
     expect(grille.days[0]!.placed).toEqual([])
+  })
+})
+
+describe('une activité qui se termine à minuit', () => {
+  it('tient dans la grille au lieu d’en sortir par le bas', () => {
+    const semaine = [
+      {
+        date: '2026-08-24' as const,
+        entries: [
+          {
+            kind: 'activity' as const,
+            start: instantOf('2026-08-24', '22:00'),
+            end: instantOf('2026-08-25', '00:00'),
+            title: 'Veillée',
+            locationId: 'le-salon',
+            categoryId: 'detente',
+            cancelled: false,
+            waiting: false,
+          },
+        ],
+      },
+    ]
+    // Minuit en fin d'activité, c'est la fin du jour : la grille doit aller jusqu'à 24.
+    expect(hourRange(semaine).to).toBe(24)
   })
 })

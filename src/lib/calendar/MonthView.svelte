@@ -30,7 +30,27 @@
         style="min-height: 96px;"
         onclick={() => onPickDay(day)}
       >
-        <span class="sr-only">{formatLongDayLabel(day)}, {activities.length} activités. Voir le détail du jour.</span>
+        <!--
+          Cette phrase n'est lue qu'à voix haute, par un lecteur d'écran : elle doit donc
+          être une phrase juste. « 0 activités » et « 1 activités » n'en sont pas.
+        -->
+        <span class="sr-only">
+          {formatLongDayLabel(day)},
+          {day === today ? "aujourd'hui," : ''}
+          {activities.length === 0
+            ? 'aucune activité'
+            : activities.length === 1
+              ? 'une activité'
+              : `${activities.length} activités`}. Voir le détail du jour.
+        </span>
+        <!--
+          « Aujourd'hui » s'écrit, il ne se devine pas à la teinte du contour. Les deux
+          cases étaient identiques à la couleur près, ce qui est un critère de refus en
+          revue du projet.
+        -->
+        {#if day === today}
+          <span aria-hidden="true" class="block text-base font-bold text-brand-900">Aujourd'hui</span>
+        {/if}
         <span aria-hidden="true" class="block text-lg font-bold" class:text-brand-900={day === today}>
           {formatDayNumber(day)}
         </span>

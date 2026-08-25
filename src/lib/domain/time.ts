@@ -53,6 +53,32 @@ export function addLocalDays(localDate: LocalDate, days: number): LocalDate {
   return `${shifted.getUTCFullYear()}-${pad(shifted.getUTCMonth() + 1)}-${pad(shifted.getUTCDate())}`
 }
 
+/**
+ * Combien de jours de calendrier séparent un instant d'un autre, à Bruxelles.
+ *
+ * Des jours de calendrier, et non des tranches de vingt-quatre heures. Une demande
+ * déposée hier à 22 h s'affichait « Demandé aujourd'hui » jusqu'au lendemain 22 h : la
+ * file ne montrait pas qu'elle avait passé la nuit. C'est pourtant tout ce que ces
+ * compteurs servent à voir — ce qui traîne, faute de notification.
+ *
+ * Écrit ici parce que deux files le demandent, celle des rendez-vous et celle des idées,
+ * et qu'elles ne comptaient pas de la même façon : « Demandé hier » et « Déposée
+ * aujourd'hui » pour deux dépôts faits au même instant.
+ */
+export function calendarDaysSince(instant: Date, now: Date): number {
+  const depuis = localDateOf(instant)
+  const aujourdHui = localDateOf(now)
+  if (depuis >= aujourdHui) return 0
+  let jours = 0
+  let curseur = depuis
+  // Un an suffit largement : au-delà, le nombre exact n'apprend plus rien.
+  while (curseur < aujourdHui && jours < 366) {
+    curseur = addLocalDays(curseur, 1)
+    jours += 1
+  }
+  return jours
+}
+
 export function addLocalMonths(localDate: LocalDate, months: number): LocalDate {
   const { y, m, d } = parts(localDate)
   const target = new Date(Date.UTC(y, m - 1 + months, 1))
@@ -116,14 +142,30 @@ export function todayLocalDate(now: Date = new Date()): LocalDate {
 
 const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 
-/** « Mardi 12 août ». */
-export function formatDayLabel(localDate: LocalDate): string {
-  return capitalize(format(calendarDate(localDate), 'EEEE d MMMM', { locale: fr }))
+/**
+ * Le premier jour du mois s'écrit « 1er », et jamais « 1 ».
+ *
+ * « Mardi 1 septembre » se lit de travers : en français, seul le premier du mois porte un
+ * ordinal. Le reste des jours ne change pas.
+ */
+function premierDuMois(localDate: LocalDate, texte: string): string {
+  return parts(localDate).d === 1 ? texte.replace(/\b1\b/, '1er') : texte
 }
 
-/** « Mardi 12 août 2025 ». */
+/** « Mardi 12 août », « Mardi 1er septembre ». */
+export function formatDayLabel(localDate: LocalDate): string {
+  return premierDuMois(
+    localDate,
+    capitalize(format(calendarDate(localDate), 'EEEE d MMMM', { locale: fr })),
+  )
+}
+
+/** « Mardi 12 août 2025 », « Mardi 1er septembre 2026 ». */
 export function formatLongDayLabel(localDate: LocalDate): string {
-  return capitalize(format(calendarDate(localDate), 'EEEE d MMMM yyyy', { locale: fr }))
+  return premierDuMois(
+    localDate,
+    capitalize(format(calendarDate(localDate), 'EEEE d MMMM yyyy', { locale: fr })),
+  )
 }
 
 /** « Mardi ». */

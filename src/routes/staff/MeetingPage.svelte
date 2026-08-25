@@ -16,6 +16,7 @@
     todayLocalDate,
   } from '../../lib/domain/time'
   import type { Occurrence } from '../../lib/domain/types'
+  import { config } from '../../lib/config'
 
   /**
    * La réunion de début de semaine.
@@ -35,8 +36,18 @@
    * Le choix est mémorisé sur l'appareil : la tablette du Mazurel rouvre sur Le Mazurel.
    */
   const MEMOIRE = 'leuze.reunion.service'
+  /*
+    « Tous les services » est un choix, et il s'enregistre comme les autres.
+
+    Il s'effaçait de la mémoire de l'appareil au lieu de s'y écrire : au retour suivant,
+    l'écran ne trouvait rien et l'unité du compte reprenait la main. Le choix était donc
+    impossible à conserver, et l'équipe qui passe l'hôpital entier en revue devait le
+    redemander sur chaque écran. Une étoile ne peut pas être un identifiant de service :
+    elle dit « tous », sans se confondre avec « rien de retenu ».
+  */
+  const TOUS = '*'
   const retenu = typeof localStorage === 'undefined' ? null : localStorage.getItem(MEMOIRE)
-  let serviceId = $state<string | null>(retenu)
+  let serviceId = $state<string | null>(retenu === TOUS ? null : retenu)
 
   /*
     À défaut d'un choix retenu sur l'appareil, l'unité du compte fait le premier choix.
@@ -52,7 +63,10 @@
   */
   let semee = retenu !== null
   $effect(() => {
-    const unite = staffStore.unit
+    // `accountUnit` et non `unit` : la réunion est celle de sa propre unité. Cocher
+    // « Voir toutes les unités » pour jeter un œil ailleurs ne doit pas empêcher le
+    // semis — c'est justement le lundi matin qu'on voudrait ne pas y penser.
+    const unite = staffStore.accountUnit
     if (semee || unite === null) return
     semee = true
     serviceId = unite
@@ -62,11 +76,9 @@
     // Un choix à la main est un choix : l'unité du compte ne le défera pas.
     semee = true
     serviceId = valeur === '' ? null : valeur
-    selection = null
-    dernierMessage = null
+    changerDActivite(null)
     if (typeof localStorage !== 'undefined') {
-      if (serviceId === null) localStorage.removeItem(MEMOIRE)
-      else localStorage.setItem(MEMOIRE, serviceId)
+      localStorage.setItem(MEMOIRE, serviceId ?? TOUS)
     }
   }
 
@@ -94,6 +106,18 @@
       .sort((a, b) => a.start.getTime() - b.start.getTime()),
   )
   const passees = $derived(aInscription.length - semaine.length)
+
+  /*
+    La semaine consultée est-elle au-delà de ce qui est engendré ?
+
+    Les séances sont matérialisées douze semaines à l'avance. Passé cette limite, il n'y
+    a rien à voir — et l'écran conseillait pourtant de « poser d'abord le programme dans
+    La semaine », ce qui envoyait chercher un travail déjà fait.
+  */
+  const HORIZON_SEMAINES = config.generationWindowWeeks
+  const horsHorizon = $derived(
+    staffStore.date > addLocalDays(startOfIsoWeek(todayLocalDate()), HORIZON_SEMAINES * 7),
+  )
 
   const courante = $derived<Occurrence | null>(
     semaine.find((o) => o.id === selection) ?? semaine[0] ?? null,
@@ -172,6 +196,19 @@
    */
   let chevauchement = $state<{ patientUid: string; conflicts: TimeConflict[] } | null>(null)
 
+  /*
+    Les prénoms dont l'inscription est partie mais pas encore revenue.
+
+    Un simple compteur comptait deux fois : dès que l'inscription optimiste apparaissait
+    dans la liste, la personne était comptée à la fois par `registrations` et par le
+    compteur. À la réunion, où l'on clique dix prénoms à la suite, l'écran réclamait un
+    dépassement là où il restait des places. On retient les identifiants, et l'on ne
+    compte que ceux que la liste ne montre pas encore.
+
+    Volontairement non réactif : ce n'est qu'un garde-fou de saisie.
+  */
+  const enVolPour = new Set<string>()
+
   async function basculer(
     patientUid: string,
     options: { depassement?: boolean; malgreLeChevauchement?: boolean } = {},
@@ -183,17 +220,32 @@
     */
     if (courante === null || enCours === patientUid) return
     const board = { occurrence: courante, registrations: inscriptionsCourantes }
-    if (
-      options.depassement !== true &&
+    /*
+      Les inscriptions déjà parties comptent, même si la liste ne les montre pas encore.
+
+      `inscriptionsCourantes` vient de la dernière lecture ; en cliquant dix prénoms à la
+      suite, chaque appel lisait la liste d'avant. La question du dépassement n'était donc
+      posée à personne, et six personnes entraient au-delà des places sans qu'on demande
+      rien. `enVol` est un `let` ordinaire, non réactif : il ne sert qu'à compter ce qui
+      voyage.
+    */
+    const places = courante.capacity
+    const confirmes = board.registrations.filter((r) => r.status === 'confirmed')
+    const dejaVus = new Set(confirmes.map((r) => r.patientUid))
+    const enVolInvisibles = [...enVolPour].filter((uid) => !dejaVus.has(uid)).length
+    const depasserait =
+      places !== null &&
       !staffStore.isRegistered(patientUid) &&
-      wouldExceedCapacity(board, patientUid)
-    ) {
+      (wouldExceedCapacity(board, patientUid) || confirmes.length + enVolInvisibles >= places)
+    if (options.depassement !== true && depasserait) {
       aConfirmer = patientUid
       return
     }
     aConfirmer = null
     chevauchement = null
     enCours = patientUid
+    const inscrit = !staffStore.isRegistered(patientUid)
+    if (inscrit) enVolPour.add(patientUid)
     let resultat
     try {
       resultat = await staffStore.togglePatient(courante.id, patientUid, {
@@ -204,6 +256,7 @@
       // Quoi qu'il arrive — y compris une erreur qu'on n'attendait pas — le prénom
       // redevient cliquable. Sans cela, un seul incident le figeait pour toute la réunion.
       enCours = null
+      enVolPour.delete(patientUid)
     }
     // Refusé faute de confirmation : on montre ce qui tombe en même temps, on demande.
     if (resultat.conflicts !== undefined && resultat.conflicts.length > 0) {
@@ -214,19 +267,33 @@
     dernierMessage = resultat.message
   }
 
+  /**
+   * Changer d'activité efface tout ce qui portait sur la précédente.
+   *
+   * Deux encadrés restaient à l'écran après le changement : la demande de dépassement et
+   * l'avertissement de chevauchement. Ils se recalculaient alors sur la nouvelle séance
+   * et affirmaient des choses fausses — « L'activité est complète : 5 inscrits pour 8
+   * places » là où il restait trois places. Pire, « Oui, dépasser » inscrivait alors
+   * quelqu'un à la nouvelle activité, avec le drapeau de dépassement, sans qu'il y ait
+   * eu le moindre dépassement.
+   */
+  function changerDActivite(id: string | null): void {
+    selection = id
+    dernierMessage = null
+    aConfirmer = null
+    chevauchement = null
+  }
+
   function allerA(decalage: number): void {
     if (courante === null) return
     const index = semaine.findIndex((o) => o.id === courante.id)
     const suivante = semaine[index + decalage]
-    if (suivante) {
-      selection = suivante.id
-      dernierMessage = null
-    }
+    if (suivante) changerDActivite(suivante.id)
   }
 
   const semaineDe = (decalage: number): void => {
     staffStore.date = addLocalDays(startOfIsoWeek(staffStore.date), decalage * 7)
-    selection = null
+    changerDActivite(null)
     void staffStore.refresh()
   }
 
@@ -264,7 +331,7 @@
         <span aria-hidden="true">←</span> Semaine précédente
       </button>
       {#if startOfIsoWeek(staffStore.date) !== startOfIsoWeek(todayLocalDate())}
-        <button type="button" class="btn btn-secondary" onclick={() => { staffStore.date = todayLocalDate(); selection = null; void staffStore.refresh() }}>
+        <button type="button" class="btn btn-secondary" onclick={() => { staffStore.date = todayLocalDate(); changerDActivite(null); void staffStore.refresh() }}>
           Cette semaine
         </button>
       {/if}
@@ -283,14 +350,22 @@
 
   {#if semaine.length === 0}
     <p class="card p-5 text-lg text-ink-soft">
-      {#if passees > 0}
-        Toutes les activités à inscription de cette semaine ont déjà eu lieu.
+      {#if horsHorizon}
+        <!--
+          Au-delà de la fenêtre de génération, les séances n'existent pas encore : ce
+          n'est pas un programme manquant, et conseiller de « poser d'abord le
+          programme » envoyait chercher un travail déjà fait.
+        -->
+        Cette semaine est encore trop loin : les séances sont préparées {HORIZON_SEMAINES}
+        semaines à l'avance. Revenez plus près de la date.
+      {:else if passees > 0}
+        Toutes les activités de cette semaine ont déjà eu lieu.
         Passez à la semaine suivante pour préparer le programme.
       {:else if serviceId !== null}
-        Aucune activité à inscription cette semaine pour ce service. Choisissez un autre
+        Aucune activité cette semaine pour ce service. Choisissez un autre
         service, ou posez le programme dans « La semaine ».
       {:else}
-        Aucune activité à inscription cette semaine. Posez d'abord le programme dans « La semaine ».
+        Aucune activité cette semaine. Posez d'abord le programme dans « La semaine ».
       {/if}
     </p>
   {:else}
@@ -314,7 +389,7 @@
                 class:bg-brand-50={active}
                 class:border-line={!active}
                 aria-current={active ? 'true' : undefined}
-                onclick={() => { selection = occurrence.id; dernierMessage = null }}
+                onclick={() => changerDActivite(occurrence.id)}
               >
                 <p class="text-lg font-bold text-ink">{occurrence.title}</p>
                 <p class="text-base text-ink-soft">
@@ -358,8 +433,14 @@
           <p class="mt-2 text-lg font-semibold text-ink">
             {staffCapacityLabel(courante)}
             {#if etat?.kind === 'full'}
+              <!--
+                Le badge annonçait « les suivants passent en liste d'attente », alors que
+                la réunion ne propose rien de tel : le seul geste offert est « Oui,
+                dépasser », qui inscrit en confirmé. Il dit maintenant ce qui se passe
+                vraiment ici.
+              -->
               <span class="badge ml-2" style="background: var(--color-surface-soft); color: var(--color-ink);">
-                <span aria-hidden="true">⏳</span> Complet — les suivants passent en liste d'attente
+                <span aria-hidden="true">⏳</span> Complet — inscrire quelqu'un dépassera le nombre de places
               </span>
             {/if}
           </p>
@@ -446,7 +527,8 @@
                         {/if}
                       </p>
                       <ul class="mt-1 grid gap-1">
-                        {#each chevauchement.conflicts as conflit (conflit.label + conflit.start.toISOString())}
+                        <!-- Même raison : deux occupations identiques se rencontrent. -->
+                        {#each chevauchement.conflicts as conflit, rang (rang)}
                           <li class="text-lg text-ink">
                             <span aria-hidden="true">{conflit.kind === 'appointment' ? '🩺' : '📅'}</span>
                             {conflit.label}, de {formatTime(conflit.start)} à {formatTime(conflit.end)}

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { staffStore } from '../../lib/staffState.svelte'
+  import { de } from '../../lib/domain/francais'
   import { store } from '../../lib/appState.svelte'
   import { myWeek, type WeekEntry } from '../../lib/domain/myWeek'
   import { kindIcon, kindName } from '../../lib/domain/appointments'
@@ -136,7 +137,7 @@
     {:else if intervenant === null}
       <p class="card p-5 text-lg text-ink-soft">Cet intervenant n'a pas été trouvé.</p>
     {:else}
-      <h1 class="mb-1 text-3xl font-bold text-ink">La semaine de {intervenant.name}</h1>
+      <h1 class="mb-1 text-3xl font-bold text-ink">La semaine {de(intervenant.name)}</h1>
       <p class="mb-4 text-lg text-ink-soft">
         {intervenant.role} · du {formatDayLabel(staffStore.week[0]!)} au {formatDayLabel(staffStore.week[6]!)}
       </p>
@@ -175,7 +176,14 @@
                 <p class="text-lg text-ink-soft">Rien de prévu</p>
               {:else}
                 <ul class="mt-2 grid gap-2">
-                  {#each jour.entries as entree (entree.start.getTime() + entree.kind)}
+                  <!--
+                    La clef est le rang, et non le contenu : deux entrées qui commencent à
+                    la même minute — deux ateliers à 10h00, c'est le cas courant — donnent
+                    la même clef, et Svelte arrête alors le rendu. L'écran reste figé sur
+                    l'affichage précédent, sans un mot, ni à l'écran ni en console. La liste
+                    est reconstruite en entier à chaque lecture ; le rang suffit.
+                  -->
+                  {#each jour.entries as entree, rang (rang)}
                     <li class="text-lg text-ink">
                       <span aria-hidden="true">
                         {entree.kind === 'appointment'

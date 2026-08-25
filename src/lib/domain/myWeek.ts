@@ -38,6 +38,15 @@ export type WeekEntry =
        */
       externalName?: string
       locationId?: string
+      /**
+       * Le rendez-vous a été annulé.
+       *
+       * Il reste sur la feuille, barré, comme une séance annulée : la personne se
+       * souvenait d'un rendez-vous jeudi, et « Rien de prévu » à sa place se lit comme une
+       * panne — ou pire, la fait venir pour rien.
+       */
+      cancelled?: boolean
+      cancellationReason?: string
     }
 
 export type WeekDay = {
@@ -94,6 +103,10 @@ export function myWeek(
       ...(appointment.externalName !== undefined ? { externalName: appointment.externalName } : {}),
       ...(appointment.withWhom !== undefined ? { withWhom: appointment.withWhom } : {}),
       ...(appointment.locationId !== undefined ? { locationId: appointment.locationId } : {}),
+      ...(appointment.status === 'cancelled' ? { cancelled: true } : {}),
+      ...(appointment.cancellationReason !== undefined
+        ? { cancellationReason: appointment.cancellationReason }
+        : {}),
     })
   }
 

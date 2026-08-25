@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { createMockStaffApp } from './index'
 import { resetWorld, world } from './state'
 import { deletionConsequences } from '../../domain/catalog'
+import { mockCatalog } from './catalog'
+import { addLocalDays, todayLocalDate } from '../../domain/time'
 
 /**
  * Supprimer pour de bon, à ne pas confondre avec annuler.
@@ -113,5 +115,105 @@ describe('supprimer une activité pour de bon', () => {
       /administrateur/,
     )
     expect(await app.repository.getActivity(activityId)).not.toBeNull()
+  })
+})
+
+describe('une séance supprimée définitivement', () => {
+  beforeEach(() => {
+    resetWorld()
+    mockCatalog.reset()
+  })
+
+  it('ne revient pas au premier enregistrement suivant de l’activité', async () => {
+    const app = createMockStaffApp()
+    await app.session.signIn('admin@exemple.test', 'peu-importe')
+
+    const seance = [...world.occurrences.values()].find((o) => o.localDate >= todayLocalDate())
+    expect(seance).toBeDefined()
+    const id = seance!.id
+
+    const suppression = await app.repository.deleteOccurrence(id)
+    expect(suppression.ok).toBe(true)
+    expect(world.occurrences.has(id)).toBe(false)
+
+    // On modifie l'activité — un changement de lieu suffit — et l'on régénère.
+    const activite = (await app.repository.listActivities()).find((a) => a.id === seance!.activityId)
+    expect(activite).toBeDefined()
+    await app.repository.saveActivity({ ...activite!, locationId: 'le-salon' })
+
+    // La séance ne doit pas être revenue : on la supprime parce qu'elle ne doit pas
+    // avoir lieu, et changer le lieu de l'activité ne la ramène pas au programme.
+    expect(world.occurrences.has(id)).toBe(false)
+  })
+})
+
+/**
+ * Supprimer la seule séance d'une activité ponctuelle.
+ *
+ * Une activité qui ne se répète pas n'a pas de récurrence où accrocher l'exception :
+ * supprimer sa séance retire l'activité entière du programme. C'est la bonne décision —
+ * elle n'avait que celle-là — mais elle se prenait en silence. On lisait « La séance de
+ * « X » est supprimée. Personne n'y était inscrit. », et l'activité disparaissait de la
+ * liste sans un mot. C'est pourtant le cas par défaut du formulaire, donc la grande
+ * majorité des activités.
+ */
+describe('la séance unique d’une activité ponctuelle', () => {
+  beforeEach(() => {
+    resetWorld()
+    mockCatalog.reset()
+  })
+
+  const admin = async () => {
+    const app = createMockStaffApp()
+    await app.session.signIn('admin@exemple.test', 'peu-importe')
+    return app
+  }
+
+  /** Une activité sans récurrence, avec sa seule séance. */
+  const uneActivitePonctuelle = async (app: Awaited<ReturnType<typeof admin>>) => {
+    const modele = (await app.repository.listActivities())[0]!
+    const { activityId } = await app.repository.saveActivity({
+      ...modele,
+      id: 'sortie-au-musee',
+      seriesId: 'sortie-au-musee',
+      title: 'Sortie au musée',
+      recurrence: null,
+      singleStart: { date: addLocalDays(todayLocalDate(), 3), time: '14:00', durationMin: 90 },
+      isActive: true,
+    })
+    const seance = [...world.occurrences.values()].find((o) => o.activityId === activityId)
+    expect(seance).toBeDefined()
+    return { activityId, seance: seance! }
+  }
+
+  it('le dit, au lieu de retirer l’activité en silence', async () => {
+    const app = await admin()
+    const { activityId, seance } = await uneActivitePonctuelle(app)
+
+    const suppression = await app.repository.deleteOccurrence(seance.id)
+
+    expect(suppression.ok).toBe(true)
+    expect(suppression.message).toContain('retirée du programme')
+    // Et l'on dit où la retrouver : une activité qui disparaît sans adresse est perdue.
+    expect(suppression.message).toContain('Les activités')
+    expect((await app.repository.getActivity(activityId))?.isActive).toBe(false)
+  })
+
+  it('ne le dit pas d’une activité qui revient chaque semaine', async () => {
+    const app = await admin()
+    const repetees = new Set(
+      (await app.repository.listActivities()).filter((a) => a.recurrence !== null).map((a) => a.id),
+    )
+    const seance = [...world.occurrences.values()].find(
+      (o) => o.localDate >= todayLocalDate() && repetees.has(o.activityId),
+    )!
+    expect(seance).toBeDefined()
+    const activite = (await app.repository.listActivities()).find((a) => a.id === seance.activityId)!
+
+    const suppression = await app.repository.deleteOccurrence(seance.id)
+
+    expect(suppression.message).not.toContain('retirée du programme')
+    // L'activité reste au programme : ce sont les autres semaines.
+    expect((await app.repository.getActivity(activite.id))?.isActive).toBe(true)
   })
 })

@@ -96,10 +96,18 @@ class StaffStore {
    */
   voirToutesLesUnites = $state(false)
 
+  /**
+   * L'unité du compte, que la case « voir toutes les unités » soit cochée ou non.
+   *
+   * C'est celle qu'un formulaire propose. Regarder l'hôpital entier ne change pas la
+   * bulle où l'on travaille : sans cette distinction, cocher la case faisait retomber le
+   * menu « Service » sur la première du catalogue, et la personne créée sans y regarder
+   * atterrissait dans une autre unité que celle du compte — avec le programme qui va avec.
+   */
+  readonly accountUnit = $derived(resolveUnit(store.services, this.unitId))
+
   /** L'unité qui filtre réellement les écrans, une fois la case et le catalogue pris en compte. */
-  readonly unit = $derived(
-    this.voirToutesLesUnites ? null : resolveUnit(store.services, this.unitId),
-  )
+  readonly unit = $derived(this.voirToutesLesUnites ? null : this.accountUnit)
   /** Son nom, pour l'écrire. `null` quand il n'y a rien à écrire. */
   readonly unitLabel = $derived(unitName(store.services, this.unit))
 
@@ -157,6 +165,8 @@ class StaffStore {
       await this.loadLeaves()
       // Des rendez-vous ont pu retourner dans la file : la liste doit le montrer tout de suite.
       void this.loadAppointments()
+      // Des séances ont pu être annulées : le programme affiché ne le sait pas encore.
+      void this.refresh()
       this.message = resultat.message
     }
     return resultat
@@ -164,7 +174,17 @@ class StaffStore {
 
   async removeLeave(practitionerId: string, leave: Leave): Promise<void> {
     const resultat = await (await this.app$()).repository.removeLeave(practitionerId, leave)
-    if (resultat.ok) await this.loadLeaves()
+    if (resultat.ok) {
+      await this.loadLeaves()
+      /*
+        Le retrait rétablit des séances : le programme affiché ne les connaît pas encore.
+
+        Le message annonçait « 3 séances sont rétablies » pendant que les mêmes séances
+        restaient barrées sur tous les écrans, jusqu'à ce qu'on change de semaine. On
+        relit donc le programme, comme la déclaration relit la file des rendez-vous.
+      */
+      void this.refresh()
+    }
     this.message = resultat.message
   }
 
@@ -345,10 +365,19 @@ class StaffStore {
     return code
   }
 
-  async endStay(patientUid: string): Promise<void> {
+  /**
+   * Clôturer un séjour. Le prénom sert au message : « Le séjour de Sofia est clôturé. »
+   *
+   * Sans lui, le retour était « Le séjour est clôturé » — sans dire lequel. Un appui sur
+   * la mauvaise carte passait alors complètement inaperçu.
+   */
+  async endStay(patientUid: string, firstName?: string): Promise<void> {
     try {
       const resultat = await (await this.app$()).repository.endStay(patientUid)
-      this.message = resultat.message
+      this.message =
+        firstName === undefined || firstName === ''
+          ? resultat.message
+          : resultat.message.replace('Le séjour est clôturé.', `Le séjour de ${firstName} est clôturé.`)
     } catch (error) {
       // Un refus du serveur doit se lire à l'écran, pas finir dans la console.
       this.message =
@@ -808,6 +837,14 @@ class StaffStore {
       this.message = resultat.message
       return
     }
+    /*
+      L'écran patient vit dans la même page : il doit voir le changement tout de suite.
+
+      Le réglage du service le faisait déjà ; le réglage particulier, non. Le bouton
+      restait donc affiché pendant dix secondes — le temps du cache — la personne
+      appuyait, et l'inscription était refusée sous un écran qui l'y invitait encore.
+    */
+    void store.loadPatientPermissions(true)
     this.message =
       valeur === null
         ? `« ${actionLabel(action)} » suit de nouveau le réglage du service.`
@@ -944,7 +981,14 @@ class StaffStore {
       ]
     }
     this.message = 'Copie créée. Elle est en brouillon : relisez-la, puis mettez-la au programme.'
-    void this.refresh()
+    /*
+      La relecture est attendue, et non lancée en arrière-plan.
+
+      Le bouton se referme le temps du geste ; sans cette attente, le geste durait une
+      microtâche en démonstration, le bouton redevenait actif avant même le second appui
+      d'un double clic, et l'on se retrouvait avec deux copies.
+    */
+    await this.refresh()
     return nouvelId
   }
 
@@ -977,6 +1021,26 @@ class StaffStore {
   async weekPlannings(serviceId?: string): Promise<PatientPlanning[]> {
     const jours = this.week
     return (await this.app$()).repository.weekPlannings(jours[0]!, jours[6]!, serviceId)
+  }
+
+  /**
+   * De quoi dire qui est en activité **maintenant** — la semaine d'aujourd'hui, jamais
+   * celle qu'on est en train de feuilleter ailleurs.
+   *
+   * « Les patients » répond à « où est cette personne à cette heure-ci ». Il lisait la
+   * semaine choisie dans le calendrier : après un appui sur « Semaine précédente », tout
+   * le monde devenait « Libre », et après « Semaine suivante » quelqu'un se voyait
+   * attribuer une séance qui n'aurait lieu que huit jours plus tard. Rien à l'écran ne
+   * disait de quelle semaine on parlait.
+   */
+  async currentWeekPlannings(): Promise<{ plannings: PatientPlanning[]; occurrences: Occurrence[] }> {
+    const jours = weekDays(todayLocalDate())
+    const app = await this.app$()
+    const [plannings, occurrences] = await Promise.all([
+      app.repository.weekPlannings(jours[0]!, jours[6]!),
+      app.repository.listOccurrences(jours[0]!, jours[6]!).catch(() => []),
+    ])
+    return { plannings, occurrences }
   }
 
   /** Rétablir une séance annulée. Même principe : elle cesse d'être barrée tout de suite. */
@@ -1045,6 +1109,14 @@ class StaffStore {
     const resultat = await (await this.app$()).repository.deleteOccurrence(occurrenceId)
     await this.refresh()
     this.message = resultat.message
+    /*
+      Le message survit au retour à la semaine.
+
+      L'écran renvoie immédiatement à la journée, et le changement d'écran effaçait le
+      message : on supprimait une séance et ses inscriptions sans qu'aucun mot ne dise ce
+      qui venait de disparaître — pour le seul geste sans retour en arrière.
+    */
+    this.#survitAuProchainChangement = true
     return resultat.message
   }
 

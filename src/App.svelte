@@ -55,6 +55,22 @@
     if (!router.path.startsWith('/soignant')) void store.loadPatientPermissions()
   })
 
+  /*
+    Et le programme lui-même, pour la même raison.
+
+    Il n'était relu qu'en changeant de fenêtre de dates ou de service : une séance
+    annulée par un soignant restait proposée à l'inscription tant que le patient ne
+    changeait pas de semaine. Deux écrans se contredisaient, et le calendrier proposait
+    une séance qui n'aurait pas lieu.
+
+    `refreshOnNavigation` se tait quelques secondes après une relecture : aller et venir
+    entre le calendrier et une fiche ne relance donc pas une requête à chaque geste.
+  */
+  $effect(() => {
+    void router.path
+    if (!router.path.startsWith('/soignant')) void store.refreshOnNavigation()
+  })
+
   /** Vrai quand « Un instant… » s'éternise : voir le bouton de secours plus bas. */
   let attenteLongue = $state(false)
   $effect(() => {
@@ -86,14 +102,29 @@
 <AppHeader />
 <ImpersonationBanner />
 
-{#if !espaceSoignant && (occurrenceId !== null || router.path === '/mes-inscriptions' || router.path === '/rendez-vous' || router.path === '/ma-semaine' || router.path === '/proposer')}
+<!--
+  Pas de « Retour » sur l'écran du code : il n'y a rien derrière.
+
+  La condition ne regardait que l'adresse. Après « Fermer mon accès » en démonstration,
+  l'adresse restait « /mes-inscriptions » alors que l'écran affiché était celui du code :
+  on lisait « Retour au programme » au-dessus d'un champ qui demandait un code.
+-->
+{#if !espaceSoignant && store.signedIn && (occurrenceId !== null || router.path === '/mes-inscriptions' || router.path === '/rendez-vous' || router.path === '/ma-semaine' || router.path === '/proposer')}
   <BackLink />
 {/if}
 
 <main id="contenu">
   {#if espaceSoignant}
     <StaffApp />
-  {:else if !store.isDemo && !store.signedIn}
+  <!--
+    L'écran du code s'affiche aussi en démonstration, une fois l'accès fermé.
+
+    Il était sauté : après « Fermer mon accès », la démonstration continuait de proposer
+    de s'inscrire, et répondait « Cette activité n'a pas été trouvée ». On y montre donc
+    ce qu'un patient voit vraiment. L'écran du code dit, en démonstration seulement,
+    quel code taper pour revenir.
+  -->
+  {:else if !store.signedIn}
     <!--
       Tant qu'on ne sait pas si une session existe, ne rien montrer plutôt qu'un
       calendrier vide : sur un réseau lent, un écran vide sans explication est ce qui

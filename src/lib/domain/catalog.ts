@@ -132,10 +132,13 @@ export function deletionConsequences(usage: DeletionUsage): string[] {
   }
 
   if (usage.registrations > 0) {
-    lignes.push(
-      `${compte(usage.registrations, 'inscription', 'inscriptions')}. ` +
-        'Les personnes concernées ne verront plus rien dans leur calendrier, et sans motif.',
-    )
+    // L'accord suivait le nombre d'un côté et restait au pluriel de l'autre, dans la
+    // phrase qu'on lit juste avant un geste sans retour.
+    const qui =
+      usage.registrations === 1
+        ? 'La personne concernée ne verra plus rien dans son calendrier, et sans motif.'
+        : 'Les personnes concernées ne verront plus rien dans leur calendrier, et sans motif.'
+    lignes.push(`${compte(usage.registrations, 'inscription', 'inscriptions')}. ${qui}`)
   }
 
   if (usage.attendances > 0) {
@@ -180,7 +183,16 @@ export function planActivityRemoval(
     usage: complet(usage),
     message:
       `L'activité « ${title} » est retirée du programme. ` +
-      `${compte(usage.registrations, 'personne s’y est inscrite', 'personnes s’y sont inscrites')} : ` +
+      /*
+        « inscriptions » et non « personnes ».
+
+        Une inscription vaut pour une séance : quatorze patients qui viennent toutes les
+        semaines en comptent quarante en un mois. Le message annonçait « 40 personnes s'y
+        sont inscrites » dans un hôpital qui en compte quatorze — un chiffre impossible,
+        qui faisait croire à un service entier concerné. Le message de la suppression
+        forcée, lui, disait déjà « inscriptions ».
+      */
+      `${compte(usage.registrations, 'inscription la concerne', 'inscriptions la concernent')} : ` +
       "rien n'a été effacé.",
   }
 }

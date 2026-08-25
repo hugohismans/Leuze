@@ -4,7 +4,13 @@
  */
 import { addLocalDays, addMinutes, instantOf, todayLocalDate } from '../../domain/time'
 import { PLANNING_HORIZON_DAYS, agendaWeek, firstBookableDay, suggestSlot } from '../../domain/agenda'
-import { leaveRefusal, normalizeLeaves, withoutLeave, type Leave } from '../../domain/leave'
+import {
+  leaveConflictSummary,
+  leaveRefusal,
+  normalizeLeaves,
+  withoutLeave,
+  type Leave,
+} from '../../domain/leave'
 import { blockingConflicts, type BusyEntry } from '../../domain/conflicts'
 import { hasOverrides, type PatientActionOverrides, type PatientPermissions } from '../../domain/permissions'
 import type { ActivityProposal } from '../../domain/proposals'
@@ -26,6 +32,8 @@ import {
   DEMO_SERVICE_ID,
   readDemo,
   storeDetour,
+  storedRoles,
+  storeRoles,
   world,
   writeDemo,
 } from './state'
@@ -38,6 +46,16 @@ import {
   waitlistPosition,
 } from '../../domain/waitlist'
 import { slugify } from '../../domain/slug'
+import { phrase } from '../../domain/francais'
+
+/**
+ * Le motif écrit sur une séance annulée pour cause d'absence.
+ *
+ * « L'animateur est absent », et non « Congé » : c'est la personne inscrite qui le lira,
+ * et la raison d'une absence ne la regarde pas. Écrit une fois, pour que le retrait du
+ * congé reconnaisse exactement ce que la déclaration a posé.
+ */
+const MOTIF_ABSENCE = "L'animateur est absent"
 import type {
   NewPatientCode,
   ActivityDraft,
@@ -50,7 +68,15 @@ import type {
 } from '../staffPorts'
 
 const DEMO_STAFF: StaffIdentity = {
-  uid: 'demo-soignant',
+  /*
+    L'identifiant est celui du compte, `staff-marc`, et non un `demo-soignant` à part.
+
+    Les deux ne se rejoignaient jamais : la fiche de son propre compte, dans « Le
+    personnel », se croyait donc celle de quelqu'un d'autre. La case « Administrateur »
+    y restait active, et l'on pouvait se retirer ses propres droits — le garde-fou prévu
+    par l'écran ne se déclenchait pas une seule fois.
+  */
+  uid: 'staff-marc',
   email: 'soignant@exemple.test',
   firstName: 'Marc',
   role: 'admin',
@@ -82,13 +108,59 @@ const pourLaFeuille = (code: string): string => code.replace(/(.{3})(?=.)/g, '$1
  * Qui est administrateur, dans la démonstration. Les comptes n'y existent pas vraiment ;
  * ce petit registre tient lieu de jeton, le temps de la visite.
  */
-const rolesDeDemonstration = new Map<string, 'staff' | 'admin'>()
+/*
+  Le rôle de chaque intervenant, dans la démonstration.
+
+  « Marc » y est administrateur dès le départ : c'est le compte avec lequel on se
+  connecte. Sans cette ligne, les six fiches affichaient « Administrateur » décochée et
+  l'écran prétendait que personne ne l'était.
+*/
+const rolesDeDemonstration = new Map<string, 'staff' | 'admin'>([
+  ['marc', 'admin'],
+  // Ce qui a été réglé pendant la visite l'emporte, et survit au rechargement que
+  // « Voir à leur place » provoque.
+  ...storedRoles(),
+])
+
+/** Un numéro qui ne se répète pas, pour fabriquer des identifiants uniques. */
+let compteur = 0
+const prochainNumero = (): number => (compteur += 1)
 
 export function createMockStaffApp(): StaffApp {
   // Les activités vivent ici, les occurrences et les inscriptions dans le monde partagé
   // avec l'adapter patient : ce qui est décidé en réunion se voit côté patient.
   const activities = new Map<string, Activity>(activitiesSeed.map((a) => [a.id, a]))
   let identity: StaffIdentity = SIGNED_OUT
+
+  /**
+   * Une séance supprimée définitivement devient une exception de la série.
+   *
+   * Sans cela, elle revenait au premier enregistrement suivant de l'activité — au même
+   * jour, à la même heure — et la suppression n'avait été définitive que pour les
+   * inscriptions. On supprime une séance parce qu'elle ne doit pas avoir lieu ; changer
+   * ensuite le lieu de l'activité la ramenait au programme des patients.
+   *
+   * Une activité ponctuelle n'a pas de récurrence à laquelle accrocher l'exception : on
+   * la retire du programme, ce qui revient au même — elle n'avait qu'une séance.
+   */
+  function oublierCeJour(activityId: string, localDate: LocalDate): boolean {
+    const activite = activities.get(activityId)
+    if (activite === undefined) return false
+    if (activite.recurrence === null) {
+      activities.set(activityId, { ...activite, isActive: false })
+      // Vrai : l'activité entière quitte le programme, et l'écran doit le dire.
+      return true
+    }
+    if (activite.recurrence.skipDates.includes(localDate)) return false
+    activities.set(activityId, {
+      ...activite,
+      recurrence: {
+        ...activite.recurrence,
+        skipDates: [...activite.recurrence.skipDates, localDate].sort(),
+      },
+    })
+    return false
+  }
 
   // Comme une vraie session Firebase, celle de la démonstration survit au rechargement.
   // Sans cela, revenir d'un détour ramènerait à l'écran de connexion.
@@ -103,7 +175,15 @@ export function createMockStaffApp(): StaffApp {
       uid: `staff-${repris.id}`,
       email: `${repris.id}@exemple.test`,
       firstName: repris.name,
-      role: 'staff',
+      /*
+        Le rôle réel du compte, et non « soignant » d'office.
+
+        `impersonate` le lisait déjà, mais l'écran recharge aussitôt la page : c'est ce
+        bloc de reprise qui refabriquait l'identité, et la correction ne s'exécutait
+        jamais dans l'application. Prendre la place de quelqu'un pour voir ce qu'il voit
+        montrait alors autre chose que la vérité.
+      */
+      role: rolesDeDemonstration.get(repris.id) ?? 'staff',
       practitionerId: repris.id,
     }
   }
@@ -254,6 +334,7 @@ export function createMockStaffApp(): StaffApp {
         world.registrations = world.registrations.filter((r) => r.occurrenceId !== occurrenceId)
         for (const r of inscriptions) world.attendance.delete(`${occurrenceId}|${r.patientUid}`)
         world.occurrences.delete(occurrenceId)
+        const activiteRetiree = oublierCeJour(seance.activityId, seance.localDate)
         const combien =
           inscriptions.length === 0
             ? "Personne n'y était inscrit."
@@ -266,9 +347,19 @@ export function createMockStaffApp(): StaffApp {
             : presences === 1
               ? ' Une présence notée disparaît avec elle.'
               : ` ${presences} présences notées disparaissent avec elle.`
+        /*
+          Une activité ponctuelle n'a qu'une séance : la supprimer la retire du programme.
+
+          Cela se faisait en silence. On lisait « La séance de « X » est supprimée » et
+          l'activité disparaissait de la liste, sans un mot — c'est le cas par défaut du
+          formulaire, donc la grande majorité des activités.
+        */
+        const retiree = activiteRetiree
+          ? ' Cette activité n’avait que cette séance : elle est retirée du programme. Vous pouvez la remettre depuis « Les activités ».'
+          : ''
         return {
           ok: true,
-          message: `La séance de « ${seance.title} » est supprimée. ${combien}${notees}`,
+          message: `La séance de « ${seance.title} » est supprimée. ${combien}${notees}${retiree}`,
         }
       },
 
@@ -286,6 +377,11 @@ export function createMockStaffApp(): StaffApp {
           status: 'cancelled',
           cancellationReason: reason,
           overridden: true,
+          // Annulée par un soignant, avec un motif : la régénération n'y touche pas, et
+          // le retrait d'un congé ne la rétablit pas — même si le motif choisi est
+          // « L'animateur est absent ».
+          autoCancelled: false,
+          cancelledByLeave: false,
         })
       },
 
@@ -295,8 +391,14 @@ export function createMockStaffApp(): StaffApp {
             .filter((o) => o.localDate >= from && o.localDate <= to)
             .map((o) => o.id),
         )
+        const maintenant = Date.now()
         return world.patients
           .filter((patient) => serviceId === undefined || patient.serviceId === serviceId)
+          // Un séjour terminé ne reçoit plus de feuille. Le serveur l'écarte déjà ; la
+          // démonstration le gardait, et « Les patients » et « Les plannings » se
+          // contredisaient — la personne avait disparu d'un écran, sa feuille s'imprimait
+          // encore dans l'autre.
+          .filter((patient) => patient.expiresAt === undefined || patient.expiresAt.getTime() > maintenant)
           .sort((a, b) => a.firstName.localeCompare(b.firstName, 'fr'))
           .map((patient) => ({
             patientUid: patient.uid,
@@ -313,11 +415,19 @@ export function createMockStaffApp(): StaffApp {
           }))
       },
 
+      /**
+       * Rétablir une séance la remet **dans** la série, et non à côté d'elle.
+       *
+       * Elle en sortait : marquée « modifiée isolément », elle gardait pour toujours
+       * l'ancien titre, l'ancien lieu et l'ancienne heure. La même activité portait alors
+       * deux noms dans le même programme, et les patients de la première semaine lisaient
+       * un nom que le personnel croyait avoir changé.
+       */
       async restoreOccurrence(occurrenceId: string): Promise<void> {
         const occurrence = world.occurrences.get(occurrenceId)
         if (!occurrence) return
-        const { cancellationReason: _motif, ...reste } = occurrence
-        world.occurrences.set(occurrenceId, { ...reste, status: 'scheduled', overridden: true })
+        const { cancellationReason: _motif, autoCancelled: _auto, ...reste } = occurrence
+        world.occurrences.set(occurrenceId, { ...reste, status: 'scheduled', overridden: false })
       },
 
       async roster(occurrenceId: string) {
@@ -361,10 +471,22 @@ export function createMockStaffApp(): StaffApp {
             walkIn: true,
           })
           if (!outcome.ok) {
-            return { ok: false, message: registrationBlockMessage(outcome.reason as never) }
+            return { ok: false, message: registrationBlockMessage(outcome.reason as never, 'staff') }
           }
           applyBoard(outcome.board)
         }
+        /*
+          Noter une présence ne donne pas la place.
+
+          On l'avait fait : une personne en liste d'attente notée présente passait
+          confirmée. Mais la feuille d'appel se touche du doigt, quinze prénoms à la
+          suite, sur une tablette posée en salle — et un appui de travers faisait alors
+          passer quelqu'un devant tous ceux qui attendaient, sans retour possible :
+          « Présent — annuler » efface la présence, pas la promotion.
+
+          La feuille dit donc qui était là, et la place se donne d'un geste séparé et
+          explicite — « Donner la place », sur la fiche de la séance.
+        */
         const cle = `${occurrenceId}|${patientUid}`
         if (attendance === null) world.attendance.delete(cle)
         else world.attendance.set(cle, attendance)
@@ -407,12 +529,51 @@ export function createMockStaffApp(): StaffApp {
         }
       },
 
+      /**
+       * Fin de séjour : le code cesse de fonctionner, et les places retenues pour les
+       * séances à venir sont rendues.
+       *
+       * Sans cela, l'inscription de jeudi tenait toujours un siège sur douze pour
+       * quelqu'un qui était parti, la liste d'attente n'avançait pas, et plus aucun
+       * écran ne permettait de l'en retirer : la personne avait disparu des listes où
+       * l'on désinscrit. Le passé, lui, ne bouge pas — une feuille d'appel déjà remplie
+       * ne se réécrit pas.
+       */
       async endStay(patientUid: string) {
         exigeAdministrateur()
         world.patients = world.patients.map((p) =>
           p.uid === patientUid ? { ...p, expiresAt: new Date(Date.now() - 1000) } : p,
         )
-        return { ok: true, message: 'Le séjour est clôturé. Le code ne fonctionne plus.' }
+
+        const maintenant = Date.now()
+        const aVenir = new Set(
+          world.registrations
+            .filter((r) => r.patientUid === patientUid && r.status !== 'cancelled')
+            .map((r) => r.occurrenceId)
+            .filter((occurrenceId) => {
+              const seance = world.occurrences.get(occurrenceId)
+              return seance !== undefined && seance.start.getTime() >= maintenant
+            }),
+        )
+        let rendues = 0
+        for (const occurrenceId of aVenir) {
+          const board = boardOf(occurrenceId)
+          if (board === null) continue
+          const outcome = domainUnregister(board, patientUid)
+          if (!outcome.ok) continue
+          applyBoard(outcome.board)
+          rendues += 1
+        }
+
+        return {
+          ok: true,
+          message:
+            rendues === 0
+              ? 'Le séjour est clôturé. Le code ne fonctionne plus.'
+              : rendues === 1
+                ? 'Le séjour est clôturé. Le code ne fonctionne plus. Une place retenue a été rendue.'
+                : `Le séjour est clôturé. Le code ne fonctionne plus. ${rendues} places retenues ont été rendues.`,
+        }
       },
 
       async registerPatient(occurrenceId: string, patientUid: string, options = {}) {
@@ -452,14 +613,20 @@ export function createMockStaffApp(): StaffApp {
             message:
               outcome.reason === 'already-registered'
                 ? 'Cette personne est déjà inscrite.'
-                : registrationBlockMessage(outcome.reason),
+                : // Écrit pour le soignant : les phrases du patient lui renvoyaient à
+                  // lui-même.
+                  registrationBlockMessage(outcome.reason, 'staff'),
           }
         }
         applyBoard(outcome.board)
         return {
           ok: true,
           status: outcome.status,
-          message: outcome.status === 'confirmed' ? 'Inscrit' : "Sur la liste d'attente",
+          // Une phrase, comme « Retiré de la liste. » qui lui répond dans le même bandeau.
+          message:
+            outcome.status === 'confirmed'
+              ? 'Inscrit à cette séance.'
+              : "Placé sur la liste d'attente.",
         }
       },
 
@@ -524,7 +691,17 @@ export function createMockStaffApp(): StaffApp {
         world.appointments = [
           ...world.appointments,
           {
-            id: `rdv-${externe === '' ? rendezVous.patientUid : 'externe'}-${start.getTime()}`,
+            /*
+              Un identifiant vraiment unique.
+
+              Il se fabriquait à partir du patient et de l'heure : deux rendez-vous fixés
+              au même moment pour la même personne — geste tout à fait ordinaire quand on
+              se trompe et qu'on recommence — recevaient donc le même identifiant. La
+              liste s'arrêtait alors de se rendre, et l'écran des rendez-vous devenait
+              inatteignable jusqu'au rechargement. Firestore, lui, en attribue toujours un
+              nouveau : la démonstration doit faire pareil.
+            */
+            id: `rdv-${externe === '' ? rendezVous.patientUid : 'externe'}-${start.getTime()}-${prochainNumero()}`,
             // L'un ou l'autre, jamais les deux : comme sur le serveur.
             ...(externe === ''
               ? { patientUid: rendezVous.patientUid ?? '' }
@@ -563,6 +740,17 @@ export function createMockStaffApp(): StaffApp {
         const depart = query.from ?? firstBookableDay(todayLocalDate())
         const jusque = addLocalDays(depart, PLANNING_HORIZON_DAYS)
 
+        /*
+          Ce que l'agenda croisé dit, et à qui.
+
+          La démonstration recopiait les libellés tels quels : Claire y lisait
+          « Rendez-vous avec Docteur Lemaire » et le titre de toutes les activités de
+          Camille. Elle apprenait donc que Camille voit le psychiatre jeudi à 11h —
+          exactement ce que le projet s'interdit de laisser circuler. Le serveur, lui,
+          masquait déjà. Les deux disent maintenant la même chose : on montre **quand**
+          quelqu'un est pris, pas à quoi.
+        */
+        const sien = identity.role === 'admin' || identity.practitionerId === query.practitionerId
         const occupeIntervenant: BusyEntry[] = []
         for (const rendezVous of world.appointments) {
           if (rendezVous.practitionerId !== query.practitionerId || rendezVous.status !== 'scheduled') continue
@@ -570,7 +758,8 @@ export function createMockStaffApp(): StaffApp {
           occupeIntervenant.push({
             start: rendezVous.start,
             end: rendezVous.end,
-            label: 'Rendez-vous',
+            // Le motif d'un rendez-vous ne regarde que l'intéressé et l'administrateur.
+            label: sien ? 'Rendez-vous' : 'Occupé',
             kind: 'appointment',
           })
         }
@@ -580,7 +769,7 @@ export function createMockStaffApp(): StaffApp {
           occupeIntervenant.push({
             start: occurrence.start,
             end: occurrence.end,
-            label: occurrence.title,
+            label: sien ? occurrence.title : 'Occupé',
             kind: 'activity',
           })
         }
@@ -588,7 +777,13 @@ export function createMockStaffApp(): StaffApp {
         const occupePatient: BusyEntry[] = []
         if (query.patientUid !== undefined) {
           for (let i = 0; i <= PLANNING_HORIZON_DAYS; i += 1) {
-            occupePatient.push(...busyOn(query.patientUid, addLocalDays(depart, i)))
+            // Ce que fait un patient de sa journée ne regarde pas tout le personnel.
+            occupePatient.push(
+              ...busyOn(query.patientUid, addLocalDays(depart, i)).map((entree) => ({
+                ...entree,
+                label: identity.role === 'admin' ? entree.label : 'Occupé',
+              })),
+            )
           }
         }
 
@@ -619,7 +814,9 @@ export function createMockStaffApp(): StaffApp {
 
       async cancelAppointment(appointmentId: string, reason: string) {
         world.appointments = world.appointments.map((a) =>
-          a.id === appointmentId ? { ...a, status: 'cancelled' as const, cancellationReason: reason } : a,
+          a.id === appointmentId
+            ? { ...a, status: 'cancelled' as const, cancellationReason: reason, cancelledAt: new Date() }
+            : a,
         )
         return { ok: true, message: 'Rendez-vous annulé.' }
       },
@@ -654,7 +851,7 @@ export function createMockStaffApp(): StaffApp {
             message: 'Vous ne pouvez déclarer un congé que pour vous-même. Demandez à un administrateur.',
           }
         }
-        const refus = leaveRefusal(leave)
+        const refus = leaveRefusal(leave, todayLocalDate())
         if (refus !== null) return { ok: false, message: refus }
 
         const enCours = world.appointments.filter(
@@ -663,17 +860,29 @@ export function createMockStaffApp(): StaffApp {
             a.status === 'scheduled' &&
             a.localDate !== undefined &&
             a.localDate >= leave.from &&
-            a.localDate <= leave.to,
+            a.localDate <= leave.to &&
+            // Un rendez-vous déjà passé n'a pas à retourner dans la file : il a eu lieu.
+            (a.end ?? a.start)!.getTime() >= Date.now(),
         )
-        // Les séances animées pendant le congé : la liste, et non le seul compte. Un
-        // congé posé sur une journée qui ne portait qu'un atelier ne demandait rien.
+        /*
+          Les séances animées pendant le congé : la liste, et non le seul compte. Un
+          congé posé sur une journée qui ne portait qu'un atelier ne demandait rien.
+
+          Seulement celles qui n'ont pas encore eu lieu. « Annuler » veut dire « n'aura
+          pas lieu » : une séance de ce matin a eu lieu, et les personnes qui y sont
+          allées n'ont pas à lire qu'elle a été annulée. Le cas se pose dès qu'on déclare
+          un congé qui a commencé — on tombe malade sans prévenir, et c'est le lendemain
+          qu'on le déclare.
+        */
+        const maintenant = Date.now()
         const animees = [...world.occurrences.values()]
           .filter(
             (o) =>
               o.facilitatorId === practitionerId &&
               o.status === 'scheduled' &&
               o.localDate >= leave.from &&
-              o.localDate <= leave.to,
+              o.localDate <= leave.to &&
+              o.end.getTime() >= maintenant,
           )
           .map((o) => ({
             occurrenceId: o.id,
@@ -686,19 +895,6 @@ export function createMockStaffApp(): StaffApp {
           .sort((a, b) => a.localDate.localeCompare(b.localDate))
 
         if ((enCours.length > 0 || animees.length > 0) && options.force !== true) {
-          const bouts: string[] = []
-          if (animees.length > 0) {
-            bouts.push(
-              animees.length === 1
-                ? 'une séance que vous animez'
-                : `${animees.length} séances que vous animez`,
-            )
-          }
-          if (enCours.length > 0) {
-            bouts.push(
-              enCours.length === 1 ? 'un rendez-vous fixé' : `${enCours.length} rendez-vous fixés`,
-            )
-          }
           return {
             ok: false,
             needsConfirmation: true,
@@ -711,7 +907,14 @@ export function createMockStaffApp(): StaffApp {
               ...(a.start === undefined ? {} : { start: a.start.toISOString() }),
               ...(a.end === undefined ? {} : { end: a.end.toISOString() }),
             })),
-            message: `Ce congé tombe sur ${bouts.join(' et ')}.`,
+            // La même phrase que le serveur, et pour la même raison : « animées par
+            // cette personne » s'écrivait à celle-là même qui les anime.
+            message: leaveConflictSummary(enCours.length, animees.length, {
+              isSelf: identity.practitionerId === practitionerId,
+              ...(mockCatalog.practitioners().find((p) => p.id === practitionerId)?.name === undefined
+                ? {}
+                : { name: mockCatalog.practitioners().find((p) => p.id === practitionerId)!.name }),
+            }),
           }
         }
 
@@ -728,8 +931,10 @@ export function createMockStaffApp(): StaffApp {
           world.occurrences.set(seance.occurrenceId, {
             ...occurrence,
             status: 'cancelled',
-            cancellationReason: "L'animateur est absent",
+            cancellationReason: MOTIF_ABSENCE,
             overridden: true,
+            // C'est ce congé-ci qui l'a barrée : le retirer la rétablira, et lui seul.
+            cancelledByLeave: true,
           })
         }
         const rouverts = new Set(enCours.map((a) => a.id))
@@ -766,22 +971,99 @@ export function createMockStaffApp(): StaffApp {
           message:
             faits.length === 0
               ? 'Le congé est enregistré. Aucun rendez-vous ne sera proposé sur ces jours.'
-              : `Le congé est enregistré. ${faits.join(', et ')}.`,
+              // La majuscule se remet ici : les morceaux sont fabriqués en minuscule,
+              // et « Le congé est enregistré. un rendez-vous… » se lisait mal.
+              : `Le congé est enregistré. ${phrase(faits.join(', et '))}.`,
         }
       },
 
+      /**
+       * Retirer un congé rétablit les séances que ce congé avait annulées.
+       *
+       * Elles restaient barrées, avec le motif « L'animateur est absent », alors que
+       * l'animateur n'était plus en congé — et le message ne parlait que des rendez-vous,
+       * laissant croire que tout le reste était revenu à la normale. Un soignant qui se
+       * trompe de personne ou de dates doit pouvoir revenir en arrière.
+       *
+       * Seules celles-là : une séance annulée pour une autre raison, ou par quelqu'un
+       * d'autre, n'a rien à voir avec ce congé. Et seules celles à venir : rétablir une
+       * séance de la semaine dernière ne rétablit rien.
+       */
       async removeLeave(practitionerId: string, leave: Leave) {
         if (identity.role !== 'admin' && identity.practitionerId !== practitionerId) {
           return { ok: false, message: 'Vous ne pouvez retirer que vos propres congés.' }
         }
-        world.leaves = {
-          ...world.leaves,
-          [practitionerId]: withoutLeave(world.leaves[practitionerId] ?? [], leave),
+        const avant = world.leaves[practitionerId] ?? []
+        const apres = withoutLeave(avant, leave)
+        world.leaves = { ...world.leaves, [practitionerId]: apres }
+
+        /*
+          On ne rétablit rien si l'on n'a rien retiré.
+
+          `withoutLeave` rend la liste inchangée quand le congé n'y figure pas — deux
+          onglets ouverts, un double appui — et l'on rétablissait alors des séances au nom
+          d'un congé qui n'avait pas bougé.
+        */
+        if (apres.length === avant.length) {
+          return {
+            ok: true,
+            message: 'Ce congé n’était plus déclaré. Rien n’a changé.',
+          }
         }
+
+        const maintenant = Date.now()
+        let retablies = 0
+        for (const [id, occurrence] of world.occurrences) {
+          if (occurrence.status !== 'cancelled') continue
+          // La marque, et non le texte du motif : « L'animateur est absent » est aussi
+          // l'un des motifs que le bouton « Annuler cette séance » propose.
+          if (occurrence.cancelledByLeave !== true) continue
+          if (occurrence.facilitatorId !== practitionerId) continue
+          if (occurrence.localDate < leave.from || occurrence.localDate > leave.to) continue
+          /*
+            Le passé ne se rétablit pas plus qu'il ne s'annule.
+
+            La déclaration épargne déjà les séances terminées — à l'instant près, et non
+            à la journée. Le retrait comparait des jours : une séance de ce matin, déjà
+            tenue, réapparaissait donc au programme de l'après-midi.
+          */
+          if (occurrence.end.getTime() < maintenant) continue
+          /*
+            L'activité doit toujours être au programme.
+
+            Enchaînement ordinaire : congé posé sur une séance, activité retirée du
+            programme pendant l'absence, puis congé retiré parce que la personne rentre
+            plus tôt. La séance réapparaissait alors dans le calendrier des patients,
+            pour une activité que l'équipe avait décidé d'arrêter.
+          */
+          if (activities.get(occurrence.activityId)?.isActive !== true) continue
+          /*
+            La séance rentre dans sa série, et n'en sort pas.
+
+            `overridden` et `autoCancelled` se retirent tous les deux, comme dans
+            `restoreOccurrence`. Sans cela, la séance rétablie restait marquée « modifiée
+            isolément » : elle gardait à jamais l'ancien titre, l'ancien lieu et l'ancienne
+            heure, et la même activité portait deux noms dans le même programme.
+          */
+          const {
+            cancellationReason: _motif,
+            autoCancelled: _auto,
+            cancelledByLeave: _conge,
+            ...sansMotif
+          } = occurrence
+          world.occurrences.set(id, { ...sansMotif, status: 'scheduled' as const, overridden: false })
+          retablies += 1
+        }
+
+        const seances =
+          retablies === 0
+            ? ''
+            : retablies === 1
+              ? ' Une séance annulée pour ce congé est rétablie.'
+              : ` ${retablies} séances annulées pour ce congé sont rétablies.`
         return {
           ok: true,
-          message:
-            'Le congé est retiré. Les rendez-vous déjà remis dans la file y restent : ils se refixent à la main.',
+          message: `Le congé est retiré.${seances} Les rendez-vous déjà remis dans la file y restent : ils se refixent à la main.`,
         }
       },
 
@@ -798,7 +1080,15 @@ export function createMockStaffApp(): StaffApp {
         if (serviceId === null || serviceId === '') delete suivants[uid]
         else suivants[uid] = serviceId
         world.staffUnits = suivants
-        return { ok: true, message: 'Votre unité est enregistrée.' }
+        // Les mêmes mots que le serveur : « Votre unité est enregistrée » contredisait
+        // le geste quand on venait précisément de n'en choisir aucune.
+        return {
+          ok: true,
+          message:
+            serviceId === null || serviceId === ''
+              ? "Votre compte n'est plus rattaché à une unité : vous voyez tout l'hôpital."
+              : 'Votre unité est enregistrée.',
+        }
       },
 
       async readPatientPermissions(): Promise<PatientPermissions> {
@@ -864,9 +1154,18 @@ export function createMockStaffApp(): StaffApp {
         return {
           ok: true,
           message:
-            decision === 'accepted'
-              ? 'Idée retenue. Créez l’activité : le titre et la description sont recopiés.'
-              : 'Réponse enregistrée. La personne lira votre phrase.',
+            decision !== 'accepted'
+              ? 'Réponse enregistrée. La personne lira votre phrase.'
+              : /*
+                  Le message dépend de ce qui vient de se passer.
+
+                  « Créez l'activité » s'affichait encore **après** l'avoir créée : la
+                  décision est enregistrée à la fin de l'enregistrement, et son message
+                  recouvrait celui de la création.
+                */
+                options.activityId === undefined
+                ? 'Idée retenue. Créez l’activité : le titre et la description sont recopiés.'
+                : 'Idée retenue, et l’activité est créée. La personne qui l’a proposée le lira.',
         }
       },
 
@@ -881,13 +1180,23 @@ export function createMockStaffApp(): StaffApp {
     },
 
     catalogAdmin: {
+      /*
+        Les mêmes refus que les règles Firestore, au même endroit : dans la couche de
+        données, et non dans l'écran seul. Les lieux, les services et les catégories
+        s'écrivaient sans rien demander en démonstration, alors que les règles exigent
+        l'administrateur — la discipline est déjà tenue juste en dessous, pour les motifs
+        de rendez-vous et les intervenants.
+      */
       async saveLocation(location) {
+        exigeAdministrateur()
         mockCatalog.saveLocation(location)
       },
       async saveService(service) {
+        exigeAdministrateur()
         mockCatalog.saveService(service)
       },
       async saveCategory(category) {
+        exigeAdministrateur()
         mockCatalog.saveCategory(category)
       },
       async saveAppointmentKind(kind) {
@@ -914,7 +1223,19 @@ export function createMockStaffApp(): StaffApp {
         }
         const personne = mockCatalog.practitioners().find((i) => i.id === practitionerId)
         if (personne === undefined) throw new Error("Cette personne n'existe pas.")
-        mockCatalog.savePractitioner({ ...personne, availability: windows })
+        /*
+          Sans plage, l'acceptation automatique n'a plus de sens : elle s'éteint.
+
+          Elle restait activée en coulisse quand on effaçait toutes les plages — la
+          bascule disparaissait de l'écran, mais le réglage tenait. Le jour où l'on
+          redéclarait une plage, les rendez-vous se remettaient à se fixer tout seuls sans
+          que personne l'ait demandé.
+        */
+        mockCatalog.savePractitioner({
+          ...personne,
+          availability: windows,
+          ...(windows.length === 0 ? { autoAccept: false } : {}),
+        })
       },
       async setStaffRole(uid, role) {
         // La démonstration n'a pas de comptes réels : on répond ce que répondrait le
@@ -925,6 +1246,7 @@ export function createMockStaffApp(): StaffApp {
         // Le changement se voit dans la démonstration comme il se verrait en vrai.
         const intervenantId = uid.replace(/^staff-/, '')
         rolesDeDemonstration.set(intervenantId, role)
+        storeRoles(rolesDeDemonstration)
         return {
           ok: true,
           message:
@@ -944,6 +1266,8 @@ export function createMockStaffApp(): StaffApp {
         mockCatalog.savePractitioner({ ...personne, autoAccept })
       },
       async removeEntry(kind, id) {
+        // `removeCatalogEntry` exige l'administrateur sur le serveur : ici aussi.
+        exigeAdministrateur()
         // Même décision que côté serveur, sur le petit monde de la démonstration :
         // supprimé si rien ne l'utilise, retiré des listes sinon.
         const parActivite = (activity: Activity): boolean =>
@@ -1012,12 +1336,17 @@ export function createMockStaffApp(): StaffApp {
             role: rolesDeDemonstration.get(i.id) ?? ('staff' as const),
             practitionerId: i.id,
           }))
-        const patients: Account[] = world.patients.map((p) => ({
-          uid: p.uid,
-          label: p.firstName,
-          detail: mockCatalog.services().find((s) => s.id === p.serviceId)?.name ?? p.serviceId,
-          kind: 'patient' as const,
-        }))
+        // Un séjour clos ne se propose plus : le serveur l'écarte déjà, et la
+        // démonstration doit montrer ce que le site réel fera.
+        const maintenant = Date.now()
+        const patients: Account[] = world.patients
+          .filter((p) => p.expiresAt === undefined || p.expiresAt.getTime() > maintenant)
+          .map((p) => ({
+            uid: p.uid,
+            label: p.firstName,
+            detail: mockCatalog.services().find((s) => s.id === p.serviceId)?.name ?? p.serviceId,
+            kind: 'patient' as const,
+          }))
         return [...personnel, ...patients]
       },
 
@@ -1039,13 +1368,18 @@ export function createMockStaffApp(): StaffApp {
         if (intervenant === undefined) {
           return { ok: false as const, message: "Ce compte n'existe pas." }
         }
-        // Un intervenant ordinaire n'est pas administrateur : c'est justement ce qu'on
-        // vient vérifier — il ne doit voir que l'appel de ses propres activités.
+        /*
+          Le rôle est celui du compte, et non « soignant » d'office.
+
+          Prendre la place de quelqu'un sert à voir ce qu'il voit : l'imposer simple
+          soignant montrait autre chose que la vérité dès qu'on venait de le rendre
+          administrateur. Le serveur, lui, laisse les droits réels du compte s'appliquer.
+        */
         identity = {
           uid,
           email: `${intervenant.id}@exemple.test`,
           firstName: intervenant.name,
-          role: 'staff',
+          role: rolesDeDemonstration.get(intervenant.id) ?? 'staff',
           practitionerId: intervenant.id,
         }
         world.session = { patientUid: null, firstName: null, serviceId: null }

@@ -50,6 +50,16 @@ export type SlotSearch = {
   stepMin?: number
   /** Les congés déclarés : ces jours-là, rien n'est retenu. */
   leaves?: Leave[]
+  /**
+   * Ce que le patient a déjà — activités et rendez-vous.
+   *
+   * Il manquait, et l'acceptation automatique posait tranquillement un rendez-vous
+   * par-dessus l'atelier auquel la personne était inscrite. « Ma semaine » affichait les
+   * deux au même moment, sans un mot, et c'est le patient qui devait choisir. Le même
+   * calcul, lorsqu'un soignant fixe le rendez-vous à la main, recevait déjà son agenda :
+   * il n'y avait aucune raison que la machine soit moins prudente que l'humain.
+   */
+  patientBusy?: BusySlot[]
 }
 
 export type FoundSlot = Suggestion
@@ -90,7 +100,7 @@ export function findFirstSlot(search: SlotSearch): FoundSlot | null {
   return suggestSlot({
     windows: search.windows,
     practitionerBusy: search.busy.map(enIntervalle),
-    patientBusy: [],
+    patientBusy: (search.patientBusy ?? []).map(enIntervalle),
     preference: search.preference,
     from: search.from,
     horizonDays: search.horizonDays,

@@ -189,7 +189,14 @@ body {
     min-width: 0;
     padding: 0.3rem 0.7rem;
     border-radius: 999px;
-    font-size: 0.95rem;
+    /*
+      Jamais sous le plancher du projet.
+
+      Les insignes étaient à 0,95 rem — 17,1 px sur une racine à 18 — et ce sont pourtant
+      les seuls porteurs d'une information de décision : « Il reste des places »,
+      « Complet », « Annulée », « Vous êtes inscrit », « Réservée à votre service ».
+    */
+    font-size: 1rem;
     font-weight: 600;
     border: 2px solid transparent;
   }

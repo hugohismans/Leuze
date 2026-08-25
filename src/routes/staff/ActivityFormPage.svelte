@@ -4,7 +4,12 @@
   import { store } from '../../lib/appState.svelte'
   import { audienceLabelForStaff, isPublished } from '../../lib/domain/audience'
   import { staffCapacityLabel } from '../../lib/domain/capacity'
-  import { formatLongDayLabel, formatTimeRange, todayLocalDate } from '../../lib/domain/time'
+  import {
+    formatDuration,
+    formatLongDayLabel,
+    formatTimeRange,
+    todayLocalDate,
+  } from '../../lib/domain/time'
   import CancelButton from './CancelButton.svelte'
   import type { Activity, IsoWeekday, LocalDate, LocalTime } from '../../lib/domain/types'
   import type { RosterLine } from '../../lib/data/staffPorts'
@@ -15,6 +20,7 @@
   } from '../../lib/domain/activityAccess'
   import { deletionConsequences } from '../../lib/domain/catalog'
   import { leaveClashes } from '../../lib/domain/leave'
+  import { findOccurrence } from '../../lib/domain/recurrence'
   import { isoWeekdayOf } from '../../lib/domain/time'
   import { navigate } from '../../lib/router.svelte'
 
@@ -59,6 +65,22 @@
   let listeAttente = $state(true)
   let auProgramme = $state(true)
   let seriesId = $state<string | undefined>(undefined)
+  /**
+   * Ce que la règle de récurrence porte déjà, et que le formulaire ne montre pas.
+   *
+   * Le formulaire ne demande que les jours, l'heure et la durée. Il réécrivait donc le
+   * reste à neuf : `from` repartait d'aujourd'hui, `until` et `skipDates` étaient perdus.
+   *
+   * Conséquence constatée : enregistrer une activité hebdomadaire **sans rien y changer**
+   * annulait la séance déjà passée de la semaine en cours, avec ses inscrits. La fenêtre
+   * de génération commence au lundi de la semaine ; la règle, elle, repartait du jour
+   * même. La séance du lundi tombait entre les deux et se retrouvait « annulée —
+   * l'activité a été modifiée ». Une date de fin et des jours sautés disparaissaient de
+   * la même façon, sans que rien ne le dise.
+   */
+  let recurrenceDepart = $state<LocalDate | null>(null)
+  let recurrenceFin = $state<LocalDate | null>(null)
+  let recurrenceSautees = $state<LocalDate[]>([])
 
   let chargee = $state(false)
   /** L'activité déjà demandée au serveur : on ne la demande jamais deux fois. */
@@ -98,12 +120,25 @@
       if (!staffStore.unitLoaded) return
       categoryId = categories[0]!.id
       locationId = lieux[0]!.id
-      if (staffStore.unit !== null) {
+      /*
+        `accountUnit` et non `unit` : c'est la bulle où l'on travaille, pas ce qu'on
+        regarde en ce moment. Cocher « Voir toutes les unités » pour jeter un œil au
+        programme d'à côté vidait `unit` : l'activité créée ensuite s'ouvrait à tout
+        l'hôpital, à rebours de ce que ce paragraphe dit faire.
+      */
+      if (staffStore.accountUnit !== null) {
         pourTous = false
-        serviceIds = [staffStore.unit]
+        serviceIds = [staffStore.accountUnit]
       }
       // La date vient de la case de la semaine sur laquelle le soignant a cliqué.
-      if (date !== undefined) dateUnique = date
+      /*
+        Une date passée, venue de la semaine qu'on feuillette, ne sert à rien.
+
+        « ＋ Ajouter » depuis une semaine passée — un geste courant pour relire le
+        programme — pré-remplissait une date qui ne produirait aucune séance, et
+        l'enregistrement la refusait ensuite. On propose aujourd'hui, qui marche.
+      */
+      if (date !== undefined) dateUnique = date < todayLocalDate() ? todayLocalDate() : date
 
       /*
         L'activité née d'une idée de patient arrive avec son titre et sa description.
@@ -157,6 +192,7 @@
       if (pour !== activityId || chargee) return
       if (activity === null) {
         erreur = "Cette activité n'a pas été trouvée."
+        introuvable = true
         chargee = true
         return
       }
@@ -168,11 +204,22 @@
       facilitatorId = activity.facilitatorId ?? ''
       animeParUnPatient = activity.ledByPatient === true
       repetition = activity.recurrence === null ? 'une-fois' : 'chaque-semaine'
-      dateUnique = activity.singleStart?.date ?? date ?? todayLocalDate()
+      // « date » peut être un identifiant de séance : on prend alors son jour à elle.
+      dateUnique = activity.singleStart?.date ?? seance?.localDate ?? date ?? todayLocalDate()
       void 0
       jours = activity.recurrence?.byWeekday ?? []
+      recurrenceDepart = activity.recurrence?.from ?? null
+      recurrenceFin = activity.recurrence?.until ?? null
+      recurrenceSautees = activity.recurrence?.skipDates ?? []
       heure = activity.recurrence?.startTime ?? activity.singleStart?.time ?? '14:00'
       duree = activity.recurrence?.durationMin ?? activity.singleStart?.durationMin ?? 60
+      /*
+        L'horaire tel qu'il était en arrivant, pour savoir si on l'a changé.
+
+        Un `let` ordinaire, non réactif : le comparer à l'état courant dans un « derived »
+        n'en ferait pas une dépendance, et l'écrire ici ne doit relancer aucun effet.
+      */
+      horaireInitial = `${repetition}|${jours.join(',')}|${dateUnique}|${heure}`
       pourTous = activity.audience === 'all'
       serviceIds = [...activity.serviceIds]
       placesLimitees = activity.capacity !== null
@@ -254,9 +301,55 @@
           staffStore.leavesOf(facilitatorId),
           repetition === 'une-fois' ? { dates: [dateUnique] } : { weekdays: jours },
           isoWeekdayOf,
+          // Un congé déjà terminé faisait apparaître un avertissement sur une date
+          // passée, et bloquait le premier enregistrement pour rien.
+          todayLocalDate(),
         ),
   )
+  /*
+    L'activité demandée n'existe pas.
+
+    Le formulaire s'ouvrait quand même, actif, intitulé « Modifier l'activité » — et
+    l'enregistrer créait une activité vide sous un identifiant inventé. Une adresse
+    fautive ou une activité effacée entre-temps suffisait.
+  */
+  let introuvable = $state(false)
+
   let avertissementConge = $state(false)
+
+  /*
+    Changer le jour ou l'heure d'une activité laisse les inscrits derrière.
+
+    L'identifiant d'une séance porte sa date et son heure : déplacer l'activité d'une
+    heure crée une séance neuve et vide, et l'ancienne — celle qui portait les
+    inscriptions — est barrée. Rien ne le disait avant d'enregistrer, et le patient lisait
+    « Cette activité a été annulée » pour une activité simplement déplacée.
+
+    L'application ne déplace pas les inscriptions : elle prévient, et l'on décide. C'est
+    une limite connue, pas un oubli.
+  */
+  let horaireInitial = ''
+  const horaireCourant = $derived(`${repetition}|${jours.join(',')}|${dateUnique}|${heure}`)
+  const horaireChange = $derived(
+    !nouvelle && horaireInitial !== '' && horaireCourant !== horaireInitial,
+  )
+  let avertissementHoraire = $state(false)
+
+  /**
+   * Ce que porte le bouton d'enregistrement, écrit une seule fois.
+   *
+   * L'avertissement d'horaire disait « Appuyez de nouveau sur « Enregistrer » » pendant
+   * que le bouton portait « Enregistrer sans appel » ou « Enregistrer malgré le congé » —
+   * ce qui arrive dès qu'on change l'horaire d'une activité sans animateur désigné. On
+   * cherchait alors un bouton qui n'existait pas.
+   */
+  const libelleEnregistrer = $derived(
+    avertissementConge && congesHeurtes.length > 0
+      ? 'Enregistrer malgré le congé'
+      : avertissementAnimateur && facilitatorId === ''
+        ? 'Enregistrer sans appel'
+        : 'Enregistrer',
+  )
 
   async function enregistrer(event: SubmitEvent): Promise<void> {
     event.preventDefault()
@@ -275,6 +368,60 @@
     }
     if (repetition === 'une-fois' && !dateUnique) {
       erreur = 'Choisissez la date de l’activité.'
+      return
+    }
+    /*
+      Une activité ponctuelle datée d'hier ne produit aucune séance.
+
+      Elle s'enregistrait quand même, figurait dans la liste comme les autres, avec sa
+      date — et n'apparaissait jamais nulle part : ni dans la semaine du soignant, ni chez
+      les patients. Le message, « Aucun changement dans le calendrier », ne se rattachait
+      à rien de visible. On refuse, en disant pourquoi.
+    */
+    if (repetition === 'une-fois' && !/^[12]\d{3}-\d{2}-\d{2}$/.test(dateUnique)) {
+      erreur = 'Cette date n’est pas lisible. Vérifiez le jour, le mois et l’année.'
+      return
+    }
+    /*
+      Le refus ne vaut que pour une activité qu'on CRÉE.
+
+      Appliqué à la modification, il rendait impossible de toucher à une activité
+      ponctuelle déjà passée — corriger une faute de frappe, changer un lieu, la retirer
+      du programme : plus rien. Ce qui a eu lieu se relit et se corrige.
+    */
+    if (nouvelle && repetition === 'une-fois' && dateUnique < todayLocalDate()) {
+      erreur =
+        'Cette date est passée : aucune séance ne serait créée. Choisissez aujourd’hui ou un jour à venir.'
+      return
+    }
+    /*
+      L'heure vide s'enregistrait, et cassait tout ce qui affiche un programme.
+
+      Un champ « time » se vide d'un geste, et le formulaire ne demandait rien. La séance
+      naissait alors sans instant lisible, et le premier écran qui tentait de la placer
+      dans une semaine levait une erreur — la semaine, aujourd'hui, l'impression, et le
+      calendrier du patient. Une seule saisie suffisait à rendre l'application muette.
+
+      Le format est vérifié, pas seulement la présence : un champ « time » rend « HH:mm »,
+      mais rien n'oblige un navigateur à le faire.
+    */
+    if (!/^\d{2}:\d{2}$/.test(heure)) {
+      erreur = 'Choisissez l’heure de début.'
+      return
+    }
+    if (!(duree > 0)) {
+      erreur = 'Choisissez la durée de l’activité.'
+      return
+    }
+    /*
+      Un nombre de places vide s'enregistrait comme « pas de limite ».
+
+      L'activité était alors dite à places limitées côté soignant et annoncée « places non
+      limitées » au patient : deux écrans qui se contredisent, et une salle de huit
+      personnes ouverte à quarante.
+    */
+    if (placesLimitees && !(capacite > 0)) {
+      erreur = 'Écrivez un nombre de places, au moins 1 — ou décochez « Places limitées ».'
       return
     }
     /*
@@ -307,6 +454,10 @@
       avertissementConge = true
       return
     }
+    if (horaireChange && !avertissementHoraire) {
+      avertissementHoraire = true
+      return
+    }
     busy = true
     try {
       const nouvelIdentifiant = await staffStore.saveActivity({
@@ -337,9 +488,10 @@
                 byWeekday: jours,
                 startTime: heure,
                 durationMin: duree,
-                from: todayLocalDate(),
-                until: null,
-                skipDates: [],
+                // Ce que le formulaire ne montre pas, il le rend intact.
+                from: recurrenceDepart ?? todayLocalDate(),
+                until: recurrenceFin,
+                skipDates: recurrenceSautees,
               },
             }),
         isActive: auProgramme,
@@ -376,7 +528,17 @@
   const seance = $derived(
     date === undefined || nouvelle
       ? null
-      : (staffStore.occurrences.find((o) => o.activityId === activityId && o.localDate === date) ?? null),
+      : /*
+           Par identifiant d'abord, par jour ensuite.
+
+           La semaine passe désormais l'identifiant : il désigne une séance et une seule.
+           Le repli par jour reste pour les adresses écrites à la main et les anciens
+           signets — mais il ne peut pas trancher entre deux séances du même jour, et
+           c'est exactement ce qui arrivait après un changement d'heure : on cliquait la
+           nouvelle séance, on ouvrait l'ancienne, barrée, et « Supprimer cette séance »
+           effaçait celle qu'on n'avait pas choisie, avec ses inscrits.
+        */
+        findOccurrence(staffStore.occurrences, activityId, date),
   )
 
   /**
@@ -485,6 +647,16 @@
     </p>
   {/if}
 
+  {#if introuvable}
+    <!--
+      Pas de formulaire du tout : il s'ouvrait actif, intitulé « Modifier l'activité »,
+      et l'enregistrer créait une activité vide sous un identifiant inventé.
+    -->
+    <button type="button" class="btn btn-secondary" onclick={() => navigate('/soignant/activites')}>
+      <span aria-hidden="true">←</span> Retour aux activités
+    </button>
+  {:else}
+
   <!--
     Avant le formulaire : on vient de cliquer sur une séance précise, et neuf fois sur
     dix c'est pour elle qu'on est là — pas pour modifier l'activité de toutes les semaines.
@@ -542,12 +714,17 @@
             >
               {retirant === 'seance' ? 'Un instant…' : 'Oui, supprimer la séance'}
             </button>
+            <!--
+              « Non, garder la séance » et non « Annuler » : sur un écran où « annuler »
+              veut déjà dire « annuler la séance », deux boutons « Annuler » de sens
+              opposés se répondaient à quelques centimètres l'un de l'autre.
+            -->
             <button
               type="button"
               class="btn btn-secondary"
               onclick={() => (aSupprimerLaSeance = false)}
             >
-              Annuler
+              Non, garder la séance
             </button>
           </div>
         </div>
@@ -594,7 +771,7 @@
 
         <h3 class="mt-5 text-xl font-bold text-ink">
           {inscrits.length === 0
-            ? 'Personne d’inscrit à cette séance'
+            ? 'Personne n’est inscrit à cette séance'
             : inscrits.length === 1
               ? 'Une personne inscrite'
               : `${inscrits.length} personnes inscrites`}
@@ -656,11 +833,27 @@
         Il reste à choisir le jour, l'heure et le lieu.
       </p>
       {#if venuDUneIdee.wantsToLead}
+        <!--
+          Le conseil suivait le choix, et non l'inverse : « Désignez tout de même un
+          soignant » s'affichait alors que l'écran venait lui-même de cocher « Un patient,
+          seul ». Les deux se contredisaient sur la même page.
+        -->
         <p class="mt-2 text-lg text-ink">
           <span aria-hidden="true">🙋</span>
           {venuDUneIdee.patientFirstName ?? 'La personne'} s'est proposé{venuDUneIdee.patientFirstName ? '' : 'e'}
-          pour l'animer. Désignez tout de même un soignant responsable — c'est lui qui fera
-          l'appel — puis parlez-en avec {venuDUneIdee.patientFirstName ?? 'la personne'}.
+          pour l'animer.
+          {#if animeParUnPatient}
+            C'est ce qui est coché plus bas : l'activité n'aura pas d'appel. Si un soignant
+            doit en être responsable, choisissez-le à la place — et parlez-en avec
+            {venuDUneIdee.patientFirstName ?? 'la personne'}.
+          {:else if facilitatorId !== ''}
+            Vous avez désigné {facilitator === '' ? 'un soignant' : facilitator} : c'est lui
+            qui fera l'appel. Parlez-en avec {venuDUneIdee.patientFirstName ?? 'la personne'}.
+          {:else}
+            Désignez un soignant responsable plus bas — c'est lui qui fera l'appel — ou
+            cochez « Un patient, seul » si {venuDUneIdee.patientFirstName ?? 'la personne'}
+            l'anime sans appel.
+          {/if}
         </p>
       {/if}
     </div>
@@ -755,6 +948,12 @@
               onchange={() => {
                 animeParUnPatient = true
                 facilitatorId = ''
+                /*
+                  Le nom du soignant ne reste pas dans « Son prénom » : le champ demande
+                  le prénom d'un patient, et l'y trouver pré-rempli avec « Marc » invite à
+                  l'enregistrer tel quel.
+                */
+                facilitator = ''
               }}
               class="size-6"
             />
@@ -781,6 +980,13 @@
             s'affichera sur le programme, comme pour tout animateur.
           </p>
         {:else}
+          <!--
+            Une étiquette, comme les menus « Catégorie », « Lieu » et « Durée ». Sans elle,
+            un lecteur d'écran annonce un menu sans dire de quoi il parle.
+          -->
+          <label for="animateur" class="mt-3 mb-2 block text-lg font-semibold text-ink">
+            Qui anime cette activité
+          </label>
           <select
             id="animateur"
             class={champ}
@@ -838,8 +1044,42 @@
 
       {#if repetition === 'une-fois'}
         <label for="date" class="mt-4 mb-2 block text-lg font-semibold text-ink">Date</label>
-        <input id="date" type="date" bind:value={dateUnique} class={champ} style="min-height: 56px;" />
-        <p class="mt-1 text-base text-ink-soft">{formatLongDayLabel(dateUnique)}</p>
+        <!--
+          Pas de `min` sur ce champ.
+
+          Il y en avait un, et il gagnait contre le refus écrit plus haut : la validation
+          du navigateur arrête la soumission avant que `enregistrer()` ne s'exécute, si
+          bien que la phrase « Cette date est passée : aucune séance ne serait créée.
+          Choisissez aujourd'hui ou un jour à venir. » n'était jamais affichée. À la
+          place, le bouton ne faisait rien et le navigateur murmurait une bulle dans sa
+          propre langue — ni française, ni écrite pour ces écrans.
+
+          La date pré-remplie est déjà ramenée à aujourd'hui quand on arrive d'une semaine
+          passée : il ne reste que la date tapée à la main, et celle-là reçoit une phrase.
+        -->
+        <input
+          id="date"
+          type="date"
+          bind:value={dateUnique}
+          class={champ}
+          style="min-height: 56px;"
+        />
+        <!--
+          Un champ « date » se vide d'un geste, et une chaîne vide n'est pas une date :
+          la mettre en toutes lettres levait une exception à chaque rendu, et la phrase
+          restait figée sur la date d'avant — elle affirmait donc un jour que le champ ne
+          portait plus.
+        -->
+        <!--
+          Une année à deux chiffres — « 0002-01-01 », tapée par mégarde — passait le
+          contrôle de forme et s'affichait « Mercredi 1er janvier 1902 » : la seule
+          vérification offerte au soignant affirmait une autre date que celle du champ.
+        -->
+        {#if /^[12]\d{3}-\d{2}-\d{2}$/.test(dateUnique)}
+          <p class="mt-1 text-base text-ink-soft">{formatLongDayLabel(dateUnique)}</p>
+        {:else}
+          <p class="mt-1 text-base text-ink-soft">Choisissez une date.</p>
+        {/if}
       {:else}
       <div class="mt-4 flex flex-wrap gap-2">
         {#each JOURS as jour (jour.valeur)}
@@ -866,7 +1106,12 @@
           <label for="duree" class="mb-2 block text-lg font-semibold text-ink">Durée</label>
           <select id="duree" bind:value={duree} class={champ} style="min-height: 56px;">
             {#each DUREES as minutes (minutes)}
-              <option value={minutes}>{minutes >= 60 ? `${minutes / 60} h${minutes % 60 ? ` ${minutes % 60}` : ''}` : `${minutes} minutes`}</option>
+              <!--
+                `formatDuration` plutôt qu'un calcul sur place : « 1.5 h 30 » s'affichait
+                pour une heure et demie, la division rendant « 1.5 » avant qu'on n'ajoute
+                les minutes restantes. Le domaine sait déjà écrire une durée.
+              -->
+              <option value={minutes}>{formatDuration(minutes)}</option>
             {/each}
           </select>
         </div>
@@ -937,6 +1182,15 @@
           <div>
             <label for="capacite" class="mb-2 block text-lg font-semibold text-ink">Nombre de places</label>
             <input id="capacite" type="number" min="1" max="200" bind:value={capacite} class={champ} style="min-height: 56px;" />
+            <!--
+              Un champ « number » se vide d'un geste, et rendait `null` : l'activité était
+              dite à places limitées et annoncée « places non limitées » au patient.
+            -->
+            {#if placesLimitees && !(capacite > 0)}
+              <p class="mt-1 text-base font-semibold text-ink">
+                <span aria-hidden="true">⚠️</span> Écrivez un nombre de places, au moins 1.
+              </p>
+            {/if}
           </div>
           <label class="flex items-center gap-3 self-end text-lg text-ink" style="min-height: 56px;">
             <input type="checkbox" bind:checked={listeAttente} class="size-6" />
@@ -990,6 +1244,29 @@
       interdit — un collègue assure peut-être la séance — mais on ne l'apprend plus le
       lundi matin.
     -->
+    <!--
+      Déplacer une activité ne déplace pas les inscriptions : l'identifiant d'une séance
+      porte sa date et son heure. On le dit avant d'enregistrer, plutôt que de laisser le
+      patient lire « Cette activité a été annulée » pour une séance simplement décalée.
+    -->
+    {#if avertissementHoraire && horaireChange}
+      <div role="alert" class="card border-4 border-amber-500 bg-amber-50 p-4">
+        <h2 class="mb-2 text-2xl font-bold text-ink">
+          <span aria-hidden="true">⏰</span>
+          Vous changez le jour ou l'heure
+        </h2>
+        <p class="text-lg text-ink">
+          Les séances déjà au programme gardent leur ancien horaire et seront barrées ;
+          de nouvelles séances seront créées au nouvel horaire, vides. Les personnes déjà
+          inscrites ne sont pas déplacées : elles liront qu'il faut s'inscrire de nouveau,
+          et il vaut mieux les prévenir de vive voix.
+        </p>
+        <p class="mt-2 text-lg font-semibold text-ink">
+          Appuyez de nouveau sur « {libelleEnregistrer} » pour continuer.
+        </p>
+      </div>
+    {/if}
+
     {#if avertissementConge && congesHeurtes.length > 0}
       <div role="alert" class="card border-4 border-amber-500 bg-amber-50 p-4">
         <h2 class="mb-2 text-2xl font-bold text-ink">
@@ -1023,17 +1300,14 @@
 
     <div class="flex flex-wrap gap-3">
       <button type="submit" class="btn btn-primary" disabled={busy || refusDeModifier !== null}>
-        {busy
-          ? 'Enregistrement…'
-          : avertissementConge && congesHeurtes.length > 0
-            ? 'Enregistrer malgré le congé'
-            : avertissementAnimateur && facilitatorId === ''
-              ? 'Enregistrer sans appel'
-              : 'Enregistrer'}
+        {busy ? 'Enregistrement…' : libelleEnregistrer}
       </button>
+      <!-- « Quitter sans enregistrer » : « Annuler » prêtait à confusion sur un écran
+           où l'on annule aussi des séances. -->
       <button type="button" class="btn btn-secondary" onclick={() => navigate(retour)}>
-        Annuler
+        Quitter sans enregistrer
       </button>
     </div>
   </form>
+  {/if}
 </section>

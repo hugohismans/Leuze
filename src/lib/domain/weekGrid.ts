@@ -58,7 +58,14 @@ export function hourRange(week: WeekDay[], confort = { from: 9, to: 18 }): { fro
   for (const jour of week) {
     for (const entree of jour.entries) {
       from = Math.min(from, Math.floor(minutesOfDay(entree.start) / 60))
-      to = Math.max(to, Math.ceil(minutesOfDay(entree.end) / 60))
+      /*
+        Minuit en fin d'activité, c'est la fin du jour et non son début.
+
+        `minutesOfDay` rendait 0, la grille ne s'élargissait donc pas, et l'activité était
+        posée sous son bord inférieur : sur la feuille imprimée, elle sortait du cadre.
+      */
+      const finEnMinutes = minutesOfDay(entree.end)
+      to = Math.max(to, Math.ceil((finEnMinutes === 0 ? 24 * 60 : finEnMinutes) / 60))
     }
   }
   return { from: Math.max(0, from), to: Math.min(24, Math.max(to, from + 1)) }

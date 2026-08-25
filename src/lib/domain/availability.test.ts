@@ -3,9 +3,11 @@ import {
   availabilityLabel,
   availabilityWarning,
   coversAppointment,
+  firstWindowRefusal,
   formatLocalTime,
   minutesOf,
   normalizeAvailability,
+  windowRefusal,
   windowsOn,
   type AvailabilityWindow,
 } from './availability'
@@ -145,4 +147,63 @@ describe('la phrase qui résume', () => {
   it('est vide quand rien n’est renseigné', () => {
     expect(availabilityLabel([])).toBe('')
   })
+})
+
+describe('une plage qui ne tient pas debout', () => {
+  it('dit ce qui cloche plutôt que de disparaître en silence', () => {
+    expect(windowRefusal({ weekday: 5, from: '16:00', to: '08:00' })).toContain(
+      "L'heure de fin est avant l'heure de début",
+    )
+    expect(windowRefusal({ weekday: 1, from: '10:00', to: '10:00' })).toContain('ne dure rien')
+    expect(windowRefusal({ weekday: 1, from: 'n’importe quoi', to: '10:00' })).toContain(
+      'Indiquez une heure',
+    )
+  })
+
+  it('se tait quand la plage est bonne', () => {
+    expect(windowRefusal({ weekday: 2, from: '09:00', to: '12:00' })).toBeNull()
+  })
+
+  it('désigne la ligne fautive, pour qu’on sache laquelle corriger', () => {
+    const refus = firstWindowRefusal([
+      { weekday: 2, from: '09:00', to: '12:00' },
+      { weekday: 4, from: '17:00', to: '09:00' },
+    ])
+    expect(refus?.index).toBe(1)
+    expect(refus?.message).toContain('avant')
+  })
+
+  it('ne trouve rien à redire à une liste vide ou entièrement valide', () => {
+    expect(firstWindowRefusal([])).toBeNull()
+    expect(firstWindowRefusal([{ weekday: 2, from: '09:00', to: '12:00' }])).toBeNull()
+  })
+})
+
+describe('une plage qui se termine à minuit', () => {
+  it('est acceptée : « 22:00 → 00:00 » est la garde du soir, pas une plage négative', () => {
+    expect(windowRefusal({ weekday: 5, from: '22:00', to: '00:00' })).toBeNull()
+    expect(normalizeAvailability([{ weekday: 5, from: '22:00', to: '00:00' }])).toHaveLength(1)
+  })
+
+  it('couvre bien un rendez-vous de fin de soirée', () => {
+    const plages: AvailabilityWindow[] = [{ weekday: 5, from: '22:00', to: '00:00' }]
+    expect(coversAppointment(plages, 5, '23:00', 30)).toBe(true)
+    expect(coversAppointment(plages, 5, '21:30', 30)).toBe(false)
+  })
+
+  it('refuse toujours une plage à cheval sur minuit, en le disant', () => {
+    // « 22:00 → 02:00 » ne décrit pas une journée : deux plages valent mieux qu'une
+    // qu'il faudrait deviner. Ce qui compte, c'est que ce ne soit plus silencieux.
+    expect(windowRefusal({ weekday: 5, from: '22:00', to: '02:00' })).not.toBeNull()
+  })
+
+  it('refuse « 00:00 → 00:00 » : deux fois minuit n’est pas une façon de dire « toute la journée »', () => {
+    /*
+      Lue comme la journée entière, cette ligne fondait toutes les autres plages du jour
+      dans la sienne à l'enregistrement : on perdait « mardi 9h–12h » et « mardi 14h–17h »
+      sans un mot. C'est le défaut que ce refus ferme.
+    */
+    expect(windowRefusal({ weekday: 5, from: '00:00', to: '00:00' })).toContain('les heures où vous recevez')
+  })
+
 })

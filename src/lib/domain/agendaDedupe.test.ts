@@ -70,3 +70,72 @@ describe('agendaWeek dédoublonne ce qui est pris', () => {
     expect(new Set(clefs).size).toBe(clefs.length)
   })
 })
+
+describe('un même rendez-vous vu des deux agendas', () => {
+  /*
+    Le rendez-vous arrive sous deux noms : « Rendez-vous » depuis l'agenda de
+    l'intervenant, « Rendez-vous avec Docteur Lemaire » depuis celui du patient. Les deux
+    agendas croisés ici sont ceux de deux personnes qui se voient : aux mêmes bornes,
+    c'est nécessairement le même.
+  */
+  it('ne compte qu’une fois, et garde le nom le plus explicite', () => {
+    const cote = entree('2026-08-27T09:00:00Z', '2026-08-27T09:30:00Z', 'Rendez-vous', 'appointment')
+    const autre = entree(
+      '2026-08-27T09:00:00Z',
+      '2026-08-27T09:30:00Z',
+      'Rendez-vous avec Docteur Lemaire',
+      'appointment',
+    )
+    const garde = dedupeBusy([cote, autre])
+    expect(garde).toHaveLength(1)
+    expect(garde[0]!.label).toBe('Rendez-vous avec Docteur Lemaire')
+  })
+
+  it('laisse deux rendez-vous à des heures différentes', () => {
+    const matin = entree('2026-08-27T09:00:00Z', '2026-08-27T09:30:00Z', 'Rendez-vous', 'appointment')
+    const soir = entree('2026-08-27T14:00:00Z', '2026-08-27T14:30:00Z', 'Rendez-vous', 'appointment')
+    expect(dedupeBusy([matin, soir])).toHaveLength(2)
+  })
+})
+
+/**
+ * Deux rendez-vous réellement distincts, aux mêmes bornes.
+ *
+ * La fusion avait d'abord retiré le libellé de la comparaison pour tous les rendez-vous.
+ * C'était trop large : un double emploi — deux rendez-vous à la même heure dans l'agenda
+ * de l'un ou de l'autre — se fondait alors en une seule ligne, alors que c'est
+ * exactement ce que cet écran existe pour montrer.
+ */
+describe('deux rendez-vous distincts à la même heure', () => {
+  const A = '2026-08-27T09:00:00Z'
+  const B = '2026-08-27T09:30:00Z'
+
+  it('restent deux lignes quand les noms ne se ressemblent pas', () => {
+    const claire = entree(A, B, 'Rendez-vous avec Claire', 'appointment')
+    const lemaire = entree(A, B, 'Rendez-vous avec Docteur Lemaire', 'appointment')
+    expect(dedupeBusy([claire, lemaire])).toHaveLength(2)
+  })
+
+  it('se fondent quand l’un prolonge l’autre : c’est le même, vu des deux côtés', () => {
+    const sansNom = entree(A, B, 'Rendez-vous', 'appointment')
+    const avecNom = entree(A, B, 'Rendez-vous avec Claire', 'appointment')
+    const garde = dedupeBusy([sansNom, avecNom])
+    expect(garde).toHaveLength(1)
+    expect(garde[0]!.label).toBe('Rendez-vous avec Claire')
+  })
+
+  it('ne prolonge rien pour une activité : deux ateliers restent deux', () => {
+    // « Atelier » et « Atelier cuisine » sont deux activités, pas une vue de deux côtés.
+    const court = entree(A, B, 'Atelier', 'activity')
+    const long = entree(A, B, 'Atelier cuisine', 'activity')
+    expect(dedupeBusy([court, long])).toHaveLength(2)
+  })
+
+  it('ne se laisse pas prendre par un préfixe qui n’en est pas un', () => {
+    // « Rendez-vous » ne prolonge pas « Rendez-vousiers » : c'est le mot suivant qui
+    // doit commencer, pas la chaîne qui doit se poursuivre.
+    const a = entree(A, B, 'Rendez-vous', 'appointment')
+    const b = entree(A, B, 'Rendez-vousiers', 'appointment')
+    expect(dedupeBusy([a, b])).toHaveLength(2)
+  })
+})

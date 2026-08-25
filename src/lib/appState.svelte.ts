@@ -2,7 +2,7 @@
  * État de l'interface. Ne connaît que les ports (`AppRepository`),
  * jamais Firebase : brancher l'adapter Firestore au lot L1 ne touchera pas ce fichier.
  */
-import { upcomingScheduled } from './domain/appointments'
+import { cancelledToShow, upcomingScheduled } from './domain/appointments'
 import { requestablePractitioners as requestableFor } from './domain/practitioners'
 import { capacityOf, likelyStatus } from './domain/capacity'
 import {
@@ -119,6 +119,20 @@ class AppStore {
     return this.visible.filter((o) => o.localDate === date)
   }
 
+  /**
+   * Combien d'activités le filtre écarte, ce jour-là.
+   *
+   * Un jour vide sous un filtre se dit de deux façons — « il n'y en a pas » ou « le
+   * filtre les cache » — et l'écran choisissait sur la seule présence d'un filtre. Un
+   * dimanche sans rien au programme invitait donc à retirer le filtre pour ne rien
+   * découvrir de plus : on cherche, on retire, il ne se passe rien, et l'on doute de
+   * l'application plutôt que du dimanche.
+   */
+  hiddenOn(date: LocalDate): number {
+    if (!this.hasFilters) return 0
+    return this.occurrences.filter((o) => o.localDate === date).length - this.byDay(date).length
+  }
+
   categoryOf(id: string): Category | null {
     return this.categories.find((c) => c.id === id) ?? null
   }
@@ -185,6 +199,11 @@ class AppStore {
     this.syncSession()
     this.occurrences = []
     this.mine = []
+    this.proposals = []
+    this.appointments = []
+    // Sur une tablette de salle commune, la personne suivante ne doit rien lire de la
+    // précédente — un brouillon d'idée compris.
+    this.clearProposalDraft()
     // Plus rien à garder à l'écran : la prochaine lecture repart d'une page vide.
     this.#dejaAffiche = false
   }
@@ -369,6 +388,27 @@ class AppStore {
    */
   readonly hasWaitingProposal = $derived(this.proposals.some((p) => p.status === 'proposed'))
 
+  /**
+   * Le brouillon d'une idée, gardé le temps de la session.
+   *
+   * Il vivait dans l'écran, et l'écran se démonte : trois cents caractères tapés sur une
+   * tablette disparaissaient sans un mot au premier appui sur « Retour » — ou sur le
+   * bouton « précédent » du navigateur. Sur un écran destiné à quelqu'un qui hésite déjà
+   * à demander, cela décourage définitivement.
+   *
+   * Il ne quitte pas la mémoire du navigateur : rien n'est enregistré nulle part tant que
+   * l'idée n'est pas envoyée, et fermer son accès l'efface avec le reste.
+   */
+  proposalDraft = $state<{ title: string; description: string; wantsToLead: boolean }>({
+    title: '',
+    description: '',
+    wantsToLead: false,
+  })
+
+  clearProposalDraft(): void {
+    this.proposalDraft = { title: '', description: '', wantsToLead: false }
+  }
+
   /** Réveille la fonction d'inscription, sans rien inscrire. Voir le port. */
   async warmRegistration(): Promise<void> {
     await (await this.repo()).registrations.warmRegistration().catch(() => undefined)
@@ -385,10 +425,21 @@ class AppStore {
    */
   readonly upcomingMine = $derived(this.mine.filter((r) => r.occurrence.end.getTime() >= Date.now()))
 
-  /** Les rendez-vous fixés, passés compris : la semaine les affiche tous, à leur jour. */
+  /**
+   * Les rendez-vous fixés, passés compris : la semaine les affiche tous, à leur jour.
+   *
+   * Ceux qu'un soignant a annulés y figurent aussi, barrés. La feuille disait « Rien de
+   * prévu » là où la personne se souvenait d'un rendez-vous : cela se lit comme une
+   * panne, et cela la fait venir pour rien.
+   */
   readonly scheduledAppointments = $derived(
     this.appointments
-      .filter((a) => a.status === 'scheduled' && a.start !== undefined)
+      .filter((a) => a.start !== undefined)
+      .filter(
+        (a) =>
+          a.status === 'scheduled' ||
+          (a.status === 'cancelled' && (a.cancellationReason ?? '').trim() !== ''),
+      )
       .sort((a, b) => (a.start?.getTime() ?? 0) - (b.start?.getTime() ?? 0)),
   )
 
@@ -403,6 +454,15 @@ class AppStore {
   readonly upcomingAppointments = $derived(upcomingScheduled(this.appointments))
 
   readonly pendingAppointments = $derived(this.appointments.filter((a) => a.status === 'requested'))
+
+  /**
+   * Les rendez-vous qu'un soignant a annulés, tant qu'ils valent d'être lus.
+   *
+   * Ils disparaissaient de l'écran sans un mot. La personne se souvenait d'un rendez-vous
+   * mardi, l'application n'en disait plus rien, et elle venait quand même. Le motif est
+   * déjà écrit dans le domaine ; il ne manquait qu'un endroit pour l'afficher.
+   */
+  readonly cancelledAppointments = $derived(cancelledToShow(this.appointments, todayLocalDate()))
 
   /**
    * Les motifs de rendez-vous seuls, sans les demandes.
@@ -521,7 +581,37 @@ class AppStore {
    */
   #dejaAffiche = false
 
+  /**
+   * Quand le programme a été relu pour la dernière fois. Volontairement PAS réactif :
+   * il est lu et écrit depuis un effet, et le rendre réactif ferait boucler cet effet.
+   */
+  #programmeReluA = 0
+
+  /**
+   * Relire en revenant sur un écran.
+   *
+   * Le programme n'était relu qu'en changeant de fenêtre de dates ou de service. Une
+   * séance annulée par un soignant restait donc proposée à l'inscription tant que le
+   * patient ne changeait pas de semaine : le calendrier annonçait « Places libres »,
+   * la fiche proposait « Je m'inscris », et l'inscription échouait. Sur une tablette
+   * laissée sur le calendrier, l'écran mentait indéfiniment.
+   *
+   * L'écran voisin appliquait déjà la bonne règle — les droits des patients sont relus
+   * à chaque changement d'écran, avec ce commentaire : « peut changer pendant qu'une
+   * tablette reste allumée ». Le programme lui-même y échappait ; c'était un oubli.
+   *
+   * Quelques secondes de répit : aller et venir entre le calendrier et une fiche ne doit
+   * pas relancer une requête à chaque geste. C'est un pansement, pas une guérison — la
+   * vraie réponse serait une écoute en temps réel de Firestore, et elle mérite d'être
+   * faite posément.
+   */
+  async refreshOnNavigation(): Promise<void> {
+    if (Date.now() - this.#programmeReluA < 3_000) return
+    await this.refresh()
+  }
+
   async refresh(): Promise<void> {
+    this.#programmeReluA = Date.now()
     const version = (this.#versionProgramme += 1)
     const { from, to } = this.range
     /*

@@ -5,7 +5,9 @@ import {
   isOnLeave,
   isValidLeave,
   leaveClashes,
+  leaveConflictSummary,
   leaveRefusal,
+  leaveWarning,
   leavesOverlapping,
   normalizeLeaves,
   withoutLeave,
@@ -190,5 +192,135 @@ describe('les jours de congé qu’une activité viendrait heurter', () => {
   it('ne dit rien sans congé, ni sans calendrier', () => {
     expect(leaveClashes([], { weekdays: [1, 2, 3, 4, 5] }, jourIso)).toEqual([])
     expect(leaveClashes(conges, {}, jourIso)).toEqual([])
+  })
+})
+
+describe('un congé posé sur le passé', () => {
+  it('est refusé quand il est entièrement passé : il ne réécrit rien', () => {
+    const refus = leaveRefusal({ from: '2026-08-10', to: '2026-08-21' }, '2026-08-25')
+    expect(refus).not.toBeNull()
+    expect(refus).toContain('entièrement passé')
+  })
+
+  it('reste accepté quand il a commencé hier et court encore', () => {
+    // On tombe malade sans prévenir : c'est le lendemain qu'on le déclare.
+    expect(leaveRefusal({ from: '2026-08-24', to: '2026-08-28' }, '2026-08-25')).toBeNull()
+  })
+
+  it('accepte un congé qui se termine aujourd’hui', () => {
+    expect(leaveRefusal({ from: '2026-08-20', to: '2026-08-25' }, '2026-08-25')).toBeNull()
+  })
+
+  it('ne juge rien du passé quand on ne lui dit pas quel jour on est', () => {
+    expect(leaveRefusal({ from: '2020-01-01', to: '2020-01-05' })).toBeNull()
+  })
+})
+
+describe('les séances qu’un congé viendrait heurter', () => {
+  const conges = [{ from: '2026-08-20', to: '2026-08-30' }]
+  const jourDe = (localDate: string): number => {
+    const [a, m, j] = localDate.split('-').map(Number)
+    return ((new Date(Date.UTC(a!, m! - 1, j!)).getUTCDay() + 6) % 7) + 1
+  }
+
+  it('écarte celles qui ont déjà eu lieu', () => {
+    const heurtees = leaveClashes(conges, { dates: ['2026-08-21', '2026-08-27'] }, jourDe, '2026-08-25')
+    expect(heurtees).toEqual(['2026-08-27'])
+  })
+
+  it('garde celles d’aujourd’hui : la séance de cet après-midi n’a pas encore eu lieu', () => {
+    const heurtees = leaveClashes(conges, { dates: ['2026-08-25'] }, jourDe, '2026-08-25')
+    expect(heurtees).toEqual(['2026-08-25'])
+  })
+
+  it('écarte aussi le passé d’une récurrence hebdomadaire', () => {
+    // Jeudi : le 20 et le 27 août 2026 tombent tous deux dans le congé.
+    const heurtees = leaveClashes(conges, { weekdays: [4] }, jourDe, '2026-08-25')
+    expect(heurtees).toEqual(['2026-08-27'])
+  })
+
+  it('garde tout quand on ne lui dit pas quel jour on est', () => {
+    const heurtees = leaveClashes(conges, { weekdays: [4] }, jourDe)
+    expect(heurtees).toEqual(['2026-08-20', '2026-08-27'])
+  })
+})
+
+describe('l’avertissement de congé au moment de fixer un rendez-vous', () => {
+  const conges = [{ from: '2026-08-31', to: '2026-09-04' }]
+
+  it('prévient, en nommant la personne', () => {
+    const texte = leaveWarning(conges, '2026-09-01', 'Docteur Lemaire')
+    expect(texte).toContain('Docteur Lemaire')
+    expect(texte).toContain('en congé')
+    // Il avertit, il n'interdit pas : une urgence se cale où l'on veut.
+    expect(texte).toContain('Vous pouvez tout de même')
+  })
+
+  it('se tait les autres jours', () => {
+    expect(leaveWarning(conges, '2026-09-05', 'Docteur Lemaire')).toBeNull()
+    expect(leaveWarning([], '2026-09-01', 'Docteur Lemaire')).toBeNull()
+  })
+})
+
+/**
+ * Une phrase qui parlait de vous à la troisième personne.
+ *
+ * Elle vivait en trois exemplaires — le serveur, la démonstration, le titre de la liste
+ * juste en dessous — et ils ne disaient pas la même chose : le titre savait écrire
+ * « Séances que vous animez » sur son propre congé, la phrase du dessus restait à
+ * « animées par cette personne ». On lisait, l'un sous l'autre, deux façons de désigner
+ * le même être — et une consigne qui demandait de se prévenir soi-même.
+ */
+describe('ce qu’un congé bouscule, en une phrase', () => {
+  it('compte les séances et les rendez-vous, dans cet ordre', () => {
+    expect(leaveConflictSummary(1, 3, { name: 'Claire' })).toBe(
+      'Ce congé tombe sur 3 séances qu’anime Claire et un rendez-vous fixé.',
+    )
+  })
+
+  it('accorde le singulier', () => {
+    expect(leaveConflictSummary(0, 1)).toBe('Ce congé tombe sur une séance animée par cette personne.')
+    expect(leaveConflictSummary(2, 0)).toBe('Ce congé tombe sur 2 rendez-vous fixés.')
+  })
+
+  it('dit « vous » sur son propre congé', () => {
+    const sien = leaveConflictSummary(1, 4, { name: 'Claire', isSelf: true })
+    expect(sien).toContain('4 séances que vous animez')
+    expect(sien).not.toContain('Claire')
+    expect(sien).not.toContain('cette personne')
+  })
+
+  it('dit « une séance que vous animez » au singulier aussi', () => {
+    expect(leaveConflictSummary(0, 1, { isSelf: true })).toBe(
+      'Ce congé tombe sur une séance que vous animez.',
+    )
+  })
+})
+
+/**
+ * L'avertissement posé sur un rendez-vous qui tombe un jour de congé.
+ *
+ * Il était écrit à la troisième personne même sur son propre agenda, juste sous celui
+ * des plages qui, lui, avait appris à dire « vous » — et il demandait de prévenir la
+ * personne concernée, c'est-à-dire soi-même.
+ */
+describe('l’avertissement de congé, selon qui le lit', () => {
+  const conges = [{ from: '2026-08-24', to: '2026-08-28' }]
+
+  it('se tait en dehors du congé', () => {
+    expect(leaveWarning(conges, '2026-08-31', 'Claire')).toBeNull()
+  })
+
+  it('nomme la personne quand ce n’est pas soi', () => {
+    const avis = leaveWarning(conges, '2026-08-25', 'Claire')!
+    expect(avis).toContain('Claire est en congé')
+    expect(avis).toContain('prévenez la personne concernée')
+  })
+
+  it('s’adresse à vous sur votre propre congé, sans vous demander de vous prévenir', () => {
+    const avis = leaveWarning(conges, '2026-08-25', 'Claire', true)!
+    expect(avis).toContain('Vous êtes en congé')
+    expect(avis).not.toContain('Claire')
+    expect(avis).not.toContain('la personne concernée')
   })
 })

@@ -43,18 +43,29 @@
 </script>
 
 <section class="mx-auto max-w-2xl px-4 py-5">
+  <!--
+    « Cette semaine » vient après « Semaine suivante », et jamais entre les deux.
+
+    Placé au milieu, il apparaissait dès qu'on quittait la semaine en cours et poussait
+    « Semaine suivante » sous le doigt qui venait d'appuyer : deux appuis au même endroit
+    ramenaient à la semaine de départ, et l'on oscillait indéfiniment entre deux semaines
+    sans jamais atteindre la troisième. Le calendrier place déjà le sien après « Jour
+    suivant », et ne souffre pas du défaut.
+  -->
   <div class="no-print mb-4 flex flex-wrap gap-2">
     <button type="button" class="btn btn-secondary" onclick={() => deplacer(-1)}>
-      <span aria-hidden="true">←</span> Semaine passée
+      <!-- Les mêmes mots que le calendrier : « Semaine passée » devenait faux dès le
+           deuxième appui, et deux écrans voisins ne nommaient pas le même geste. -->
+      <span aria-hidden="true">←</span> Semaine précédente
+    </button>
+    <button type="button" class="btn btn-secondary" onclick={() => deplacer(1)}>
+      Semaine suivante <span aria-hidden="true">→</span>
     </button>
     {#if debut !== startOfIsoWeek(aujourdhui)}
       <button type="button" class="btn btn-secondary" onclick={() => (debut = startOfIsoWeek(aujourdhui))}>
         Cette semaine
       </button>
     {/if}
-    <button type="button" class="btn btn-secondary" onclick={() => deplacer(1)}>
-      Semaine suivante <span aria-hidden="true">→</span>
-    </button>
   </div>
 
   <article class="feuille feuille-semaine ma-semaine card p-5">
@@ -82,9 +93,17 @@
     </div>
 
     {#if total === 0}
+      <!--
+        Une semaine écoulée ne s'invite pas au futur : le même texte servait aux deux, et
+        conseillait de s'inscrire à une semaine vieille d'un mois.
+      -->
       <p class="liste-ecran text-lg text-ink">
-        Vous n'avez rien de prévu cette semaine. Vous pouvez choisir une activité dans le
-        calendrier, ou en parler à un soignant.
+        {#if jours[6]! < todayLocalDate()}
+          Vous n'aviez rien de prévu cette semaine-là.
+        {:else}
+          Vous n'avez rien de prévu cette semaine. Vous pouvez choisir une activité dans le
+          calendrier, ou en parler à un soignant.
+        {/if}
       </p>
     {:else}
       <ul class="liste-ecran grid gap-4">
@@ -98,7 +117,14 @@
               <p class="text-lg text-ink-soft">Rien de prévu</p>
             {:else}
               <ul class="mt-2 grid gap-2">
-                {#each jour.entries as entree (entree.start.getTime() + entree.kind)}
+                <!--
+                  La clef est le rang, et non le contenu : deux entrées qui commencent à
+                  la même minute — deux ateliers à 10h00, c'est le cas courant — donnent
+                  la même clef, et Svelte arrête alors le rendu. L'écran reste figé sur
+                  l'affichage précédent, sans un mot, ni à l'écran ni en console. La liste
+                  est reconstruite en entier à chaque lecture ; le rang suffit.
+                -->
+                {#each jour.entries as entree, rang (rang)}
                   <li class="entree rounded-xl border-2 border-line p-3">
                     {#if entree.kind === 'activity'}
                       {@const categorie = store.categoryOf(entree.categoryId)}
@@ -124,12 +150,25 @@
                     {:else}
                       <p class="text-lg font-bold text-ink">
                         <span aria-hidden="true">{kindIcon(store.appointmentKinds, entree.kindId)}</span>
-                        Rendez-vous avec {entree.withWhom ?? kindName(store.appointmentKinds, entree.kindId).toLowerCase()}
+                        <span class:line-through={entree.cancelled === true}>
+                          Rendez-vous avec {entree.withWhom ?? kindName(store.appointmentKinds, entree.kindId).toLowerCase()}
+                        </span>
                       </p>
                       <p class="text-lg text-ink">
                         {formatTimeRange(entree.start, entree.end)}
                         {#if entree.locationId}· {store.locationOf(entree.locationId)?.name}{/if}
                       </p>
+                      <!--
+                        Un rendez-vous annulé reste sur la feuille, barré et suivi de son
+                        motif. « Rien de prévu » à sa place se lit comme une panne, et fait
+                        venir la personne pour rien.
+                      -->
+                      {#if entree.cancelled === true}
+                        <p class="text-lg font-semibold text-ink">
+                          <span aria-hidden="true">✕</span>
+                          Annulé{entree.cancellationReason ? ` — ${entree.cancellationReason}` : ''}
+                        </p>
+                      {/if}
                     {/if}
                   </li>
                 {/each}

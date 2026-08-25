@@ -193,6 +193,29 @@ export type Occurrence = {
   cancellationReason?: string
   /** Vrai dès qu'un soignant a modifié cette occurrence seule : la régénération l'épargne. */
   overridden: boolean
+  /**
+   * Vrai quand c'est la régénération, et non un soignant, qui a barré cette séance.
+   *
+   * La différence est celle entre « cette séance n'aura pas lieu, voici pourquoi » et
+   * « cette séance est sortie de la série ». Sans elle, retirer une activité du programme
+   * puis l'y remettre laissait annulées à jamais **exactement** les séances qui portaient
+   * des inscriptions — les séances vides, elles, revenaient. Le retrait détruisait donc
+   * ce qui comptait et épargnait le reste, sans que rien ne le dise.
+   *
+   * Une séance ainsi barrée redevient normale dès qu'elle rentre dans la série. Une
+   * séance qu'un soignant a annulée avec un motif ne bouge jamais.
+   */
+  autoCancelled?: boolean
+  /**
+   * Vrai quand c'est la déclaration d'un congé qui a barré cette séance.
+   *
+   * Le retrait du congé reconnaissait son propre travail au motif écrit — mais
+   * « L'animateur est absent » est aussi l'un des motifs que le bouton « Annuler cette
+   * séance » propose. Un congé déclaré sans annuler, puis une séance annulée à la main
+   * avec ce motif, puis le congé retiré : la séance se rétablissait alors qu'un humain
+   * l'avait barrée. Une marque propre vaut mieux qu'une phrase reconnue au texte.
+   */
+  cancelledByLeave?: boolean
   confirmedCount: number
   waitlistCount: number
 }
@@ -275,6 +298,16 @@ export type Appointment = {
   locationId?: string
   /** Motif d'annulation, en français simple. */
   cancellationReason?: string
+  /**
+   * Quand l'annulation a été prononcée.
+   *
+   * La durée pendant laquelle un rendez-vous annulé reste lisible se comptait depuis le
+   * **dépôt** de la demande : une demande restée trois semaines dans la file — ce que le
+   * badge « En attente depuis N jours » sert justement à rendre visible — puis retirée
+   * par un soignant disparaissait de l'écran du patient à l'instant même, sans qu'il ait
+   * pu lire le motif.
+   */
+  cancelledAt?: Date
   /** Fixé sans intervention humaine, dans les plages de l'intervenant. */
   autoAccepted?: boolean
   /**

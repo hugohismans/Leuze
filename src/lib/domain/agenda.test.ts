@@ -1,8 +1,18 @@
 import { describe, expect, it } from 'vitest'
-import { agendaWeek, firstBookableDay, freeSlotsOn, suggestSlot, suggestionMessage } from './agenda'
-import type { BusyEntry } from './conflicts'
+import {
+  agendaWeek,
+  firstBookableDay,
+  freeSlotsOn,
+  noAvailabilityDeclared,
+  onLeaveThroughout,
+  onLeaveThroughoutMessage,
+  suggestSlot,
+  suggestionMessage,
+} from './agenda'
 import { instantOf } from './time'
+import { formatLocalTime } from './availability'
 import type { AvailabilityWindow } from './types'
+import type { BusyEntry } from './conflicts'
 
 // 2026-08-24 est un lundi ; 25 mardi, 26 mercredi, 27 jeudi.
 const LUNDI = '2026-08-24'
@@ -275,5 +285,129 @@ describe('un jour de congé', () => {
       leaves: [],
     })
     expect(avecListeVide).toEqual(reference)
+  })
+})
+
+describe('les dimanches de changement d’heure', () => {
+  /*
+    Le dernier dimanche de mars dure vingt-trois heures, celui d'octobre vingt-cinq. Les
+    minutes d'occupation se calculaient en soustrayant minuit puis en divisant : tout ce
+    qui était déjà pris se décalait d'une heure ces deux jours-là, et l'agenda proposait
+    un créneau occupé.
+  */
+  const plages: AvailabilityWindow[] = [{ weekday: 7, from: '09:00', to: '17:00' }]
+
+  it('place au bon endroit ce qui est pris, le dimanche du passage à l’heure d’hiver', () => {
+    // 25 octobre 2026 : 03h00 revient à 02h00. Un rendez-vous de 14h00 à 15h00.
+    const pris = {
+      start: instantOf('2026-10-25', '14:00'),
+      end: instantOf('2026-10-25', '15:00'),
+      label: 'Rendez-vous',
+      kind: 'appointment' as const,
+    }
+    const libres = freeSlotsOn(plages, [pris], '2026-10-25', 60)
+    // 14h00 ne doit plus être proposé, et 13h00 doit l'être.
+    expect(libres.some((t) => t.from <= '14:00' && '15:00' <= t.to)).toBe(false)
+    expect(libres.some((t) => t.from <= '13:00' && '14:00' <= t.to)).toBe(true)
+  })
+
+  it('fait de même le dimanche du passage à l’heure d’été', () => {
+    // 29 mars 2026 : 02h00 saute à 03h00.
+    const pris = {
+      start: instantOf('2026-03-29', '14:00'),
+      end: instantOf('2026-03-29', '15:00'),
+      label: 'Rendez-vous',
+      kind: 'appointment' as const,
+    }
+    const libres = freeSlotsOn(plages, [pris], '2026-03-29', 60)
+    expect(libres.some((t) => t.from <= '14:00' && '15:00' <= t.to)).toBe(false)
+    expect(libres.some((t) => t.from <= '15:00' && '16:00' <= t.to)).toBe(true)
+  })
+})
+
+/**
+ * Trois façons de n'avoir aucun créneau, et elles ne se disent pas de la même manière.
+ *
+ * Un agenda plein, un agenda jamais rempli, et une personne en congé : l'écran les
+ * confondait. « Aucun créneau ne convient aux deux dans les trois semaines qui
+ * viennent » laisse chercher un trou, sous vingt et une lignes « 🌴 En congé » qui
+ * disaient déjà qu'il n'y en aurait pas.
+ */
+describe('un agenda vide, et pourquoi', () => {
+  const jour = (windows: unknown[], onLeave = false) => ({ windows, onLeave })
+
+  it('ne confond pas « rien déclaré » avec « en congé »', () => {
+    // Trois jours ouvrables sans plage, quatre en congé : rien n'a jamais été déclaré.
+    const melange = [jour([]), jour([]), jour([]), jour([], true)]
+    expect(noAvailabilityDeclared(melange)).toBe(true)
+    expect(onLeaveThroughout(melange)).toBe(false)
+  })
+
+  it('se tait sur « rien déclaré » quand tout l’horizon est en congé', () => {
+    const tout = [jour([], true), jour([], true), jour([], true)]
+    expect(noAvailabilityDeclared(tout)).toBe(false)
+    expect(onLeaveThroughout(tout)).toBe(true)
+  })
+
+  it('ne dit ni l’un ni l’autre quand des plages existent', () => {
+    const ouvert = [jour([{ from: '09:00', to: '12:00' }]), jour([], true)]
+    expect(noAvailabilityDeclared(ouvert)).toBe(false)
+    expect(onLeaveThroughout(ouvert)).toBe(false)
+  })
+
+  it('nomme la personne et dit quoi faire', () => {
+    const avis = onLeaveThroughoutMessage('Docteur Lemaire')
+    expect(avis).toContain('Docteur Lemaire')
+    expect(avis).toContain('en congé')
+    expect(avis).toContain('Vous pouvez tout de même fixer')
+  })
+})
+
+/**
+ * La garde du soir, du réglage jusqu'au créneau proposé.
+ *
+ * « 22h00 → 00h00 » avait été rendue enregistrable et affichable, et le test le
+ * certifiait — mais il s'arrêtait là. L'agenda, lui, lisait encore la borne de fin comme
+ * zéro minute : la fiche annonçait « Reçoit de 22h00 à 00h00 » et l'écran répondait
+ * « Plus rien de libre ce jour-là », l'un sous l'autre. Une correction à moitié faite
+ * est pire qu'une absente : elle a l'air finie.
+ *
+ * Ce test part de la plage et va jusqu'au créneau. C'est le seul endroit d'où l'on voit
+ * que la chaîne entière tient.
+ */
+describe('une plage qui finit à minuit, jusqu’au bout', () => {
+  // 2026-08-28 est un vendredi.
+  const VENDREDI = '2026-08-28'
+  const gardeDuSoir: AvailabilityWindow[] = [{ weekday: 5, from: '22:00', to: '00:00' }]
+
+  it('produit de vrais trous libres, et non « plus rien de libre »', () => {
+    const libres = freeSlotsOn(gardeDuSoir, [], VENDREDI, 30)
+    expect(libres).not.toEqual([])
+    expect(libres[0]?.from).toBe('22:00')
+    // La borne de fin vaut la fin du jour. « 24:00 » est l'écriture interne ; l'écran,
+    // lui, lit « minuit ».
+    expect(libres[0]?.to).toBe('24:00')
+    expect(formatLocalTime(libres[0]!.to)).toBe('minuit')
+  })
+
+  it('propose un créneau qui tient dans la soirée', () => {
+    const propose = suggestSlot({
+      windows: gardeDuSoir,
+      practitionerBusy: [],
+      patientBusy: [],
+      preference: 'peu-importe',
+      from: VENDREDI,
+      horizonDays: 1,
+      durationMin: 30,
+    })
+    expect(propose).not.toBeNull()
+    expect(propose!.localDate).toBe(VENDREDI)
+    expect(propose!.time >= '22:00').toBe(true)
+  })
+
+  it('n’annonce pas « aucune plage déclarée » pour quelqu’un qui en a une', () => {
+    const semaine = agendaWeek([VENDREDI], gardeDuSoir, [], 30)
+    expect(noAvailabilityDeclared(semaine)).toBe(false)
+    expect(semaine[0]?.free).not.toEqual([])
   })
 })

@@ -68,4 +68,19 @@
   <p class="mt-6 text-base text-ink-soft">
     Vous n'avez pas de code ? Demandez-le à un soignant de votre service.
   </p>
+
+  <!--
+    En démonstration, on doit pouvoir revenir.
+
+    « Fermer mon accès » amène ici, et il n'y a pas de soignant pour délivrer un code :
+    la personne qui montrait l'application se retrouvait devant un champ qu'elle ne
+    pouvait pas remplir. Cette phrase-là ne s'affiche que sur la démonstration.
+  -->
+  {#if store.isDemo}
+    <p class="mt-3 rounded-xl border-2 border-line p-3 text-base text-ink">
+      <span aria-hidden="true">🧪</span>
+      Ceci est une démonstration : n'importe quel code d'au moins quatre caractères ouvre
+      l'accès. Essayez « DEMO ».
+    </p>
+  {/if}
 </section>

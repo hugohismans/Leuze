@@ -38,6 +38,18 @@
   const PREFERENCES: AppointmentPreference[] = ['matin', 'apres-midi', 'peu-importe']
 
   const proposables = $derived(kindId === null ? [] : store.requestablePractitioners(kindId))
+  /*
+    La personne choisie ne compte que si elle est encore proposée.
+
+    La liste disparaît entièrement quand elle est vide, mais le choix restait en coulisse :
+    chaque appui sur « Envoyer ma demande » répondait « Cette personne ne peut pas vous
+    recevoir. Choisissez-en une autre » — alors qu'aucune personne n'était affichée, et
+    qu'aucun bouton ne permettait de laisser l'équipe choisir. La demande ne partait
+    jamais, et rien n'indiquait comment en sortir.
+  */
+  const quiChoisi = $derived(
+    quiId !== '' && proposables.some((p) => p.id === quiId) ? quiId : undefined,
+  )
   const avisChoix = $derived(practitionerChoiceNotice(proposables.length))
 
   /*
@@ -52,7 +64,7 @@
     if (kindId === null || busy) return
     busy = true
     try {
-      const resultat = await store.requestAppointment(kindId, preference, quiId === '' ? undefined : quiId)
+      const resultat = await store.requestAppointment(kindId, preference, quiChoisi)
       message = resultat.message
       if (resultat.ok) {
         kindId = null
@@ -92,7 +104,7 @@
     bien maintenant, adressez-vous à un soignant, dans le service.
   </p>
 
-  {#if store.appointments.length > 0}
+  {#if store.appointments.some((a) => a.status !== 'cancelled') || store.cancelledAppointments.length > 0}
     <h2 class="mb-2 text-2xl font-bold text-ink">Vos rendez-vous</h2>
     <ul class="mb-6 grid gap-3">
       {#each store.appointments.filter((a) => a.status !== 'cancelled') as rendezVous (rendezVous.id)}
@@ -112,6 +124,18 @@
               Retirer ma demande
             </button>
           {/if}
+        </li>
+      {/each}
+      <!--
+        Un rendez-vous annulé par un soignant reste visible, avec son motif : une ligne
+        qui s'efface sans un mot fait venir la personne pour rien.
+      -->
+      {#each store.cancelledAppointments as annule (annule.id)}
+        <li class="card p-4">
+          <p class="text-lg text-ink">
+            <span aria-hidden="true">✕</span>
+            {patientStatusLabel(annule, store.appointmentKinds)}
+          </p>
         </li>
       {/each}
     </ul>

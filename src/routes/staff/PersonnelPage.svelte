@@ -4,6 +4,7 @@
   import { uniqueSlug } from '../../lib/domain/slug'
   import {
     availabilityLabel,
+    firstWindowRefusal,
     normalizeAvailability,
     weekdayName,
   } from '../../lib/domain/availability'
@@ -11,6 +12,7 @@
   import { canSeePractitionerPlanning } from '../../lib/domain/appointmentAccess'
   import { practitionerAudience } from '../../lib/domain/practitioners'
   import { daysCovered, leaveRefusal, type Leave } from '../../lib/domain/leave'
+  import { practitionerAudienceLabel } from '../../lib/domain/practitioners'
   import type { LeaveOutcome } from '../../lib/data/staffPorts'
   import { formatLongDayLabel, formatTime, todayLocalDate } from '../../lib/domain/time'
   import type { LocalDate } from '../../lib/domain/types'
@@ -66,6 +68,20 @@
   let congeErreur = $state<string | null>(null)
   /** Ce que le congé bousculerait, quand le serveur a demandé confirmation. */
   let aConfirmer = $state<LeaveOutcome | null>(null)
+  /** L'accord suit le nombre de séances concernées : « cette séance » ou « ces séances ». */
+  const uneSeuleSeance = $derived((aConfirmer?.sessions ?? []).length === 1)
+  /**
+   * Les dates pour lesquelles cette confirmation a été calculée.
+   *
+   * L'encadré nommait une séance et n'était jamais recalculé : on changeait les dates
+   * sans le fermer, on appuyait sur « Déclarer le congé », et c'était une **autre**
+   * séance — jamais affichée — qui était annulée. On lisait « mercredi 2 septembre » et
+   * l'on annulait le mercredi 9. Une confirmation qui ne décrit plus ce qu'on valide est
+   * pire que pas de confirmation du tout.
+   */
+  let confirmePour = $state('')
+  const confirmationAJour = $derived(aConfirmer !== null && confirmePour === `${congeDu}|${congeAu}`)
+  const datesOntChange = $derived(aConfirmer !== null && !confirmationAJour)
   /**
    * Annuler aussi les séances animées pendant le congé.
    *
@@ -93,18 +109,31 @@
     congeAu = todayLocalDate()
     congeErreur = null
     aConfirmer = null
+    confirmePour = ''
     annulerLesSeances = true
   }
 
   function fermerLesConges(): void {
     congesOuverts = null
     aConfirmer = null
+    confirmePour = ''
     congeErreur = null
   }
 
   async function declarerLeConge(practitionerId: string, force = false): Promise<void> {
     const conge = { from: congeDu, to: congeAu }
-    const refus = leaveRefusal(conge)
+    /*
+      On ne valide que ce qui est écrit à l'écran.
+
+      Le garde-fou est ici et non seulement dans le gabarit : le bouton disparaît quand
+      les dates changent, mais un appui déjà parti ne doit pas aboutir sur des dates que
+      personne n'a relues.
+    */
+    if (force && confirmePour !== `${conge.from}|${conge.to}`) {
+      aConfirmer = null
+      return
+    }
+    const refus = leaveRefusal(conge, todayLocalDate())
     if (refus !== null) {
       congeErreur = refus
       return
@@ -118,6 +147,7 @@
       if (resultat.needsConfirmation === true) {
         // On ne ferme rien : l'écran nomme ce qui va bouger, et l'on tranche en le lisant.
         aConfirmer = resultat
+        confirmePour = `${conge.from}|${conge.to}`
         return
       }
       if (!resultat.ok) {
@@ -221,6 +251,21 @@
   const peutModifierLesPlages = (practitionerId: string): boolean =>
     staffStore.isAdmin || staffStore.identity.practitionerId === practitionerId
 
+  /**
+   * Est-ce le compte avec lequel on est connecté ?
+   *
+   * Deux façons de le reconnaître, et il en faut deux : l'identifiant du compte, et
+   * l'intervenant auquel il est relié. Les deux ne se rejoignaient pas en démonstration —
+   * l'identité portait « demo-soignant », les comptes « staff-marc » — et le garde-fou
+   * ne se déclenchait jamais : on pouvait se retirer ses propres droits sur sa propre
+   * fiche, qui se croyait celle de quelqu'un d'autre.
+   */
+  const cEstMonCompte = (compte: { uid: string; practitionerId?: string }): boolean =>
+    compte.uid === staffStore.identity.uid ||
+    (compte.practitionerId !== undefined &&
+      compte.practitionerId !== '' &&
+      compte.practitionerId === staffStore.identity.practitionerId)
+
   function ouvrirLesPlages(personne: Practitioner): void {
     plagesOuvertes = personne.id
     const existantes = personne.availability ?? []
@@ -237,7 +282,21 @@
     })
   }
 
+  /*
+    Ce qui cloche dans le brouillon, ligne par ligne.
+
+    Le domaine remettait de l'ordre en silence : une plage inversée ou de zéro minute
+    disparaissait, l'éditeur se fermait, et rien ne le disait. Corriger une ligne
+    existante en « 17:00 → 09:00 » — la faute de frappe courante quand on voulait
+    « 09:00 → 17:00 » — faisait perdre d'un coup toutes les plages de la fiche.
+  */
+  const refusDesPlages = $derived(firstWindowRefusal(brouillon))
+
   async function enregistrerLesPlages(practitionerId: string): Promise<void> {
+    if (refusDesPlages !== null) {
+      erreur = refusDesPlages.message
+      return
+    }
     // Le domaine remet de l'ordre avant l'enregistrement : tri, fusion, rejet du vide.
     const propres = normalizeAvailability(brouillon)
     await tenter(async () => {
@@ -299,7 +358,15 @@
         */
         audience: pourToutes ? ('all' as const) : ('services' as const),
         serviceIds: pourToutes ? [] : unites,
-        isActive: true,
+        /*
+          Modifier une fiche ne remet pas la personne en poste.
+
+          `isActive: true` était écrit à chaque enregistrement : corriger l'orthographe
+          d'un nom sur la fiche de quelqu'un qu'on venait de retirer le remettait dans
+          toutes les listes, sans le dire. « Remettre » est un geste à part, et il existe
+          déjà.
+        */
+        isActive: edition === null ? true : (store.practitionerOf(edition)?.isActive ?? true),
       })
       fermer()
     })
@@ -498,7 +565,13 @@
   {#snippet plages(personne: Practitioner)}
     {@const resume = availabilityLabel(personne.availability ?? [])}
     <div class="mt-3 rounded-xl border-2 border-line p-4">
-      <h4 class="text-lg font-semibold text-ink">Quand cette personne reçoit</h4>
+      <!-- « Vous » sur sa propre fiche : le bouton du bas le fait déjà, et l'écran ne
+           doit pas désigner le même être de deux façons. -->
+      <h4 class="text-lg font-semibold text-ink">
+        {staffStore.identity.practitionerId === personne.id
+          ? 'Quand vous recevez'
+          : 'Quand cette personne reçoit'}
+      </h4>
       <p class="mt-1 text-base text-ink-soft">
         {resume === ''
           ? 'Rien n’est indiqué. Personne ne sait donc quand proposer un rendez-vous.'
@@ -558,6 +631,17 @@
             {/each}
           </ul>
 
+          <!--
+            Ce qui cloche se dit avant d'enregistrer, et sur place. L'éditeur se fermait
+            en silence et la plage saisie avait disparu.
+          -->
+          {#if refusDesPlages !== null}
+            <p role="alert" class="mt-3 rounded-xl bg-amber-50 p-3 text-lg font-semibold text-ink">
+              <span aria-hidden="true">⚠️</span>
+              Plage {refusDesPlages.index + 1} : {refusDesPlages.message}
+            </p>
+          {/if}
+
           <div class="mt-3 flex flex-wrap gap-2">
             <button
               type="button"
@@ -569,7 +653,7 @@
             <button
               type="button"
               class="btn btn-primary"
-              disabled={busy}
+              disabled={busy || refusDesPlages !== null}
               onclick={() => enregistrerLesPlages(personne.id)}
             >
               {busy ? 'Un instant…' : 'Enregistrer'}
@@ -701,7 +785,20 @@
             10 h » se pèse. Et il dit ce qui va leur arriver — retourner dans la file, non
             disparaître — avant qu'on appuie, jamais après.
           -->
-          {#if aConfirmer !== null}
+          {#if datesOntChange}
+            <!--
+              Les dates ont bougé depuis le dernier examen : l'encadré ne décrirait plus
+              ce qu'on validerait. On le retire et l'on redemande, plutôt que de laisser
+              lire une liste devenue fausse.
+            -->
+            <p role="status" class="mt-3 rounded-xl border-2 border-line bg-surface-soft p-4 text-lg text-ink">
+              <span aria-hidden="true">🔄</span>
+              Les dates ont changé. Appuyez de nouveau sur « Enregistrer ce congé » pour
+              voir ce que ce congé touche.
+            </p>
+          {/if}
+
+          {#if confirmationAJour && aConfirmer !== null}
             <div role="status" class="mt-3 rounded-xl border-2 border-amber-500 bg-amber-50 p-4">
               <p class="text-lg font-bold text-ink">
                 <span aria-hidden="true">⚠️</span> {aConfirmer.message}
@@ -714,7 +811,15 @@
                 atelier où onze personnes sont inscrites ne sont pas le même geste.
               -->
               {#if (aConfirmer.sessions ?? []).length > 0}
-                <h5 class="mt-3 text-base font-bold text-ink">Séances que vous animez</h5>
+                <!--
+                  « Séances que vous animez » s'écrivait même quand on déclare le congé de
+                  quelqu'un d'autre — ce qui est le cas courant pour un administrateur.
+                -->
+                <h5 class="mt-3 text-base font-bold text-ink">
+                  {personne.id === staffStore.identity.practitionerId
+                    ? 'Séances que vous animez'
+                    : `Séances qu’anime ${personne.name}`}
+                </h5>
                 <ul class="mt-1 grid gap-1">
                   {#each aConfirmer.sessions ?? [] as seance (seance.occurrenceId)}
                     <li class="text-base text-ink">
@@ -733,15 +838,15 @@
                   <input type="checkbox" class="mt-1 h-6 w-6" bind:checked={annulerLesSeances} />
                   <span>
                     <span class="block text-lg font-semibold text-ink">
-                      Annuler aussi ces séances
+                      {uneSeuleSeance ? 'Annuler aussi cette séance' : 'Annuler aussi ces séances'}
                     </span>
                     <span class="block text-base text-ink-soft">
                       {#if annulerLesSeances}
-                        Elles seront barrées au programme, avec le motif
+                        {uneSeuleSeance ? 'Elle sera barrée' : 'Elles seront barrées'} au programme, avec le motif
                         « L'animateur est absent ». Les personnes inscrites le liront.
                       {:else}
-                        Elles resteront au programme. Ne décochez que si quelqu'un d'autre
-                        les assure : l'application n'a aucun moyen de le savoir.
+                        {uneSeuleSeance ? 'Elle restera' : 'Elles resteront'} au programme. Ne décochez que si quelqu'un d'autre
+                        {uneSeuleSeance ? "l'assure" : 'les assure'} : l'application n'a aucun moyen de le savoir.
                       {/if}
                     </span>
                   </span>
@@ -828,6 +933,21 @@
           <div>
             <h3 class="text-xl font-bold text-ink">{personne.name}</h3>
             <p class="text-base text-ink-soft">{personne.role}</p>
+            <!--
+              Où cette personne intervient se lit sur la fiche, et pas seulement dans le
+              formulaire. Un intervenant rattaché à aucune unité paraissait normal — et
+              aucun patient ne pouvait demander à le voir, sans que rien ne le dise.
+            -->
+            <p class="text-base text-ink-soft">
+              <span aria-hidden="true">🏠</span>
+              {practitionerAudienceLabel(personne, staffStore.catalog.services)}
+            </p>
+            {#if personne.isActive && practitionerAudienceLabel(personne, staffStore.catalog.services) === 'Aucune unité choisie'}
+              <p class="text-base font-semibold text-ink">
+                <span aria-hidden="true">⚠️</span>
+                Aucune unité choisie : aucun patient ne peut demander à voir cette personne.
+              </p>
+            {/if}
           </div>
         </div>
 
@@ -882,12 +1002,12 @@
             <input
               type="checkbox"
               checked={compte.role === 'admin'}
-              disabled={busy || compte.uid === staffStore.identity.uid}
+              disabled={busy || cEstMonCompte(compte)}
               onchange={(event) => basculerAdministrateur(compte, event.currentTarget.checked)}
             />
             <span>
               <strong>Administrateur.</strong>
-              {#if compte.uid === staffStore.identity.uid}
+              {#if cEstMonCompte(compte)}
                 C'est votre compte : vous ne pouvez pas retirer vos propres droits.
               {:else}
                 Voit tous les plannings et tous les rendez-vous, gère les patients, le

@@ -82,7 +82,13 @@
 
   <!-- Les activités et rendez-vous, posés par-dessus. -->
   {#each grille.days as jour, colonne (jour.date)}
-    {#each jour.placed as place (place.entry.start.getTime() + place.entry.kind)}
+    <!--
+      La clef est le rang, et non le contenu : deux entrées qui commencent à la même
+      minute — deux ateliers à 10h00, c'est le cas courant — donnent la même clef, et
+      Svelte arrête alors le rendu. L'écran reste figé sur l'affichage précédent, sans
+      un mot. La liste est reconstruite en entier à chaque lecture ; le rang suffit.
+    -->
+    {#each jour.placed as place, rang (rang)}
       {@const largeur = 100 / place.lanes}
       {@const categorie = place.entry.kind === 'activity' ? categorieDe(place.entry.categoryId) : null}
       {@const teinte = categorie?.colorToken ?? 'defaut'}
@@ -98,9 +104,17 @@
         place.entry.locationId === undefined
           ? ''
           : (store.locationOf(place.entry.locationId)?.name ?? '')}
+      <!--
+        « annulé » vaut pour les deux natures.
+
+        La règle ne regardait que les activités : un rendez-vous annulé s'imprimait comme
+        s'il avait lieu, sur la feuille que le patient emporte — celle qui survit à
+        l'écran, capture d'écran comprise. C'est le tort même que la correction voulait
+        réparer, laissé intact sur le seul support qui reste.
+      -->
       <div
         class="bloc"
-        class:annule={place.entry.kind === 'activity' && place.entry.cancelled}
+        class:annule={place.entry.cancelled === true}
         class:rendez-vous={place.entry.kind === 'appointment'}
         style={`grid-column: ${2 + colonne}; grid-row: ${2 + place.fromSlot} / ${2 + place.toSlot};
                 width: ${largeur}%; margin-left: ${largeur * place.lane}%;
@@ -125,8 +139,13 @@
           <p class="detail">
             {formatTime(place.entry.start)}{lieu ? ` · ${lieu}` : ''}
           </p>
-          {#if place.entry.kind === 'activity' && place.entry.cancelled}
-            <p class="detail">Annulée</p>
+          {#if place.entry.cancelled === true}
+            <p class="detail">
+              {place.entry.kind === 'appointment' ? 'Annulé' : 'Annulée'}{place.entry
+                .cancellationReason
+                ? ` — ${place.entry.cancellationReason}`
+                : ''}
+            </p>
           {/if}
         {/if}
       </div>
@@ -260,7 +279,7 @@
     flex-wrap: wrap;
     gap: 1.5mm 3mm;
     margin-top: 2mm;
-    font-size: 0.85rem;
+    font-size: 1rem;
   }
   .legende li {
     display: flex;
@@ -272,16 +291,31 @@
     background: var(--teinte-fond, #fff);
   }
 
-  /* Tailles : lisibles à l'écran, resserrées sur le papier. */
+  /*
+    Tailles : les points du papier sont les seuls en vigueur aujourd'hui.
+
+    Cette grille est une mise en page de papier, et rien d'autre : ses deux seuls
+    emplaçants — « Ma semaine » et la feuille du personnel — la posent dans un bloc
+    `display: none` hors impression. Le commentaire précédent affirmait corriger dix-sept
+    pixels « sur l'écran d'un patient » : aucun patient n'a jamais vu cette grille à
+    l'écran, et la correction ne s'appliquait nulle part.
+
+    Les règles hors impression restent, à 1 rem : le jour où l'on affichera cette grille
+    — c'est une demande qui revient —, elle ne pourra pas paraître sous le plancher du
+    projet sans que personne s'en aperçoive.
+
+    Le papier, lui, garde ses points : une semaine entière doit tenir sur une feuille, et
+    c'est une contrainte d'impression, pas un choix de lisibilité.
+  */
   .entete,
   .heure {
-    font-size: 0.95rem;
+    font-size: 1rem;
   }
   .titre {
-    font-size: 0.95rem;
+    font-size: 1rem;
   }
   .detail {
-    font-size: 0.85rem;
+    font-size: 1rem;
   }
 
   @media print {

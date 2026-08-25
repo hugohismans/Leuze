@@ -10,6 +10,7 @@ import {
   validateProposal,
   waitingDays,
   type ActivityProposal,
+  remainingNotice,
 } from './proposals'
 
 const idee = (overrides: Partial<ActivityProposal> = {}): ActivityProposal => ({
@@ -76,8 +77,15 @@ describe('ce que le patient lit', () => {
     expect(patientProposalLabel(idee())).toContain('Un soignant va la lire')
   })
 
-  it('dit qu’elle est acceptée', () => {
-    expect(patientProposalLabel(idee({ status: 'accepted' }))).toContain('acceptée')
+  it('dit qu’elle est retenue — sans promettre un programme qui n’existe pas encore', () => {
+    const texte = patientProposalLabel(idee({ status: 'accepted' }))
+    expect(texte).toContain('retenue')
+    /*
+      Retenir une idée ouvre le formulaire de création : l'activité n'existe pas encore, et
+      le soignant peut être appelé ailleurs avant de l'avoir enregistrée. Envoyer le patient
+      la chercher dans le calendrier, c'est lui faire constater une panne.
+    */
+    expect(texte).not.toContain('au programme')
   })
 
   it('donne le motif d’un refus quand il y en a un, et invite à réessayer sinon', () => {
@@ -126,5 +134,67 @@ describe('les exemples proposés au patient', () => {
     for (const interdit of ['médic', 'soin', 'traitement', 'diagnostic', 'symptôme']) {
       expect(tout).not.toContain(interdit)
     }
+  })
+})
+
+/**
+ * Le compte de caractères, sous les deux champs de « Proposer une activité ».
+ *
+ * Ils ne suivaient pas la même règle : le nom se taisait jusqu'aux vingt derniers
+ * caractères, la description annonçait « Il vous reste 300 caractères » sous un champ
+ * encore vide. Trois cents ne veut rien dire avant d'avoir écrit, et cette phrase de
+ * plus se lit comme une consigne pour qui lit avec effort.
+ */
+describe('le compte de caractères restants', () => {
+  const atteint = 'Vous avez atteint la longueur maximale du nom.'
+
+  it('se tait tant qu’il reste de la place', () => {
+    expect(remainingNotice(300, atteint)).toBeNull()
+    expect(remainingNotice(21, atteint)).toBeNull()
+  })
+
+  it('paraît à l’approche de la limite', () => {
+    expect(remainingNotice(20, atteint)).toBe('Il vous reste 20 caractères.')
+  })
+
+  it('accorde le singulier — « 1 caractère », et non « 1 caractères »', () => {
+    expect(remainingNotice(1, atteint)).toBe('Il vous reste 1 caractère.')
+  })
+
+  it('dit que c’est fini, plutôt que « il vous reste 0 »', () => {
+    expect(remainingNotice(0, atteint)).toBe(atteint)
+    // Un texte collé plus long que la limite : le champ le coupe, le compte reste juste.
+    expect(remainingNotice(-12, atteint)).toBe(atteint)
+  })
+})
+
+/**
+ * Deux files, un seul compteur.
+ *
+ * Celle des rendez-vous comptait des jours de calendrier ; celle des idées, des tranches
+ * de vingt-quatre heures. Deux dépôts faits au même instant s'affichaient « Demandé
+ * hier » d'un côté et « Déposée aujourd'hui » de l'autre, sur deux écrans voisins.
+ */
+describe('depuis combien de jours une idée attend', () => {
+  const idee = (createdAt: Date) => ({ createdAt }) as never
+
+  it('compte la nuit passée, pas les vingt-quatre heures', () => {
+    // Déposée hier à 22 h, lue ce matin à 9 h : moins de vingt-quatre heures, et
+    // pourtant elle a passé la nuit.
+    const hierSoir = new Date('2026-08-24T20:00:00.000Z')
+    const ceMatin = new Date('2026-08-25T07:00:00.000Z')
+    expect(waitingDays(idee(hierSoir), ceMatin)).toBe(1)
+  })
+
+  it('dit zéro le jour même', () => {
+    const ceMatin = new Date('2026-08-25T07:00:00.000Z')
+    const cetApresMidi = new Date('2026-08-25T15:00:00.000Z')
+    expect(waitingDays(idee(ceMatin), cetApresMidi)).toBe(0)
+  })
+
+  it('ne compte jamais à l’envers', () => {
+    const demain = new Date('2026-08-26T07:00:00.000Z')
+    const ceMatin = new Date('2026-08-25T07:00:00.000Z')
+    expect(waitingDays(idee(demain), ceMatin)).toBe(0)
   })
 })

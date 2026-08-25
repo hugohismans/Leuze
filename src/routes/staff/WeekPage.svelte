@@ -1,5 +1,6 @@
 <script lang="ts">
   import { staffStore } from '../../lib/staffState.svelte'
+  import { occurrenceHref } from '../../lib/domain/recurrence'
   import { canEditActivity } from '../../lib/domain/activityAccess'
   import { weekProgramme, programmeCount } from '../../lib/domain/programme'
   import {
@@ -140,10 +141,16 @@
       </p>
     {/if}
 
+    <!--
+      « onOuvrir » passe l'identifiant de la séance, et non son jour : après un
+      changement d'heure, deux séances de la même activité peuvent tomber le même jour —
+      l'ancienne, barrée, et la nouvelle. Le jour seul ne les distingue pas, et l'on
+      ouvrait alors l'autre.
+    -->
     <WeekProgramme
       {programme}
       onAjouter={(date) => navigate(`/soignant/activite/nouvelle/${date}`)}
-      onOuvrir={(occurrence) => navigate(`/soignant/activite/${occurrence.activityId}/${occurrence.localDate}`)}
+      onOuvrir={(occurrence) => navigate(occurrenceHref(occurrence))}
     />
 
     {#if annulees.length > 0}

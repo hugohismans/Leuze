@@ -1,10 +1,13 @@
 <script lang="ts">
   import { store } from '../lib/appState.svelte'
   import {
+    registeredLabel,
+    wasRegisteredLabel,
     registrationActionLabel,
     registrationBlock,
     registrationBlockMessage,
     registrationInvitation,
+    unregisterActionLabel,
   } from '../lib/domain/capacity'
   import { formatDuration, formatFullWhen } from '../lib/domain/time'
   import type { Occurrence } from '../lib/domain/types'
@@ -68,6 +71,10 @@
   const location = $derived(occurrence ? store.locationOf(occurrence.locationId) : null)
   const mine = $derived(occurrence ? store.myStatusFor(occurrence.id) : null)
   const block = $derived(occurrence ? registrationBlock(occurrence, new Date()) : null)
+  /** Vrai quand le message du geste répète le motif déjà affiché juste au-dessus. */
+  const dejaDit = $derived(
+    message !== '' && block !== null && message === registrationBlockMessage(block),
+  )
   const invitation = $derived(occurrence ? registrationInvitation(occurrence) : null)
   const complet = $derived(
     occurrence !== null && occurrence.capacity !== null && occurrence.confirmedCount >= occurrence.capacity,
@@ -92,9 +99,18 @@
       const result = await store.registerTo(occurrence.id)
       messageIsError = !result.ok
       if (result.ok) {
+        /*
+          Les mêmes mots que la carte, et pour la même raison.
+
+          Ce paragraphe est `sr-only` quand tout va bien : il n'est pas vu, il est
+          **entendu**. Il annonçait « Vous êtes inscrit » sur une activité sans
+          inscription, dont la carte affiche « Vous avez noté que vous venez » — la
+          contradiction corrigée à l'écran survivait dans le canal audio, là où
+          justement personne ne pouvait la relever.
+        */
         const pris =
           result.status === 'confirmed'
-            ? 'Vous êtes inscrit.'
+            ? `${registeredLabel(occurrence)}.`
             : `Vous êtes sur la liste d'attente, en position ${result.position}.`
         // Une autre activité tombe au même moment : l'inscription est prise, et on le dit
         // dans la foulée plutôt que de laisser la personne le découvrir le jour même.
@@ -113,7 +129,9 @@
     try {
       const result = await store.unregisterFrom(occurrence.id)
       messageIsError = !result.ok
-      message = result.ok ? 'Vous êtes désinscrit.' : result.message
+      // Le message vient de la couche de données, comme partout ailleurs : l'écran ne
+      // récrit pas une phrase que le serveur a déjà écrite, sinon les deux divergent.
+      message = result.message
     } finally {
       busy = false
     }
@@ -192,7 +210,36 @@
     <section aria-labelledby="titre-inscription" class="grid grid-cols-1 gap-3">
       <h2 id="titre-inscription" class="sr-only">Inscription</h2>
 
-      {#if mine}
+      {#if occurrence.status === 'cancelled'}
+        <!--
+          Une séance annulée passe avant tout le reste.
+
+          Le bloc vert « ✓ Vous êtes inscrit » s'affichait juste sous « Cette activité est
+          annulée » : deux affirmations contraires à trois centimètres l'une de l'autre,
+          la seconde en vert et en gros. On rappelle donc ici, et là seulement, que
+          l'inscription tenait — mais que la séance n'aura pas lieu.
+        -->
+        <div
+          class="card p-5 text-xl"
+          style="background: var(--color-warn-bg); color: var(--color-warn-fg); border-color: var(--color-warn-fg);"
+        >
+          <p><strong>Cette séance n'aura pas lieu.</strong></p>
+          {#if mine}
+            <!--
+              Ce que la personne avait fait, dans les mots qu'elle a lus en le faisant.
+              La phrase était « Vous étiez inscrit » pour tout le monde — y compris pour
+              qui s'était noté sur une activité sans inscription, et pour qui attendait
+              une place.
+            -->
+            <p class="mt-1">
+              {wasRegisteredLabel(occurrence, mine.status)}. Il n'y a rien à faire : un
+              soignant peut vous proposer autre chose.
+            </p>
+          {:else}
+            <p class="mt-1">Un soignant peut vous proposer autre chose.</p>
+          {/if}
+        </div>
+      {:else if mine}
         <div
           class="card p-5 text-xl"
           style={mine.status === 'confirmed'
@@ -200,7 +247,9 @@
             : 'background: var(--color-warn-bg); color: var(--color-warn-fg); border-color: var(--color-warn-fg);'}
         >
           {#if mine.status === 'confirmed'}
-            <p><strong>✓ Vous êtes inscrit</strong></p>
+            <!-- Les mêmes mots que le bouton : « Je note que je viens » et « Vous êtes
+                 inscrit » se contredisaient sur la même carte. -->
+            <p><strong>✓ {registeredLabel(occurrence)}</strong></p>
             <p class="mt-1">
               {formatFullWhen(occurrence.localDate, occurrence.start, occurrence.end)}, {location?.name ?? ''}
             </p>
@@ -209,7 +258,11 @@
               yoga » n'est pas « je suis inscrit au yoga de ce mardi ». Une activité qui
               revient chaque semaine demande une inscription à chaque fois.
             -->
-            <p class="mt-1 text-lg">Cette inscription vaut pour cette séance uniquement.</p>
+            <p class="mt-1 text-lg">
+              {occurrence.registrationRequired
+                ? 'Cette inscription vaut pour cette séance uniquement.'
+                : 'Cela vaut pour cette séance uniquement.'}
+            </p>
           {:else}
             <p><strong>Vous êtes sur la liste d'attente</strong></p>
             <p class="mt-1">
@@ -220,7 +273,9 @@
 
         {#if store.may('unregister')}
           <button type="button" class="btn btn-secondary" disabled={busy} onclick={desinscrire}>
-            {mine.status === 'confirmed' ? 'Me désinscrire' : "Me retirer de la liste d'attente"}
+            {mine.status === 'confirmed'
+              ? unregisterActionLabel(occurrence)
+              : "Me retirer de la liste d'attente"}
           </button>
         {:else}
           <!--
@@ -232,9 +287,20 @@
             {store.refusal('unregister')}
           </p>
         {/if}
+      {:else if block !== null}
+        <!--
+          Le motif qui compte l'emporte sur la phrase de refus.
+
+          « Les inscriptions se prennent avec un soignant » passait avant tout : pour une
+          séance d'hier ou une séance annulée, on envoyait quelqu'un parler d'une activité
+          qui n'aurait pas lieu — et lui faire perdre son temps, au soignant comme à lui.
+        -->
+        <p class="rounded-xl bg-surface-soft p-4 text-lg text-ink">
+          {registrationBlockMessage(block)}
+        </p>
       {:else if !store.may('register')}
         <p class="rounded-xl bg-surface-soft p-4 text-lg text-ink">{store.refusal('register')}</p>
-      {:else if block === null}
+      {:else}
         <button type="button" class="btn btn-primary btn-huge" disabled={busy} onclick={inscrire}>
           {registrationActionLabel(occurrence)}
         </button>
@@ -252,15 +318,22 @@
           pour toutes les fois suivantes et ne revienne pas.
         -->
         <p class="text-lg text-ink-soft">Vous vous inscrivez pour cette séance seulement.</p>
-      {:else}
-        <p class="card p-5 text-xl">{registrationBlockMessage(block)}</p>
       {/if}
 
+      <!--
+        Le message du geste ne répète pas le motif déjà affiché juste au-dessus.
+
+        La séance venait d'être relue et l'écran connaissait désormais l'annulation : on
+        lisait donc deux fois d'affilée « Cette activité est annulée. Un soignant peut vous
+        proposer autre chose. » Le refus était juste ; le doublon donnait l'impression d'un
+        écran cassé. Il reste lu à voix haute pour les lecteurs d'écran, qui n'ont pas vu
+        le premier apparaître.
+      -->
       <p
         aria-live="polite"
         class="text-xl font-semibold"
-        class:sr-only={!messageIsError}
-        style={messageIsError ? 'color: var(--color-stop-fg);' : ''}
+        class:sr-only={!messageIsError || dejaDit}
+        style={messageIsError && !dejaDit ? 'color: var(--color-stop-fg);' : ''}
       >
         {message}
       </p>

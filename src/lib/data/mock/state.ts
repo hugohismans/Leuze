@@ -9,6 +9,7 @@
  * les charge ensemble pour cette raison.
  */
 import { config } from '../../config'
+import { isVisibleToService } from '../../domain/audience'
 import { conflictsWith, type BusyEntry } from '../../domain/conflicts'
 import { expand } from '../../domain/recurrence'
 import { addLocalDays, instantOf, startOfIsoWeek, todayLocalDate } from '../../domain/time'
@@ -104,6 +105,38 @@ export const CLE_SESSION_SOIGNANT = 'leuze.demo.soignant'
 
 export const storedDetour = (): string | null => readDemo(CLE_DETOUR)
 export const storeDetour = (uid: string | null): void => writeDemo(CLE_DETOUR, uid)
+
+/**
+ * Les rôles donnés pendant la visite.
+ *
+ * « Voir à leur place » recharge la page, et l'adapter se reconstruit : sans cela, une
+ * personne qu'on venait de rendre administratrice se retrouvait simple soignante au
+ * détour suivant — c'est-à-dire que la démonstration montrait l'inverse de ce qu'on
+ * venait d'y régler. Les rôles suivent donc la session, comme elle.
+ */
+export const CLE_ROLES = 'leuze.demo.roles'
+
+export function storedRoles(): Map<string, 'staff' | 'admin'> {
+  const brut = readDemo(CLE_ROLES)
+  if (brut === null) return new Map()
+  try {
+    const objet = JSON.parse(brut) as Record<string, unknown>
+    return new Map(
+      Object.entries(objet).filter(
+        (paire): paire is [string, 'staff' | 'admin'] =>
+          paire[1] === 'staff' || paire[1] === 'admin',
+      ),
+    )
+  } catch {
+    // Un contenu illisible — un ancien format, une main qui a écrit dans la console —
+    // ne doit pas empêcher la démonstration de s'ouvrir.
+    return new Map()
+  }
+}
+
+export function storeRoles(roles: Map<string, 'staff' | 'admin'>): void {
+  writeDemo(CLE_ROLES, JSON.stringify(Object.fromEntries(roles)))
+}
 
 function build(now: Date): MockWorld {
   const today = todayLocalDate(now)
@@ -277,6 +310,20 @@ export function busyOn(
   patientUid: string,
   localDate: string,
   ignoreOccurrenceId?: string,
+  /*
+    Le service qui lira ces libellés, quand c'est le patient qui les lit.
+
+    `label` porte le titre de l'activité, et cet agenda ressort tel quel dans
+    l'avertissement de chevauchement : « Vous avez déjà Groupe des sortants à cette
+    heure-là ». Le titre franchissait donc la cloison par ce chemin, alors que le
+    calendrier et « Mes inscriptions » venaient d'apprendre à le retenir. Le cas se
+    produit sans que personne s'y trompe : quelqu'un change d'unité, ou l'audience d'une
+    activité est resserrée après son inscription.
+
+    Absent — c'est le cas du soignant —, rien n'est filtré : il voit déjà tout le
+    programme, et lui cacher un titre ne protégerait personne.
+  */
+  visiblePour?: { serviceId: string | null },
 ): BusyEntry[] {
   const occupe: BusyEntry[] = []
 
@@ -286,6 +333,7 @@ export function busyOn(
     const occurrence = world.occurrences.get(inscription.occurrenceId)
     if (occurrence === undefined || occurrence.localDate !== localDate) continue
     if (occurrence.status === 'cancelled') continue
+    if (visiblePour !== undefined && !isVisibleToService(occurrence, visiblePour.serviceId)) continue
     occupe.push({
       start: occurrence.start,
       end: occurrence.end,
@@ -316,7 +364,8 @@ export function conflictsFor(patientUid: string, occurrenceId: string): BusyEntr
   if (occurrence === undefined) return []
   return conflictsWith(
     { start: occurrence.start, end: occurrence.end },
-    busyOn(patientUid, occurrence.localDate, occurrenceId),
+    // Le patient lit ces libellés : la cloison vaut ici comme partout ailleurs.
+    busyOn(patientUid, occurrence.localDate, occurrenceId, { serviceId: world.session.serviceId }),
   )
 }
 

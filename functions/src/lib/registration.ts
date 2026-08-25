@@ -82,6 +82,20 @@ export async function busyOn(
   patientUid: string,
   localDate: string,
   ignoreOccurrenceId?: string,
+  /*
+    Le service qui lira ces libellés, quand c'est le patient qui les lit.
+
+    `label` porte le titre de l'activité, et cet agenda ressort tel quel dans
+    l'avertissement de chevauchement : « Vous avez déjà Groupe des sortants à cette
+    heure-là ». Le titre franchissait la cloison par ce chemin, alors que le calendrier
+    et « Mes inscriptions » venaient d'apprendre à le retenir. Le cas se produit sans que
+    personne s'y trompe : quelqu'un change d'unité, ou l'audience d'une activité est
+    resserrée après son inscription.
+
+    Absent — c'est le cas du soignant —, rien n'est filtré : il voit déjà tout le
+    programme, et lui cacher un titre ne protégerait personne.
+  */
+  visiblePour?: { serviceId: string | null },
 ): Promise<BusyEntry[]> {
   const [inscriptions, rendezVous] = await Promise.all([
     database.collection(COLLECTIONS.registrations).where('patientUid', '==', patientUid).get(),
@@ -128,6 +142,7 @@ export async function busyOn(
     const occurrence = docToOccurrence(document)
     // Une séance annulée n'occupe plus personne.
     if (occurrence.status === 'cancelled') continue
+    if (visiblePour !== undefined && !isVisibleToService(occurrence, visiblePour.serviceId)) continue
     occupe.push({
       start: occurrence.start,
       end: occurrence.end,
@@ -240,6 +255,8 @@ export async function conflictsFor(
   database: Firestore,
   patientUid: string,
   occurrenceId: string,
+  /** Le service du patient : ce qu'il lira ne doit pas franchir la cloison. */
+  serviceId?: string | null,
 ): Promise<BusyEntry[]> {
   /*
     On lisait la séance, puis on regardait la journée de la personne — deux temps, alors
@@ -256,7 +273,13 @@ export async function conflictsFor(
 
   const [snapshot, occupe] = await Promise.all([
     database.collection(COLLECTIONS.occurrences).doc(occurrenceId).get(),
-    busyOn(database, patientUid, jour, occurrenceId),
+    busyOn(
+      database,
+      patientUid,
+      jour,
+      occurrenceId,
+      serviceId === undefined ? undefined : { serviceId },
+    ),
   ])
   if (!snapshot.exists) return []
   const occurrence = docToOccurrence(snapshot)
@@ -387,8 +410,11 @@ export async function registerTx(
         reason: outcome.reason,
         message:
           outcome.reason === 'already-registered'
-            ? 'Vous êtes déjà inscrit à cette activité.'
-            : registrationBlockMessage(outcome.reason),
+            ? options.by === 'staff'
+              ? 'Cette personne est déjà inscrite.'
+              : 'Vous êtes déjà inscrit à cette activité.'
+            : // Le soignant lisait « Adressez-vous à un soignant ». Il l'est.
+              registrationBlockMessage(outcome.reason, options.by),
       }
     }
 
@@ -404,14 +430,31 @@ export async function registerTx(
 
 export async function unregisterTx(
   database: Firestore,
-  options: { occurrenceId: string; patientUid: string },
+  /*
+    `by` dit à qui la réponse s'adresse.
+
+    Le serveur répondait au soignant avec des phrases écrites pour le patient : « Vous
+    n'êtes plus inscrit. » affiché à quelqu'un qui vient de retirer le prénom d'un autre.
+    La démonstration disait « Retiré de la liste. » — l'écran montré la veille et l'écran
+    du jour ne diraient donc pas la même chose. La transaction est partagée ; les phrases
+    ne le sont plus.
+  */
+  options: { occurrenceId: string; patientUid: string; by?: 'patient' | 'staff' },
 ): Promise<UnregisterOutput> {
+  const pourLeSoignant = options.by === 'staff'
   return database.runTransaction(async (transaction) => {
     const board = await readBoard(database, transaction, options.occurrenceId)
     if (board === null) return { ok: false, message: "Cette activité n'a pas été trouvée." }
 
     const outcome = domainUnregister(board, options.patientUid)
-    if (!outcome.ok) return { ok: false, message: "Vous n'êtes pas inscrit à cette activité." }
+    if (!outcome.ok) {
+      return {
+        ok: false,
+        message: pourLeSoignant
+          ? "Cette personne n'était pas inscrite."
+          : "Vous n'êtes pas inscrit à cette activité.",
+      }
+    }
 
     /*
       On annule le document que le domaine a désigné, et pas « une ligne annulée au nom de
@@ -434,7 +477,7 @@ export async function unregisterTx(
       })
     }
     writeCounters(database, transaction, outcome.board.occurrence)
-    return { ok: true, message: 'Vous n’êtes plus inscrit.' }
+    return { ok: true, message: pourLeSoignant ? 'Retiré de la liste.' : 'Vous n’êtes plus inscrit.' }
   })
 }
 

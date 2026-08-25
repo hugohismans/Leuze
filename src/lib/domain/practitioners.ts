@@ -12,6 +12,7 @@
  */
 import { ALL_SERVICES } from './audience'
 import type { Practitioner } from './types'
+import { enumeration } from './francais'
 
 /** Le public d'un intervenant, sous la forme du public d'une activité. */
 export function practitionerAudience(
@@ -21,6 +22,24 @@ export function practitionerAudience(
   // avant que ce champ existe, et une migration silencieuse ne doit rien restreindre.
   if (practitioner.audience !== 'services') return { audience: 'all', serviceIds: [] }
   return { audience: 'services', serviceIds: [...new Set(practitioner.serviceIds ?? [])].sort() }
+}
+
+/**
+ * Où cette personne intervient, en une ligne lisible sur sa fiche.
+ *
+ * La fiche ne le disait nulle part : un intervenant rattaché à aucune unité paraissait
+ * normal, et aucun patient ne pouvait demander à le voir sans que rien ne l'explique.
+ * Les mots ne sont pas ceux d'une activité — on parle d'une personne, pas d'une séance.
+ */
+export function practitionerAudienceLabel(
+  practitioner: Pick<Practitioner, 'audience' | 'serviceIds'>,
+  services: { id: string; name: string }[],
+): string {
+  const public_ = practitionerAudience(practitioner)
+  if (public_.audience === 'all') return 'Intervient dans toutes les unités'
+  if (public_.serviceIds.length === 0) return 'Aucune unité choisie'
+  const noms = public_.serviceIds.map((id) => services.find((s) => s.id === id)?.name ?? id)
+  return `Intervient dans ${enumeration(noms)}`
 }
 
 /** Cette personne intervient-elle dans ce service ? `null` = service inconnu. */

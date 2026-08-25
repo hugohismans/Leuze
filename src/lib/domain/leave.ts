@@ -35,8 +35,16 @@ export function isValidLeave(leave: Leave): boolean {
   return leave.from <= leave.to
 }
 
-/** Ce qui cloche, en français simple. `null` quand le congé est enregistrable. */
-export function leaveRefusal(leave: Leave): string | null {
+/**
+ * Ce qui cloche, en français simple. `null` quand le congé est enregistrable.
+ *
+ * `today` est facultatif pour ne rien casser là où il n'a pas de sens (un test qui ne
+ * parle que de forme). Quand il est donné, un congé entièrement passé est refusé : il
+ * n'empêcherait plus rien, et il proposerait d'annuler des séances qui ont eu lieu.
+ * Un congé qui a commencé hier et court encore reste accepté — on tombe malade sans
+ * prévenir, et c'est le lendemain qu'on le déclare.
+ */
+export function leaveRefusal(leave: Leave, today?: LocalDate): string | null {
   const forme = /^\d{4}-\d{2}-\d{2}$/
   if (!forme.test(leave.from) || !forme.test(leave.to)) {
     return 'Indiquez un premier et un dernier jour.'
@@ -46,6 +54,9 @@ export function leaveRefusal(leave: Leave): string | null {
   }
   if (daysCovered(leave) > MAX_LEAVE_DAYS) {
     return "Ce congé dure plus d'un an. Vérifiez l'année du dernier jour."
+  }
+  if (today !== undefined && leave.to < today) {
+    return "Ce congé est entièrement passé. Un congé sert à libérer les jours qui viennent ; il ne réécrit pas ceux qui ont eu lieu."
   }
   return null
 }
@@ -125,11 +136,23 @@ export function leaveClashes(
   leaves: Leave[],
   schedule: { dates?: LocalDate[]; weekdays?: number[] },
   isoWeekdayOf: (localDate: LocalDate) => number,
+  /*
+    Le jour d'aujourd'hui, quand on veut écarter le passé.
+
+    « Annuler » veut dire « n'aura pas lieu » : une séance de la semaine dernière a eu
+    lieu, et les personnes qui y sont allées n'ont pas à lire qu'elle a été annulée.
+    Facultatif — un appel qui ne le donne pas garde l'ancien comportement, celui d'une
+    récurrence qu'on est en train d'écrire et qui n'a pas encore de passé.
+  */
+  today?: LocalDate,
 ): LocalDate[] {
   const heurtees = new Set<LocalDate>()
+  const retenir = (jour: LocalDate): void => {
+    if (today === undefined || jour >= today) heurtees.add(jour)
+  }
 
   for (const jour of schedule.dates ?? []) {
-    if (isOnLeave(leaves, jour)) heurtees.add(jour)
+    if (isOnLeave(leaves, jour)) retenir(jour)
   }
 
   const jours = schedule.weekdays ?? []
@@ -139,11 +162,81 @@ export function leaveClashes(
       // Les congés sont bornés — au plus un an, `MAX_LEAVE_DAYS` y veille : le parcours
       // se termine toujours, là où parcourir une récurrence sans fin ne le ferait pas.
       for (let i = 0; i <= MAX_LEAVE_DAYS && curseur <= conge.to; i += 1) {
-        if (jours.includes(isoWeekdayOf(curseur))) heurtees.add(curseur)
+        if (jours.includes(isoWeekdayOf(curseur))) retenir(curseur)
         curseur = addLocalDays(curseur, 1)
       }
     }
   }
 
   return [...heurtees].sort()
+}
+
+/**
+ * Ce que la période porte, en une phrase.
+ *
+ * Le nombre d'abord, la nature ensuite : « 3 séances et 1 rendez-vous » se lit d'un coup
+ * d'œil, là où « des activités et des rendez-vous » oblige à aller compter plus bas.
+ *
+ * La phrase vivait en trois exemplaires — le serveur, la démonstration, et le titre de la
+ * liste juste en dessous — et ils ne disaient pas la même chose : le titre savait écrire
+ * « Séances que vous animez » sur son propre congé, la phrase du dessus restait à
+ * « animées par cette personne ». On lisait donc, l'un sous l'autre, deux façons de
+ * désigner le même être.
+ */
+export function leaveConflictSummary(
+  appointments: number,
+  sessions: number,
+  who: { name?: string; isSelf?: boolean } = {},
+): string {
+  // Le complément ne s'accorde pas : « que vous animez », « qu'anime Claire » et
+  // « animée(s) par cette personne » — seul le dernier suit le nombre.
+  const qui =
+    who.isSelf === true
+      ? { singulier: 'que vous animez', pluriel: 'que vous animez' }
+      : who.name !== undefined && who.name !== ''
+        ? { singulier: `qu’anime ${who.name}`, pluriel: `qu’anime ${who.name}` }
+        : { singulier: 'animée par cette personne', pluriel: 'animées par cette personne' }
+  const bouts: string[] = []
+  if (sessions > 0) {
+    bouts.push(
+      sessions === 1 ? `une séance ${qui.singulier}` : `${sessions} séances ${qui.pluriel}`,
+    )
+  }
+  if (appointments > 0) {
+    bouts.push(appointments === 1 ? 'un rendez-vous fixé' : `${appointments} rendez-vous fixés`)
+  }
+  return `Ce congé tombe sur ${bouts.join(' et ')}.`
+}
+
+/**
+ * L'avertissement à écrire quand on pose un rendez-vous un jour de congé.
+ *
+ * L'application connaissait le congé — l'agenda croisé de la même page l'affichait — mais
+ * le formulaire, lui, ne disait rien : la seule ligne visible était « Docteur Lemaire
+ * reçoit : mardi de 09h00 à 12h00 », qui rassure au moment où elle devrait alerter. Le
+ * rendez-vous s'enregistrait sans réserve, et c'est le patient qui l'apprenait devant une
+ * porte fermée — précisément ce que les congés devaient éviter.
+ *
+ * Il avertit, il n'interdit pas : une urgence se cale où l'on veut, et personne ne connaît
+ * mieux la situation que la personne devant l'écran.
+ */
+export function leaveWarning(
+  leaves: Leave[],
+  localDate: LocalDate,
+  practitionerName: string,
+  /*
+    Qui est en congé : « vous » quand c'est soi-même, un nom sinon.
+
+    L'avertissement disait « Claire est en congé ce jour-là […] prévenez la personne
+    concernée » à Claire, sur son propre agenda, juste sous celui des plages qui, lui,
+    avait appris à dire « vous ». Deux phrases voisines, deux façons de nommer le même
+    être — et une consigne qui demande de se prévenir soi-même.
+  */
+  isSelf = false,
+): string | null {
+  if (!isOnLeave(leaves, localDate)) return null
+  if (isSelf) {
+    return 'Vous êtes en congé ce jour-là. Vous pouvez tout de même fixer le rendez-vous.'
+  }
+  return `${practitionerName} est en congé ce jour-là. Vous pouvez tout de même fixer le rendez-vous, mais prévenez la personne concernée.`
 }

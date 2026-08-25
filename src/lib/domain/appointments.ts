@@ -4,7 +4,7 @@
  * Fonctions pures, comme le reste du domaine. Ce module ne décide de rien de clinique :
  * il ne connaît que des états, des dates et des libellés.
  */
-import { formatFullWhen, formatLongDayLabel } from './time'
+import { calendarDaysSince, formatFullWhen, formatLongDayLabel } from './time'
 import type { Appointment, AppointmentKind, AppointmentPreference } from './types'
 
 export const PREFERENCE_LABELS: Record<AppointmentPreference, string> = {
@@ -25,8 +25,30 @@ export function kindIcon(kinds: AppointmentKind[], kindId: string): string {
  * Ce que le patient lit sur sa demande. Toujours dire où l'on en est, sans jamais
  * promettre un délai que personne ne peut tenir.
  */
+/**
+ * L'intitulé d'un motif, tel qu'il se glisse au milieu d'une phrase.
+ *
+ * Les motifs du catalogue portent leur article — « Le psychiatre », « L'assistant
+ * social » — parce qu'ils s'affichent aussi seuls, en tête de liste. Au milieu d'une
+ * phrase ils passent en minuscule. Un intitulé saisi sans article donnait « Demande
+ * envoyée pour voir autre » : quand il n'y a rien à insérer proprement, la phrase se
+ * passe du nom plutôt que de mal l'écrire.
+ */
+function dansLaPhrase(nom: string): string | null {
+  const propre = nom.trim()
+  if (propre === '') return null
+  const minuscule = propre.charAt(0).toLocaleLowerCase('fr') + propre.slice(1)
+  return /^(le |la |l’|l'|les |un |une |des )/.test(minuscule) ? minuscule : null
+}
+
+/** La même chaîne, prête à s'insérer au milieu d'une phrase. */
+function minuscule(texte: string): string {
+  return texte === '' ? '' : texte.charAt(0).toLocaleLowerCase('fr') + texte.slice(1)
+}
+
 export function patientStatusLabel(appointment: Appointment, kinds: AppointmentKind[]): string {
   const qui = kindName(kinds, appointment.kindId)
+  const nomme = dansLaPhrase(qui)
   switch (appointment.status) {
     case 'requested':
       /*
@@ -38,18 +60,78 @@ export function patientStatusLabel(appointment: Appointment, kinds: AppointmentK
         regarde pas, et l'application ne le sait pas.
       */
       if (appointment.reopenedForLeave === true) {
-        return `La personne que vous deviez voir sera absente ce jour-là. Votre demande pour voir ${qui.toLowerCase()} est de nouveau en attente : un soignant vous dira quand.`
+        return nomme === null
+          ? 'La personne que vous deviez voir sera absente ce jour-là. Votre demande est de nouveau en attente : un soignant vous dira quand.'
+          : `La personne que vous deviez voir sera absente ce jour-là. Votre demande pour voir ${nomme} est de nouveau en attente : un soignant vous dira quand.`
       }
-      return `Demande envoyée pour voir ${qui.toLowerCase()}. Un soignant vous dira quand.`
+      /*
+        Un intitulé sans article ne s'insère pas dans « pour voir … » — mais il ne
+        disparaît pas pour autant : le patient a choisi ce motif, et ne plus le lire
+        l'empêche de reconnaître sa demande parmi plusieurs.
+      */
+      return nomme === null
+        ? `Demande envoyée — ${qui}. Un soignant vous dira quand.`
+        : `Demande envoyée pour voir ${nomme}. Un soignant vous dira quand.`
     case 'scheduled':
       return appointment.localDate && appointment.start && appointment.end
-        ? `${formatFullWhen(appointment.localDate, appointment.start, appointment.end)} avec ${appointment.withWhom ?? qui.toLowerCase()}`
-        : `Rendez-vous fixé avec ${qui.toLowerCase()}`
-    case 'cancelled':
-      return appointment.cancellationReason
-        ? `Rendez-vous annulé — ${appointment.cancellationReason}`
-        : 'Rendez-vous annulé. Un soignant peut vous en proposer un autre.'
+        ? `${formatFullWhen(appointment.localDate, appointment.start, appointment.end)} avec ${appointment.withWhom ?? nomme ?? qui}`
+        : `Rendez-vous fixé avec ${appointment.withWhom ?? nomme ?? qui}`
+    case 'cancelled': {
+      /*
+        Lequel a été annulé ? La ligne ne le disait pas.
+
+        Elle se réduisait à « Rendez-vous annulé — La salle est prise » : ni le motif de
+        la demande, ni la date, ni le nom de la personne. Deux annulations donnaient deux
+        lignes rigoureusement identiques, et l'on ne pouvait pas savoir laquelle des deux
+        dates on avait perdue. C'est pourtant le seul écran où on l'apprend.
+      */
+      /*
+        Une demande retirée n'est pas un rendez-vous annulé.
+
+        La ligne annonçait « Rendez-vous annulé » dans les deux cas, y compris à qui
+        n'avait jamais eu de rendez-vous : il cherchait une date qu'on ne lui avait
+        jamais donnée. C'est la date fixée qui sépare les deux.
+      */
+      const { localDate, start, end } = appointment
+      const fixe = localDate !== undefined && start !== undefined && end !== undefined
+      const motif = (appointment.cancellationReason ?? '').trim()
+      const titre = fixe ? 'Rendez-vous annulé' : 'Demande retirée'
+      const entete = motif === '' ? `${titre}.` : `${titre} — ${motif}`
+      // Les motifs sont écrits à la main : certains portent leur point, d'autres non.
+      const point = motif === '' || /[.!?…]$/.test(motif) ? '' : '.'
+      const lequel = fixe
+        ? // La date est capitalisée pour ouvrir une phrase ; ici elle est au milieu d'une.
+          `Il était prévu ${minuscule(formatFullWhen(localDate, start, end))}, avec ${appointment.withWhom ?? nomme ?? qui}.`
+        : nomme === null
+          ? `C'était votre demande — ${qui}.`
+          : `C'était votre demande pour voir ${nomme}.`
+      const suite = fixe
+        ? 'Un soignant peut vous en proposer un autre.'
+        : 'Vous pouvez en faire une nouvelle, ou en parler à un soignant.'
+      return `${entete}${point} ${lequel} ${suite}`
+    }
   }
+}
+
+/**
+ * Le refus opposé à une seconde demande pour le même motif.
+ *
+ * Une seule demande à la fois par motif — en attente comme déjà fixée : sans cela,
+ * quelqu'un d'inquiet qui appuie trois fois prendrait trois créneaux dans l'agenda de
+ * quelqu'un. La phrase, elle, disait « Vous avez déjà un rendez-vous prévu avec cette
+ * personne » alors qu'il ne s'agissait souvent que d'une demande en attente, et
+ * qu'aucune personne n'avait été choisie. Elle dit maintenant laquelle des deux.
+ */
+export function alreadyAskedMessage(
+  kinds: AppointmentKind[],
+  kindId: string,
+  etat: 'requested' | 'scheduled',
+): string {
+  const nomme = dansLaPhrase(kindName(kinds, kindId))
+  const qui = nomme === null ? 'ce professionnel' : nomme
+  return etat === 'requested'
+    ? `Vous avez déjà demandé à voir ${qui}. Un soignant vous dira quand.`
+    : `Vous avez déjà un rendez-vous prévu pour voir ${qui}. Parlez-en à un soignant si vous voulez en changer.`
 }
 
 /**
@@ -93,8 +175,7 @@ export function staffRequestLabel(appointment: Appointment, kinds: AppointmentKi
  * c'est la seule chose qui protège d'un oubli, faute de notification.
  */
 export function waitingDays(appointment: Appointment, now: Date = new Date()): number {
-  const jours = Math.floor((now.getTime() - appointment.createdAt.getTime()) / 86_400_000)
-  return jours < 0 ? 0 : jours
+  return calendarDaysSince(appointment.createdAt, now)
 }
 
 export function waitingLabel(days: number): string {
@@ -161,4 +242,54 @@ export function nextScheduled<T extends { status: string; start?: Date }>(
       .filter((a) => a.status === 'scheduled' && a.start !== undefined && a.start.getTime() >= now.getTime())
       .sort((a, b) => (a.start?.getTime() ?? 0) - (b.start?.getTime() ?? 0))[0] ?? null
   )
+}
+
+/**
+ * Les rendez-vous annulés qu'il faut encore montrer au patient.
+ *
+ * Une ligne qui disparaît sans un mot passe pour une panne : la personne se souvient
+ * d'avoir eu un rendez-vous mardi, l'écran n'en dit plus rien, et elle vient quand même.
+ * Un rendez-vous annulé par un soignant reste donc lisible, avec son motif.
+ *
+ * Deux annulations n'ont pas le même sens :
+ * - le patient a retiré sa demande lui-même — il le sait, la ligne s'en va ;
+ * - un soignant a annulé — il faut le dire, et dire pourquoi.
+ * Le motif d'annulation est ce qui distingue les deux : seul le soignant en écrit un.
+ *
+ * On ne les garde pas indéfiniment. Un rendez-vous daté s'efface le lendemain de sa
+ * date ; une demande annulée avant d'avoir eu une date s'efface au bout de deux semaines,
+ * le temps que la personne l'ait lu.
+ */
+export const CANCELLED_VISIBLE_DAYS = 14
+
+export function cancelledToShow<
+  T extends {
+    status: string
+    localDate?: string
+    start?: Date
+    createdAt: Date
+    cancelledAt?: Date
+    cancellationReason?: string
+  },
+>(appointments: T[], today: string, now: Date = new Date()): T[] {
+  const limite = now.getTime() - CANCELLED_VISIBLE_DAYS * 86_400_000
+  return appointments
+    .filter((a) => a.status === 'cancelled')
+    .filter((a) => (a.cancellationReason ?? '').trim() !== '')
+    /*
+      Les deux semaines se comptent depuis l'annulation, et non depuis le dépôt.
+
+      Une demande restée trois semaines dans la file puis retirée disparaissait à
+      l'instant même : le patient n'avait aucune chance de lire le motif. À défaut de date
+      d'annulation — un ancien enregistrement — on retombe sur le dépôt.
+    */
+    .filter((a) =>
+      a.localDate !== undefined
+        ? a.localDate >= today
+        : (a.cancelledAt ?? a.createdAt).getTime() >= limite,
+    )
+    .sort((a, b) => {
+      const quand = (x: T): number => x.start?.getTime() ?? x.createdAt.getTime()
+      return quand(b) - quand(a)
+    })
 }

@@ -1,5 +1,6 @@
 import { config } from '../config'
-import type { Occurrence } from './types'
+import { accorde, motAccorde } from './francais'
+import type { Occurrence, RegistrationStatus } from './types'
 
 export type CapacityState =
   | { kind: 'cancelled' }
@@ -77,6 +78,34 @@ export function registrationActionLabel(occurrence: Occurrence): string {
   return occurrence.registrationRequired ? "Je m'inscris" : 'Je note que je viens'
 }
 
+/**
+ * Ce qu'on lit une fois inscrit — le pendant exact de `registrationActionLabel`.
+ *
+ * Les deux se contredisaient : le bouton disait « Je note que je viens », et l'écran
+ * répondait « ✓ Vous êtes inscrit », sur une carte qui portait au même moment « Ouvert à
+ * tous, sans inscription ». Deux phrases opposées mot pour mot, sur la même carte.
+ */
+export function registeredLabel(occurrence: Occurrence): string {
+  return occurrence.registrationRequired ? 'Vous êtes inscrit' : 'Vous avez noté que vous venez'
+}
+
+/**
+ * Ce qu'on lit sur une séance annulée, à propos de ce qu'on avait fait.
+ *
+ * Le bandeau écrivait « Vous étiez inscrit » à tout le monde : à qui s'était noté sur
+ * une activité sans inscription, comme à qui attendait une place. C'est la faute que le
+ * reste de l'écran venait d'apprendre à ne plus faire.
+ */
+export function wasRegisteredLabel(occurrence: Occurrence, status: RegistrationStatus): string {
+  if (status === 'waitlist') return "Vous étiez sur la liste d'attente"
+  return occurrence.registrationRequired ? 'Vous étiez inscrit' : 'Vous aviez noté que vous veniez'
+}
+
+/** Le geste inverse, dans les mêmes mots. */
+export function unregisterActionLabel(occurrence: Occurrence): string {
+  return occurrence.registrationRequired ? 'Me désinscrire' : 'Je ne viendrai pas'
+}
+
 /** La phrase qui accompagne le bouton, ou `null` quand il se suffit à lui-même. */
 export function registrationInvitation(occurrence: Occurrence): string | null {
   if (occurrence.registrationRequired) return null
@@ -90,10 +119,14 @@ export function staffCapacityLabel(occurrence: Occurrence): string {
     // Zéro prend le singulier en français : « 0 personne notée ».
     return `Sans inscription — ${n} ${n > 1 ? 'personnes notées' : 'personne notée'}`
   }
-  if (occurrence.capacity === null) return `${occurrence.confirmedCount} inscrits, places illimitées`
+  if (occurrence.capacity === null) {
+    return `${accorde(occurrence.confirmedCount, 'inscrit', 'inscrits')}, places illimitées`
+  }
   const remaining = remainingSeats(occurrence) ?? 0
   const waitlist = occurrence.waitlistCount > 0 ? `, ${occurrence.waitlistCount} en attente` : ''
-  return `${occurrence.confirmedCount} / ${occurrence.capacity} inscrits (${remaining} restantes)${waitlist}`
+  // « 1 / 8 inscrits (1 restantes) » : l'accord manquait, à côté d'une phrase correcte.
+  const inscrits = motAccorde(occurrence.confirmedCount, 'inscrit', 'inscrits')
+  return `${occurrence.confirmedCount} / ${occurrence.capacity} ${inscrits} (${accorde(remaining, 'restante', 'restantes')})${waitlist}`
 }
 
 export type RegistrationBlock = 'cancelled' | 'past' | 'full-no-waitlist'
@@ -114,8 +147,28 @@ export function registrationBlock(occurrence: Occurrence, now: Date): Registrati
   return null
 }
 
-/** Message affiché au patient quand l'inscription est impossible. Dit toujours quoi faire. */
-export function registrationBlockMessage(block: RegistrationBlock): string {
+/**
+ * Le message d'un refus d'inscription. Il dit toujours quoi faire.
+ *
+ * `by` change à qui l'on parle, et donc ce qu'on propose de faire. Le serveur renvoyait
+ * au soignant les phrases écrites pour le patient : « Adressez-vous à un soignant » lu
+ * par le soignant lui-même, et « Un soignant peut vous proposer autre chose » sur un
+ * écran où l'on peut rétablir la séance d'un bouton.
+ */
+export function registrationBlockMessage(
+  block: RegistrationBlock,
+  by: 'patient' | 'staff' = 'patient',
+): string {
+  if (by === 'staff') {
+    switch (block) {
+      case 'cancelled':
+        return 'Cette séance est annulée : on ne peut pas y inscrire quelqu’un. Rétablissez-la, ou proposez autre chose à cette personne.'
+      case 'past':
+        return "Cette séance a déjà commencé. L'inscription n'est plus possible."
+      case 'full-no-waitlist':
+        return 'Cette séance est complète et la liste d’attente est fermée. Ouvrez-la, ou ajoutez des places, sur la fiche de l’activité.'
+    }
+  }
   switch (block) {
     case 'cancelled':
       return "Cette activité est annulée. Un soignant peut vous proposer autre chose."

@@ -43,15 +43,86 @@ export function minutesOf(time: LocalTime): number | null {
   return heures * 60 + minutes
 }
 
-/** « 09:00 » → « 09h00 ». Jamais « 9:00 » : les deux chiffres se lisent mieux de loin. */
+/**
+ * « 09:00 » → « 09h00 ». Jamais « 9:00 » : les deux chiffres se lisent mieux de loin.
+ *
+ * Minuit se dit « minuit ». La borne de fin d'une journée s'écrit « 24:00 » à l'intérieur
+ * du domaine — elle se compare ainsi correctement — mais « 24h00 » ne se lit nulle part.
+ */
 export function formatLocalTime(time: LocalTime): string {
+  if (time === '24:00' || time === '00:00') return 'minuit'
   return time.replace(':', 'h')
+}
+
+/**
+ * L'heure de fin d'une plage, en minutes. « 00:00 » y vaut minuit **de la fin du jour**.
+ *
+ * « 22:00 → 00:00 » est une plage parfaitement ordinaire — la garde du soir, jusqu'à
+ * minuit. Comparée bêtement, elle se lisait comme une plage de moins vingt-deux heures :
+ * elle était jetée à l'enregistrement, sans un mot, et la personne se retrouvait parfois
+ * sans aucune disponibilité. Le reste du module ne connaît que des minutes ; il suffit
+ * que cette fonction-ci sache lire minuit.
+ */
+export function endMinutesOf(time: LocalTime): number | null {
+  /*
+    « 24:00 » se lit aussi.
+
+    Les trous libres d'une journée qui va jusqu'à minuit sont rendus avec cette borne :
+    elle se compare correctement à « 23:00 » là où « 00:00 » se comparerait comme le
+    début du jour. `minutesOf` la refuse — elle n'accepte pas plus de 23 heures — et la
+    découpe en créneaux rendait alors une liste vide, silencieusement.
+  */
+  if (time === '24:00') return 24 * 60
+  const minutes = minutesOf(time)
+  if (minutes === null) return null
+  return minutes === 0 ? 24 * 60 : minutes
 }
 
 function valide(fenetre: AvailabilityWindow): boolean {
   const debut = minutesOf(fenetre.from)
-  const fin = minutesOf(fenetre.to)
+  const fin = endMinutesOf(fenetre.to)
   return debut !== null && fin !== null && debut < fin
+}
+
+/**
+ * Ce qui cloche dans une plage, en français simple. `null` quand elle est enregistrable.
+ *
+ * `normalizeAvailability` jette les plages invalides, et c'est ce qu'il doit faire — mais
+ * il le faisait en silence : l'éditeur se fermait, aucun message ne s'affichait, et la
+ * saisie avait disparu. Pire, corriger « 09:00 → 17:00 » en « 17:00 → 09:00 » sur une
+ * ligne existante faisait perdre d'un coup toutes les plages valides de la fiche, et
+ * l'acceptation automatique avec elles, sans que rien ne l'annonce.
+ */
+export function windowRefusal(window: AvailabilityWindow): string | null {
+  const debut = minutesOf(window.from)
+  const fin = endMinutesOf(window.to)
+  if (debut === null || fin === null) return 'Indiquez une heure de début et une heure de fin.'
+  /*
+    « 00:00 → 00:00 » se refuse, malgré la règle « minuit en fin vaut la fin du jour ».
+
+    Lue littéralement, cette ligne décrit la journée entière — et à l'enregistrement elle
+    fond toutes les autres plages du jour dans la sienne : on perdait d'un coup « mardi
+    9h–12h » et « mardi 14h–17h », sans un mot. C'est le défaut que ce refus était censé
+    fermer, réintroduit par une autre porte. Personne ne saisit deux fois minuit pour dire
+    « toute la journée » ; on saisit les heures où l'on reçoit.
+  */
+  if (minutesOf(window.from) === 0 && minutesOf(window.to) === 0) {
+    return 'Écrivez les heures où vous recevez — de 09:00 à 17:00, par exemple.'
+  }
+  if (debut === fin) return "L'heure de fin est la même que l'heure de début : la plage ne dure rien."
+  if (fin < debut) return "L'heure de fin est avant l'heure de début. Vérifiez les deux heures."
+  return null
+}
+
+/** Le premier refus rencontré dans une liste de plages, avec le rang de la ligne fautive. */
+export function firstWindowRefusal(
+  windows: AvailabilityWindow[],
+): { index: number; message: string } | null {
+  for (const [index, fenetre] of windows.entries()) {
+    const refus = windowRefusal(fenetre)
+    if (refus !== null) return { index, message: refus }
+  }
+  return null
 }
 
 /**
@@ -71,9 +142,9 @@ export function normalizeAvailability(windows: AvailabilityWindow[]): Availabili
     if (
       derniere !== undefined &&
       derniere.weekday === fenetre.weekday &&
-      minutesOf(fenetre.from)! <= minutesOf(derniere.to)!
+      minutesOf(fenetre.from)! <= endMinutesOf(derniere.to)!
     ) {
-      if (minutesOf(fenetre.to)! > minutesOf(derniere.to)!) derniere.to = fenetre.to
+      if (endMinutesOf(fenetre.to)! > endMinutesOf(derniere.to)!) derniere.to = fenetre.to
       continue
     }
     fondues.push({ ...fenetre })
@@ -101,7 +172,7 @@ export function coversAppointment(
   if (debut === null) return false
   const fin = debut + durationMin
   return windowsOn(windows, weekday).some(
-    (fenetre) => minutesOf(fenetre.from)! <= debut && fin <= minutesOf(fenetre.to)!,
+    (fenetre) => minutesOf(fenetre.from)! <= debut && fin <= endMinutesOf(fenetre.to)!,
   )
 }
 
@@ -115,16 +186,34 @@ export function availabilityWarning(
   weekday: IsoWeekday,
   time: LocalTime,
   durationMin: number,
+  /*
+    Qui reçoit : « vous » quand c'est soi-même, un prénom sinon.
+
+    Le message restait à la troisième personne — « cette personne reçoit de 13h30 à
+    17h30 » — même sur son propre agenda, à côté d'un résumé qui écrivait « Claire
+    reçoit » alors qu'on est Claire. Sur un seul écran, on lisait « votre nom »,
+    « cette personne » et un prénom pour désigner le même être.
+  */
+  who: { name?: string; isSelf?: boolean } = {},
 ): string | null {
   if (normalizeAvailability(windows).length === 0) return null
   if (coversAppointment(windows, weekday, time, durationMin)) return null
 
+  const jour = JOURS[weekday].toLowerCase()
+  const sujet = who.isSelf === true ? 'vous' : who.name !== undefined && who.name !== '' ? who.name : 'cette personne'
+  const verbe = who.isSelf === true ? 'ne recevez pas' : 'ne reçoit pas'
+  const recoit = who.isSelf === true ? 'recevez' : 'reçoit'
+
   const duJour = windowsOn(windows, weekday)
   if (duJour.length === 0) {
-    return `Cette personne ne reçoit pas le ${JOURS[weekday].toLowerCase()}. Vous pouvez tout de même fixer le rendez-vous.`
+    return `${capitaliser(sujet)} ${verbe} le ${jour}. Vous pouvez tout de même fixer le rendez-vous.`
   }
   const quand = duJour.map((f) => `${formatLocalTime(f.from)} → ${formatLocalTime(f.to)}`).join(' et ')
-  return `Ce ${JOURS[weekday].toLowerCase()}, cette personne reçoit de ${quand}. Vous pouvez tout de même fixer le rendez-vous.`
+  return `Ce ${jour}, ${sujet} ${recoit} de ${quand}. Vous pouvez tout de même fixer le rendez-vous.`
+}
+
+function capitaliser(mot: string): string {
+  return mot.charAt(0).toLocaleUpperCase('fr') + mot.slice(1)
 }
 
 /** « Mardi de 09h00 à 12h00 · Jeudi de 14h00 à 17h00 ». Vide quand rien n'est renseigné. */

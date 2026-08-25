@@ -166,3 +166,87 @@ describe('récurrence — annulation en série', () => {
     expect(cancelled[0]?.cancellationReason).toBe("L'animatrice est en congé")
   })
 })
+
+describe('retirer une activité du programme, puis l’y remettre', () => {
+  const activite = makeActivity({
+    recurrence: {
+      freq: 'weekly',
+      byWeekday: [2],
+      startTime: '14:00',
+      durationMin: 90,
+      from: '2026-08-01',
+      until: null,
+      skipDates: [],
+    },
+  })
+
+  it('rend les séances qui portaient des inscriptions, et pas seulement les vides', () => {
+    const prevues = expand(activite, '2026-08-25', '2026-09-08')
+    expect(prevues.length).toBeGreaterThan(0)
+
+    // Le retrait : plus aucune séance prévue. Celles qui portent des inscriptions sont
+    // barrées plutôt que supprimées — on n'efface pas ce à quoi quelqu'un s'est inscrit.
+    const avecInscrits = prevues.map((o, i) => (i === 0 ? { ...o, confirmedCount: 3 } : o))
+    const retrait = mergeOccurrences([], avecInscrits)
+    expect(retrait.cancel).toHaveLength(1)
+    expect(retrait.remove).toHaveLength(prevues.length - 1)
+
+    // La remise au programme : la séance barrée redevient normale, sans motif.
+    const barrees = retrait.cancel
+    const remise = mergeOccurrences(prevues, barrees)
+    expect(remise.update).toHaveLength(1)
+    expect(remise.update[0]!.status).toBe('scheduled')
+    expect(remise.update[0]!.cancellationReason).toBeUndefined()
+    expect(remise.update[0]!.overridden).toBe(false)
+    // Les inscriptions, elles, n'ont jamais bougé.
+    expect(remise.update[0]!.confirmedCount).toBe(3)
+  })
+
+  it('ne rétablit pas une séance qu’un soignant a annulée avec un motif', () => {
+    const prevues = expand(activite, '2026-08-25', '2026-09-08')
+    const annuleeALaMain = prevues.map((o, i) =>
+      i === 0
+        ? {
+            ...o,
+            confirmedCount: 3,
+            status: 'cancelled' as const,
+            cancellationReason: 'La salle est prise',
+            overridden: true,
+            autoCancelled: false,
+          }
+        : o,
+    )
+    const plan = mergeOccurrences(prevues, annuleeALaMain)
+    // Modifiée isolément : la régénération l'épargne, elle reste barrée avec son motif.
+    expect(plan.preserved.map((o) => o.id)).toContain(prevues[0]!.id)
+    expect(plan.update.map((o) => o.id)).not.toContain(prevues[0]!.id)
+  })
+
+  it('dit à la personne inscrite quoi faire quand l’horaire change', () => {
+    /*
+      L'horaire a bougé : il existe une nouvelle séance, et l'on y renvoie.
+      On déplace l'activité d'une heure — les identifiants changent, les anciennes séances
+      sortent de la série.
+    */
+    const prevues = expand(activite, '2026-08-25', '2026-09-08')
+    const avecInscrits = prevues.map((o, i) => (i === 0 ? { ...o, confirmedCount: 3 } : o))
+    const deplacee = { ...activite, recurrence: { ...activite.recurrence!, startTime: '16:00' } }
+    const plan = mergeOccurrences(expand(deplacee, '2026-08-25', '2026-09-08'), avecInscrits)
+    // Le projet impose des messages qui disent quoi faire.
+    expect(plan.cancel[0]!.cancellationReason).toContain('Inscrivez-vous')
+    expect(plan.cancel[0]!.autoCancelled).toBe(true)
+  })
+
+  it('ne renvoie vers aucune nouvelle séance quand l’activité quitte le programme', () => {
+    /*
+      Rien n'est prévu : « l'horaire a changé, inscrivez-vous à la nouvelle séance »
+      envoyait chercher une séance qui n'existe pas. Deux sorties de série, deux phrases.
+    */
+    const prevues = expand(activite, '2026-08-25', '2026-09-08')
+    const avecInscrits = prevues.map((o, i) => (i === 0 ? { ...o, confirmedCount: 3 } : o))
+    const plan = mergeOccurrences([], avecInscrits)
+    expect(plan.cancel[0]!.cancellationReason).toContain("n'aura pas lieu")
+    expect(plan.cancel[0]!.cancellationReason).not.toContain('Inscrivez-vous')
+    expect(plan.cancel[0]!.autoCancelled).toBe(true)
+  })
+})

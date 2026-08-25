@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createMockRepository, createMockStaffApp } from './index'
 import { mockCatalog } from './catalog'
-import { resetWorld, world, DEMO_PATIENT_UID } from './state'
+import { busyOn, resetWorld, world, DEMO_PATIENT_UID } from './state'
 import { AUTO_DURATION_MIN } from '../../domain/autoAccept'
 import { addLocalDays, isoWeekdayOf, todayLocalDate } from '../../domain/time'
+import { firstBookableDay } from '../../domain/agenda'
 
 /**
  * L'acceptation automatique, jouée de bout en bout sur la démonstration.
@@ -139,5 +140,63 @@ describe('demander deux fois la même chose', () => {
     expect(
       world.appointments.filter((a) => a.patientUid === DEMO_PATIENT_UID && a.kindId === 'psychiatre'),
     ).toHaveLength(1)
+  })
+})
+
+describe('l’acceptation automatique et l’agenda du patient', () => {
+  beforeEach(() => {
+    resetWorld()
+    mockCatalog.reset()
+    world.appointments = []
+  })
+
+  it('ne pose pas un rendez-vous par-dessus une activité à laquelle la personne est inscrite', async () => {
+    /*
+      On arme réellement l'acceptation automatique.
+
+      Sans cela, aucun rendez-vous n'était posé, le test sautait son corps et passait —
+      la correction n'était protégée par rien. La plage couvre toute la journée de
+      demain, de sorte qu'il existe forcément une place : si le rendez-vous atterrit
+      malgré tout sur une activité de la personne, c'est que le croisement d'agendas ne
+      fonctionne pas.
+    */
+    const app = await ouvrirSoignant()
+    await app.catalogAdmin.saveAvailability('docteur-lemaire', [
+      { weekday: isoWeekdayOf(firstBookableDay(todayLocalDate())), from: '08:00', to: '20:00' },
+    ])
+    await app.catalogAdmin.setAutoAccept('docteur-lemaire', true)
+
+    const repo = createMockRepository()
+
+    // Ce que la personne a déjà, dans les trois semaines qui viennent.
+    const depart = firstBookableDay(todayLocalDate())
+    const occupeAvant: { debut: number; fin: number }[] = []
+    for (let i = 0; i <= 21; i += 1) {
+      for (const entree of busyOn(DEMO_PATIENT_UID, addLocalDays(depart, i))) {
+        occupeAvant.push({ debut: entree.start.getTime(), fin: entree.end.getTime() })
+      }
+    }
+
+    const resultat = await repo.appointments.request('psychiatre', 'peu-importe')
+    expect(resultat.ok).toBe(true)
+
+    /*
+      Le test exige que la place ait été trouvée.
+
+      Il se contentait d'un « if (pose === undefined) return » : le jour où l'acceptation
+      automatique ne trouvait rien, il ne vérifiait plus rien et passait quand même. La
+      correction la plus visible pour le patient — ne pas se voir poser un rendez-vous
+      pendant son atelier — n'était alors protégée par rien du tout.
+    */
+    const pose = world.appointments.find((a) => a.status === 'scheduled')
+    expect(pose).toBeDefined()
+    expect(pose!.start).toBeDefined()
+    expect(pose!.end).toBeDefined()
+
+    // Aucun chevauchement avec ce qu'elle avait déjà.
+    const chevauche = occupeAvant.some(
+      (pris) => pose!.start!.getTime() < pris.fin && pris.debut < pose!.end!.getTime(),
+    )
+    expect(chevauche).toBe(false)
   })
 })

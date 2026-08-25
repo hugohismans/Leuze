@@ -2,6 +2,7 @@
   import { staffStore } from '../../lib/staffState.svelte'
   import { store } from '../../lib/appState.svelte'
   import { attendanceLabel, attendanceRefusal, countAttendance } from '../../lib/domain/attendance'
+  import { canEditActivity } from '../../lib/domain/activityAccess'
   import { isVisibleToService } from '../../lib/domain/audience'
   import { staffCapacityLabel } from '../../lib/domain/capacity'
   import { formatLongDayLabel, formatTimeRange } from '../../lib/domain/time'
@@ -99,13 +100,37 @@
       {#if occurrence.facilitator}· avec {occurrence.facilitator}{/if}
     </p>
 
-    {#if !staffStore.canMarkAttendance}
+    <!--
+      Une séance annulée se dit ici, et se dit d'abord.
+
+      L'écran n'en disait rien : on y notait des présences sur une séance qui n'aurait pas
+      lieu, et seul l'ajout d'une personne échouait — avec un message écrit pour le
+      patient, affiché dans le bandeau vert des réussites.
+    -->
+    {#if occurrence.status === 'cancelled'}
+      <p role="status" class="card mb-4 border-4 border-amber-500 bg-amber-50 p-4 text-lg font-semibold text-ink">
+        <span aria-hidden="true">✕</span>
+        Cette séance est annulée{occurrence.cancellationReason
+          ? ` — ${occurrence.cancellationReason}`
+          : ''}. Il n'y a pas d'appel à faire.
+      </p>
+    {/if}
+
+    <!--
+      Le cadenas se tait sur une séance annulée : le bandeau au-dessus vient de le dire.
+
+      Les deux corrections ont été posées le même jour sans se voir — le bandeau ici,
+      la branche « annulée » dans `attendanceRefusal` — et l'écran écrivait la même
+      phrase deux fois de suite, la seconde sous un cadenas qui parle d'un droit
+      refusé, servi à un administrateur qui a tous les droits.
+    -->
+    {#if !staffStore.canMarkAttendance && occurrence.status !== 'cancelled'}
       <p role="status" class="card mb-4 p-4 text-lg text-ink">
         <span aria-hidden="true">🔒</span>
-        {attendanceRefusal(occurrence)}
+        {attendanceRefusal(occurrence, canEditActivity(staffStore.identity, occurrence))}
         Vous voyez la liste des inscrits, sans les présences.
       </p>
-    {:else}
+    {:else if attendanceLabel(compte) !== ''}
       <p class="card mb-4 p-4 text-lg font-semibold text-ink">
         {attendanceLabel(compte)}
       </p>
@@ -132,8 +157,34 @@
                 </p>
               </div>
               {#if staffStore.canMarkAttendance}
-                <!-- L'état coché est doublé d'un mot : jamais la couleur seule. -->
-                <div class="flex flex-wrap gap-2">
+                <!--
+                  L'état noté se lit en toutes lettres, jamais à la couleur.
+
+                  Le libellé et l'icône restaient identiques avant et après : seul le fond
+                  changeait, et « Présent » sélectionné prenait exactement le même bleu
+                  qu'« Absent » sélectionné. Qui distingue mal les couleurs ne pouvait
+                  savoir ni qui était noté, ni comment. C'est un critère de refus en revue.
+                -->
+                <p class="text-base font-semibold text-ink">
+                  {#if ligne.attendance === 'present'}
+                    <span aria-hidden="true">✓</span> Noté présent
+                  {:else if ligne.attendance === 'absent'}
+                    <span aria-hidden="true">✗</span> Noté absent
+                  {:else}
+                    <span aria-hidden="true">•</span> Pas encore noté
+                  {/if}
+                  <!--
+                    Noter une présence ne donne pas la place : le dire ici, sinon la
+                    feuille laisse croire que la personne est inscrite.
+                  -->
+                  {#if ligne.status === 'waitlist'}
+                    <span class="block font-normal text-ink-soft">
+                      Toujours sur la liste d'attente — la place se donne depuis la fiche
+                      de la séance.
+                    </span>
+                  {/if}
+                </p>
+                <div class="mt-1 flex flex-wrap gap-2">
                   <button
                     type="button"
                     class="btn"
@@ -142,7 +193,8 @@
                     aria-pressed={ligne.attendance === 'present'}
                     onclick={() => noter(ligne.patientUid, ligne.attendance === 'present' ? null : 'present')}
                   >
-                    <span aria-hidden="true">✓</span> Présent
+                    <span aria-hidden="true">✓</span>
+                    {ligne.attendance === 'present' ? 'Présent — annuler' : 'Présent'}
                   </button>
                   <button
                     type="button"
@@ -152,7 +204,8 @@
                     aria-pressed={ligne.attendance === 'absent'}
                     onclick={() => noter(ligne.patientUid, ligne.attendance === 'absent' ? null : 'absent')}
                   >
-                    <span aria-hidden="true">✗</span> Absent
+                    <span aria-hidden="true">✗</span>
+                    {ligne.attendance === 'absent' ? 'Absent — annuler' : 'Absent'}
                   </button>
                 </div>
               {/if}
@@ -202,9 +255,18 @@
         {/if}
       </div>
 
+      <!--
+        La phrase disait le contraire de ce que fait l'écran : une personne ajoutée à
+        l'appel est inscrite, même au-delà des places, et c'est voulu — la feuille doit
+        dire qui était là, pas ce qui était prévu. Elle ne s'affiche plus quand l'activité
+        n'a pas de limite : il n'y a alors rien à dépasser.
+      -->
       <p class="mt-4 text-base text-ink-soft">
-        {staffCapacityLabel(occurrence)}. Une personne ajoutée alors que l'activité est
-        complète passe en liste d'attente, comme partout ailleurs.
+        {staffCapacityLabel(occurrence)}.
+        {#if occurrence.capacity !== null}
+          Une personne ajoutée ici est notée présente même au-delà des places : la feuille
+          dit qui était là.
+        {/if}
       </p>
     {/if}
   {/if}

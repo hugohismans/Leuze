@@ -72,6 +72,46 @@ export function expand(activity: Activity, from: LocalDate, to: LocalDate): Occu
     .map((date) => draftFrom(activity, date, rule.startTime, rule.durationMin))
 }
 
+/**
+ * La séance désignée par une adresse : par identifiant d'abord, par jour ensuite.
+ *
+ * Le repli par jour existe pour les adresses écrites à la main et les anciens signets,
+ * mais il ne peut pas trancher entre deux séances du même jour — et c'est exactement ce
+ * qui arrive après un changement d'heure : l'ancienne reste, barrée, la nouvelle
+ * apparaît, on clique la nouvelle et l'on ouvre l'ancienne. « Supprimer cette séance »
+ * effaçait alors celle qu'on n'avait pas choisie, avec ses inscrits.
+ *
+ * Vit dans le domaine pour être vraiment éprouvée : la même recherche écrite dans un
+ * test ne prouve rien de ce que fait l'écran.
+ */
+export function findOccurrence<T extends { id: string; activityId: string; localDate: LocalDate }>(
+  occurrences: T[],
+  activityId: string,
+  reference: string,
+): T | null {
+  return (
+    occurrences.find((o) => o.id === reference) ??
+    occurrences.find((o) => o.activityId === activityId && o.localDate === reference) ??
+    null
+  )
+}
+
+/**
+ * L'adresse de la fiche d'une séance, telle que les écrans doivent la construire.
+ *
+ * C'est ici que vivait le défaut, et non dans la recherche : l'écran de la semaine
+ * passait un **jour**, et deux séances de la même activité le même jour — le cas d'après
+ * un changement d'heure — ne se distinguent pas par leur jour. On cliquait la nouvelle,
+ * on ouvrait l'ancienne, barrée, et « Supprimer cette séance » effaçait celle qu'on
+ * n'avait pas choisie, avec ses inscrits.
+ *
+ * Une fonction plutôt qu'un gabarit écrit à la main dans chaque écran : c'est la seule
+ * façon qu'un test puisse dire « l'adresse porte bien l'identifiant ».
+ */
+export function occurrenceHref(occurrence: { activityId: string; id: string }): string {
+  return `/soignant/activite/${occurrence.activityId}/${occurrence.id}`
+}
+
 export type MergePlan = {
   /** Occurrences à créer. */
   create: Occurrence[]
@@ -120,14 +160,25 @@ export function mergeOccurrences(
       plan.preserved.push(current)
       continue
     }
+    /*
+      Une séance que la régénération avait barrée redevient normale en rentrant dans la
+      série ; une séance qu'un soignant a annulée avec un motif ne bouge pas.
+
+      Sans cette distinction, retirer une activité du programme puis l'y remettre laissait
+      annulées à jamais exactement les séances qui portaient des inscriptions : les séances
+      vides étaient supprimées puis recréées, les autres restaient barrées avec un motif
+      qui n'avait plus de sens — « L'activité a été modifiée ». Le message annonçait
+      pourtant « Activité remise au programme ».
+    */
+    const rendue = current.status === 'cancelled' && current.autoCancelled === true
     plan.update.push({
       ...draft,
       // L'état vécu de l'occurrence n'appartient pas à la série.
-      status: forced ? 'scheduled' : current.status,
-      ...(current.cancellationReason !== undefined && !forced
+      status: forced || rendue ? 'scheduled' : current.status,
+      ...(current.cancellationReason !== undefined && !forced && !rendue
         ? { cancellationReason: current.cancellationReason }
         : {}),
-      overridden: forced ? false : current.overridden,
+      overridden: forced || rendue ? false : current.overridden,
       confirmedCount: current.confirmedCount,
       waitlistCount: current.waitlistCount,
     })
@@ -142,7 +193,28 @@ export function mergeOccurrences(
         plan.cancel.push({
           ...current,
           status: 'cancelled',
-          cancellationReason: current.cancellationReason ?? "L'activité a été modifiée",
+          /*
+            Un motif qui dit quoi faire. « L'activité a été modifiée » laissait la personne
+            inscrite devant une séance barrée sans savoir si elle devait faire quelque
+            chose. La séance n'est pas annulée : elle a changé d'heure ou de jour, et
+            l'inscription ne suit pas — c'est cela qu'il faut lire.
+          */
+          /*
+            Deux raisons de sortir de la série, et deux phrases.
+
+            Une activité retirée du programme n'a pas « changé d'horaire » : il n'y a
+            aucune nouvelle séance à laquelle se réinscrire, et l'envoyer en chercher une
+            fait perdre son temps à la personne. `drafts` vide veut dire « plus rien n'est
+            prévu » ; sinon, la séance a bougé.
+          */
+          cancellationReason:
+            current.cancellationReason ??
+            (drafts.length === 0
+              ? "Cette séance n'aura pas lieu. Un soignant peut vous proposer autre chose."
+              : "L'horaire a changé. Inscrivez-vous de nouveau à la nouvelle séance."),
+          // Barrée par la régénération, et non par un soignant : elle se rétablit seule
+          // si l'activité revient au programme.
+          autoCancelled: true,
         })
       }
     } else {

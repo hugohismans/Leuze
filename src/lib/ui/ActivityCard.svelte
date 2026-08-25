@@ -1,5 +1,6 @@
 <script lang="ts">
   import { store } from '../appState.svelte'
+  import { registeredLabel } from '../domain/capacity'
   import { formatTime, formatTimeRange } from '../domain/time'
   import type { Occurrence } from '../domain/types'
   import AudienceBadge from './AudienceBadge.svelte'
@@ -67,7 +68,7 @@
           <span class="badge max-w-full" style="background: var(--color-brand-100); color: var(--color-brand-900);">
             <span aria-hidden="true">✓</span>
             <span class="min-w-0 break-words">
-              {mine.status === 'confirmed' ? 'Vous êtes inscrit' : 'Vous êtes en attente'}
+              {mine.status === 'confirmed' ? registeredLabel(occurrence) : 'Vous êtes en attente'}
             </span>
           </span>
         {/if}

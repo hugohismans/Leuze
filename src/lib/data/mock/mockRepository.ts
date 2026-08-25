@@ -33,6 +33,7 @@ import {
   type BusySlot,
 } from '../../domain/autoAccept'
 import { registrationBlockMessage, type RegistrationBlock } from '../../domain/capacity'
+import { alreadyAskedMessage } from '../../domain/appointments'
 import type {
   Appointment,
   AppointmentKind,
@@ -65,6 +66,7 @@ import {
   DEMO_SERVICE_ID,
   applyBoard,
   boardOf,
+  busyOn,
   conflictsFor,
   droitsDe,
   resetWorld,
@@ -83,6 +85,7 @@ function premierePlaceLibre(
   maintenant: Date,
   serviceId: string | null,
   practitionerId: string | null,
+  patientUid: string,
 ): { practitionerId: string; name: string; slot: NonNullable<ReturnType<typeof findFirstSlot>> } | null {
   const candidats = mockCatalog
     .practitioners()
@@ -96,6 +99,22 @@ function premierePlaceLibre(
 
   // Jamais aujourd'hui : voir `firstBookableDay`.
   const depart = firstBookableDay(todayLocalDate(maintenant))
+
+  /*
+    Ce que le patient a déjà.
+
+    L'acceptation automatique posait tranquillement un rendez-vous par-dessus l'atelier
+    auquel la personne était inscrite : « Ma semaine » affichait les deux au même moment,
+    sans un mot, et c'est elle qui devait choisir. Un soignant qui fixe à la main recevait
+    déjà cet agenda ; la machine n'a aucune raison d'être moins prudente.
+  */
+  const occupePatient: BusySlot[] = []
+  for (let i = 0; i <= AUTO_HORIZON_DAYS; i += 1) {
+    const jour = addLocalDays(depart, i)
+    for (const entree of busyOn(patientUid, jour)) {
+      occupePatient.push({ localDate: jour, from: localTimeOf(entree.start), to: localTimeOf(entree.end) })
+    }
+  }
 
   for (const candidat of candidats) {
     const plages = candidat.availability ?? []
@@ -114,6 +133,7 @@ function premierePlaceLibre(
       // Un jour d'absence ne retient aucune place, même quand la plage du jour est libre.
       leaves: world.leaves[candidat.id] ?? [],
       busy: occupes,
+      patientBusy: occupePatient,
       preference,
       from: depart,
       horizonDays: AUTO_HORIZON_DAYS,
@@ -149,6 +169,16 @@ export function createMockRepository(options: { now?: () => Date } = {}): MockRe
     const board = boardOf(occurrenceId)
     const uid = world.session.patientUid
     if (!board || uid === null) return null
+    /*
+      Le filtre par service vaut aussi pour ce qui est à soi.
+
+      `listBetween` et `get` filtraient ; `listMine` non. « Mes inscriptions » et « Ma
+      semaine » — à un seul appui du calendrier — affichaient donc le titre, l'horaire et
+      le lieu d'activités réservées à un autre service, que le calendrier venait de
+      masquer. C'est l'invariant n° 1 du projet : un titre ne doit pas franchir la
+      cloison, et il n'y a pas d'écran d'exception.
+    */
+    if (!isVisibleToService(board.occurrence, world.session.serviceId)) return null
     const mine = registrationOf(board, uid)
     if (mine === null || mine.status === 'cancelled') return null
     return {
@@ -251,7 +281,9 @@ export function createMockRepository(options: { now?: () => Date } = {}): MockRe
         const outcome = domainUnregister(board, uid)
         if (!outcome.ok) return { ok: false, message: "Vous n'étiez pas inscrit à cette activité." }
         applyBoard(outcome.board)
-        return { ok: true, message: 'Vous êtes désinscrit.' }
+        // Les mêmes mots que le serveur : deux phrases pour un seul geste, c'est deux
+        // écrans qui ne se ressemblent pas.
+        return { ok: true, message: 'Vous n’êtes plus inscrit.' }
       },
 
       async warmRegistration(): Promise<void> {
@@ -357,19 +389,36 @@ export function createMockRepository(options: { now?: () => Date } = {}): MockRe
           fixée. Sans cela, quelqu'un d'inquiet qui appuie trois fois prendrait trois
           créneaux dans l'agenda de quelqu'un.
         */
+        /*
+          Le motif doit exister et être encore proposé — le serveur le vérifie déjà, la
+          démonstration ne le vérifiait pas. Un motif retiré du catalogue laissait donc
+          passer une demande ici, et la refusait en ligne.
+        */
+        const motif = mockCatalog.appointmentKinds().find((k) => k.id === kindId)
+        if (motif === undefined || motif.isActive === false) {
+          return {
+            ok: false,
+            scheduled: false,
+            message: "Ce motif de rendez-vous n'existe plus. Demandez à un soignant.",
+          }
+        }
         const aujourdHui = todayLocalDate(clock())
-        const dejaEnCours = world.appointments.some(
+        const dejaEnCours = world.appointments.find(
           (a) =>
             a.patientUid === uid &&
             a.kindId === kindId &&
             (a.status === 'requested' ||
               (a.status === 'scheduled' && (a.localDate ?? '') >= aujourdHui)),
         )
-        if (dejaEnCours) {
+        if (dejaEnCours !== undefined) {
           return {
             ok: false,
             scheduled: false,
-            message: 'Vous avez déjà un rendez-vous prévu avec cette personne. Parlez-en à un soignant.',
+            message: alreadyAskedMessage(
+              mockCatalog.appointmentKinds(),
+              kindId,
+              dejaEnCours.status === 'requested' ? 'requested' : 'scheduled',
+            ),
           }
         }
         const commun = {
@@ -385,7 +434,7 @@ export function createMockRepository(options: { now?: () => Date } = {}): MockRe
           L'acceptation automatique, jouée exactement comme sur le serveur : la
           démonstration doit montrer ce qui se passera vraiment, sinon elle ment.
         */
-        const place = premierePlaceLibre(kindId, preference, clock(), service, demande)
+        const place = premierePlaceLibre(kindId, preference, clock(), service, demande, uid)
         if (place === null) {
           world.appointments = [...world.appointments, { ...commun, status: 'requested' }]
           return { ok: true, scheduled: false, message: 'Votre demande est envoyée. Un soignant vous dira quand.' }

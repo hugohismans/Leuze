@@ -5,7 +5,9 @@
   import { byChronology } from '../../lib/domain/activityOrder'
   import { activityEditRefusal, canEditActivity } from '../../lib/domain/activityAccess'
   import { deletionConsequences, deletionCosts } from '../../lib/domain/catalog'
-  import { formatDuration, todayLocalDate } from '../../lib/domain/time'
+  import { formatDuration, formatLongDayLabel, todayLocalDate } from '../../lib/domain/time'
+  import { formatLocalTime } from '../../lib/domain/availability'
+  import { enumeration } from '../../lib/domain/francais'
   import type { Activity } from '../../lib/domain/types'
   import { navigate } from '../../lib/router.svelte'
   import { enClair } from '../../lib/erreurs'
@@ -77,10 +79,22 @@
   function quand(activity: Activity): string {
     const regle = activity.recurrence
     if (regle === null) {
-      return activity.singleStart ? `Le ${activity.singleStart.date} à ${activity.singleStart.time}` : 'Sans date'
+      /*
+        Une date se lit en français, jamais en format informatique.
+
+        « Le 2026-12-25 à 14:00 » demandait de déchiffrer une date et une heure au lieu de
+        les lire — sur l'écran où l'on cherche une activité des yeux.
+      */
+      return activity.singleStart
+        ? `${formatLongDayLabel(activity.singleStart.date)} à ${formatLocalTime(activity.singleStart.time)}`
+        : 'Sans date'
     }
-    const jours = regle.byWeekday.map((j) => JOURS[j]).join(', ')
-    return `Tous les ${jours} à ${regle.startTime.replace(':', 'h')} — ${formatDuration(regle.durationMin)}`
+    /*
+      « Tous les lundi et le jeudi » : le jour de la semaine s'accorde, et l'énumération
+      se lit à voix haute. « Tous les lundi, jeudi » ne se dit pas.
+    */
+    const jours = enumeration(regle.byWeekday.map((j) => `${JOURS[j] ?? ''}s`))
+    return `Tous les ${jours} à ${formatLocalTime(regle.startTime)} — ${formatDuration(regle.durationMin)}`
   }
 
   /*
@@ -191,9 +205,20 @@
             >
               {activity.isActive ? 'Retirer du programme' : 'Mettre au programme'}
             </button>
-            <button type="button" class="btn btn-secondary" onclick={() => (aSupprimer = activity.id)}>
-              Supprimer
-            </button>
+            <!--
+              Le bouton disparaît pendant que la question définitive est posée.
+
+              Il restait cliquable derrière le panneau « Effacer pour de bon ? » : le clic
+              n'affichait rien — l'autre panneau le masquait — mais notait la demande.
+              En répondant « Non, la laisser retirée du programme », on voyait alors
+              surgir « Supprimer cette activité et toutes ses séances ? », comme si
+              l'application n'avait pas entendu.
+            -->
+            {#if aEffacer?.id !== activity.id}
+              <button type="button" class="btn btn-secondary" onclick={() => (aSupprimer = activity.id)}>
+                Supprimer
+              </button>
+            {/if}
           </div>
           {/if}
 
@@ -233,14 +258,31 @@
                 >
                   {busy ? 'Un instant…' : 'Oui, tout effacer'}
                 </button>
-                <button type="button" class="btn btn-secondary" onclick={() => (aEffacer = null)}>
+                <button
+                  type="button"
+                  class="btn btn-secondary"
+                  onclick={() => {
+                    aEffacer = null
+                    // Les deux questions se referment ensemble : « non » vaut pour la
+                    // suppression tout entière, pas pour la seule moitié qu'on lisait.
+                    aSupprimer = null
+                  }}
+                >
                   Non, la laisser retirée du programme
                 </button>
               </div>
             </div>
           {/if}
 
-          {#if aSupprimer === activity.id}
+          <!--
+            Une seule question à la fois.
+
+            Les deux panneaux s'empilaient : « Oui, tout effacer » — définitif, seize
+            séances et quarante inscriptions — puis, juste en dessous, « Oui, supprimer »,
+            qui ne fait que retirer du programme. Deux boutons d'apparence proche et de
+            conséquences très différentes, l'un sous l'autre.
+          -->
+          {#if aSupprimer === activity.id && aEffacer?.id !== activity.id}
             <div class="mt-3 rounded-xl border-2 border-line p-4">
               <p class="text-lg text-ink">
                 Supprimer « {activity.title} » et toutes ses séances ? Si quelqu'un s'y est
@@ -252,7 +294,7 @@
                   {busy ? 'Un instant…' : 'Oui, supprimer'}
                 </button>
                 <button type="button" class="btn btn-secondary" onclick={() => (aSupprimer = null)}>
-                  Annuler
+                  Non, garder l'activité
                 </button>
               </div>
             </div>

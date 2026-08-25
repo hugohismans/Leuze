@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   addLocalDays,
   formatDayLabel,
+  formatLongDayLabel,
   formatDuration,
   formatTime,
   formatTimeRange,
@@ -77,5 +78,19 @@ describe('l’heure locale d’un instant', () => {
 
   it('fait l’aller-retour avec `instantOf`', () => {
     expect(localTimeOf(instantOf('2026-08-25', '09:30'))).toBe('09:30')
+  })
+})
+
+describe('le premier du mois', () => {
+  it('s’écrit « 1er », et jamais « 1 »', () => {
+    expect(formatDayLabel('2026-09-01')).toBe('Mardi 1er septembre')
+    expect(formatLongDayLabel('2026-09-01')).toBe('Mardi 1er septembre 2026')
+  })
+
+  it('ne touche pas aux autres jours, ni à l’année', () => {
+    expect(formatDayLabel('2026-09-11')).toBe('Vendredi 11 septembre')
+    expect(formatDayLabel('2026-09-21')).toBe('Lundi 21 septembre')
+    // L'année ne doit pas se faire attraper par la substitution.
+    expect(formatLongDayLabel('2026-01-01')).toBe('Jeudi 1er janvier 2026')
   })
 })

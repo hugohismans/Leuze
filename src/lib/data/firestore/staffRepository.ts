@@ -368,6 +368,11 @@ export function createFirestoreStaffApp(): StaffApp {
           status: 'cancelled',
           cancellationReason: reason,
           overridden: true,
+          // Annulée par un soignant, avec un motif : la régénération n'y touche pas, et
+          // le retrait d'un congé ne la rétablit pas — même si le motif choisi est
+          // « L'animateur est absent ».
+          autoCancelled: false,
+          cancelledByLeave: false,
         })
       },
 
@@ -379,11 +384,20 @@ export function createFirestoreStaffApp(): StaffApp {
         return (await call({ from, to, ...(serviceId === undefined ? {} : { serviceId }) })).data.plannings
       },
 
+      /**
+       * Rétablir une séance la remet **dans** la série, et non à côté d'elle.
+       *
+       * Elle en sortait : marquée « modifiée isolément », elle gardait pour toujours
+       * l'ancien titre, l'ancien lieu et l'ancienne heure. La même activité portait alors
+       * deux noms dans le même programme.
+       */
       async restoreOccurrence(occurrenceId: string): Promise<void> {
         await updateDoc(doc(db, 'occurrences', occurrenceId), {
           status: 'scheduled',
           cancellationReason: '',
-          overridden: true,
+          overridden: false,
+          autoCancelled: false,
+          cancelledByLeave: false,
         })
       },
 
@@ -663,6 +677,9 @@ export function createFirestoreStaffApp(): StaffApp {
           await updateDoc(doc(db, 'appointments', appointmentId), {
             status: 'cancelled',
             cancellationReason: reason,
+            // Les deux semaines de visibilité se comptent depuis ici, et non depuis le
+            // dépôt de la demande : voir `cancelledToShow`.
+            cancelledAt: Timestamp.now(),
           })
           return { ok: true, message: 'Rendez-vous annulé.' }
         } catch {
@@ -924,7 +941,18 @@ export function createFirestoreStaffApp(): StaffApp {
       async saveAvailability(practitionerId, windows) {
         // Un seul champ modifié : c'est exactement ce que les règles autorisent à
         // l'intéressé. Une écriture plus large serait refusée, et à juste titre.
-        await updateDoc(doc(db, 'practitioners', practitionerId), { availability: windows })
+        /*
+          Sans plage, l'acceptation automatique n'a plus de sens : elle s'éteint.
+
+          Elle restait activée en coulisse quand on effaçait toutes les plages — la
+          bascule disparaissait de l'écran, mais le réglage tenait. Le jour où l'on
+          redéclarait une plage, les rendez-vous se remettaient à se fixer tout seuls sans
+          que personne l'ait demandé.
+        */
+        await updateDoc(doc(db, 'practitioners', practitionerId), {
+          availability: windows,
+          ...(windows.length === 0 ? { autoAccept: false } : {}),
+        })
       },
       async setStaffRole(uid, role, options = {}) {
         try {

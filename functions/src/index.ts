@@ -22,6 +22,7 @@ import {
   unregisterTx,
 } from './lib/registration'
 import { patientConflictNotice, type BusyEntry } from './domain/conflicts'
+import { alreadyAskedMessage } from './domain/appointments'
 import {
   effectivePermissions,
   isAllowed,
@@ -41,7 +42,14 @@ import {
   type ActivityProposal,
 } from './domain/proposals'
 import { PLANNING_HORIZON_DAYS, agendaWeek, firstBookableDay, suggestSlot } from './domain/agenda'
-import { leaveRefusal, normalizeLeaves, withoutLeave, type Leave } from './domain/leave'
+import {
+  leaveConflictSummary,
+  leaveRefusal,
+  normalizeLeaves,
+  withoutLeave,
+  type Leave,
+} from './domain/leave'
+import { phrase } from './domain/francais'
 import { attendanceRefusal, canMarkAttendance } from './domain/attendance'
 import {
   AUTO_DURATION_MIN,
@@ -55,6 +63,7 @@ import {
   addMinutes,
   formatFullWhen,
   instantOf,
+  localDateOf,
   localTimeOf,
   todayLocalDate,
 } from './domain/time'
@@ -244,7 +253,8 @@ export const register = onCall(async (request: CallableRequest) => {
   // de chevauchement : elles ne s'apprennent rien l'une à l'autre.
   const [ouvert, conflits] = await Promise.all([
     patientMay('register', patient.uid),
-    conflictsFor(db(), patient.uid, occurrenceId),
+    // Le service du patient : les titres qui lui reviennent ne franchissent pas la cloison.
+    conflictsFor(db(), patient.uid, occurrenceId, patient.serviceId),
   ])
   if (!ouvert.ok) return { ok: false, reason: 'closed', message: ouvert.message }
 
@@ -343,7 +353,7 @@ export const staffUnregister = onCall(async (request: CallableRequest) => {
   requireStaff(request)
   const occurrenceId = requireString(request.data?.occurrenceId, 'occurrenceId')
   const patientUid = requireString(request.data?.patientUid, 'patientUid')
-  return unregisterTx(db(), { occurrenceId, patientUid })
+  return unregisterTx(db(), { occurrenceId, patientUid, by: 'staff' })
 })
 
 export const staffPromote = onCall(async (request: CallableRequest) => {
@@ -535,6 +545,15 @@ export const markAttendance = onCall(async (request: CallableRequest) => {
     if (!resultat.ok) return resultat
     cibleId = resultat.registrationId
   }
+  /*
+    Noter une présence ne donne pas la place.
+
+    On l'avait fait : une personne en liste d'attente notée présente passait confirmée.
+    Mais la feuille d'appel se touche du doigt, quinze prénoms à la suite, sur une
+    tablette posée en salle — et un appui de travers faisait alors passer quelqu'un devant
+    tous ceux qui attendaient, sans retour possible : « Présent — annuler » efface la
+    présence, pas la promotion. La place se donne d'un geste séparé et explicite.
+  */
 
   await db().collection(COLLECTIONS.registrations).doc(cibleId).set(
     {
@@ -633,8 +652,17 @@ export const regeneratePatientCode = onCall({ secrets: [CODE_PEPPER] }, async (r
 })
 
 /**
- * Fin de séjour. Le code cesse de fonctionner et la personne sort des listes ; ses
- * inscriptions restent, la purge planifiée s'en chargera le moment venu.
+ * Fin de séjour. Le code cesse de fonctionner, la personne sort des listes, et les
+ * places qu'elle retenait pour les séances à venir sont rendues.
+ *
+ * Ce dernier point manquait, et il coûtait des places à d'autres : la personne était
+ * partie, mais son inscription de jeudi tenait toujours un siège sur douze, la liste
+ * d'attente n'avançait pas, et plus aucun écran ne permettait de l'en retirer — elle
+ * avait disparu des listes où l'on désinscrit. Une séance affichait « complet » pour
+ * quelqu'un qui n'était plus là.
+ *
+ * Le passé ne bouge pas : qui était présent à la séance de lundi l'a été, et une feuille
+ * d'appel déjà remplie ne se réécrit pas.
  */
 export const endPatientStay = onCall(async (request: CallableRequest) => {
   requireAdmin(request)
@@ -647,8 +675,65 @@ export const endPatientStay = onCall(async (request: CallableRequest) => {
   await batch.commit()
   await auth().revokeRefreshTokens(uid).catch(() => undefined)
 
-  return { ok: true, message: 'Le séjour est clôturé. Le code ne fonctionne plus.' }
+  const rendues = await libereLesPlacesAVenir(uid)
+
+  return {
+    ok: true,
+    message:
+      rendues === 0
+        ? 'Le séjour est clôturé. Le code ne fonctionne plus.'
+        : rendues === 1
+          ? 'Le séjour est clôturé. Le code ne fonctionne plus. Une place retenue a été rendue.'
+          : `Le séjour est clôturé. Le code ne fonctionne plus. ${rendues} places retenues ont été rendues.`,
+  }
 })
+
+/**
+ * Rend les places qu'une personne retenait sur les séances qui n'ont pas encore eu lieu.
+ *
+ * Chaque désinscription passe par la transaction habituelle : c'est elle qui fait monter
+ * le premier de la liste d'attente et qui tient les compteurs à jour. Une séance qui
+ * échoue n'empêche pas les autres — le séjour est clôturé de toute façon, et laisser la
+ * moitié des places prises serait pire que tout.
+ */
+async function libereLesPlacesAVenir(patientUid: string): Promise<number> {
+  const maintenant = Date.now()
+  const inscriptions = await db()
+    .collection(COLLECTIONS.registrations)
+    .where('patientUid', '==', patientUid)
+    .get()
+  const aVenir = inscriptions.docs
+    .map((document) => document.data() as { occurrenceId?: string; status?: string })
+    .filter((ligne) => ligne.status === 'confirmed' || ligne.status === 'waitlist')
+    .map((ligne) => ligne.occurrenceId)
+    .filter((occurrenceId): occurrenceId is string => typeof occurrenceId === 'string')
+    .filter((occurrenceId) => {
+      const debut = debutDeLaSeance(occurrenceId)
+      return debut !== null && debut.getTime() >= maintenant
+    })
+
+  let rendues = 0
+  for (const occurrenceId of new Set(aVenir)) {
+    const resultat = await unregisterTx(db(), { occurrenceId, patientUid, by: 'staff' }).catch(() => ({ ok: false }))
+    if (resultat.ok) rendues += 1
+  }
+  return rendues
+}
+
+/**
+ * L'heure de début d'une séance, lue dans son identifiant.
+ *
+ * Les identifiants d'occurrence sont déterministes — `{activityId}_{yyyyMMddTHHmm}` — ce
+ * qui évite de relire chaque séance pour savoir si elle est passée. Rend `null` si
+ * l'identifiant n'a pas cette forme : on ne touche alors à rien.
+ */
+function debutDeLaSeance(occurrenceId: string): Date | null {
+  const marque = occurrenceId.slice(occurrenceId.lastIndexOf('_') + 1)
+  if (!/^\d{8}T\d{4}$/.test(marque)) return null
+  const jour = `${marque.slice(0, 4)}-${marque.slice(4, 6)}-${marque.slice(6, 8)}`
+  const heure = `${marque.slice(9, 11)}:${marque.slice(11, 13)}`
+  return instantOf(jour, heure)
+}
 
 /**
  * De quoi poser un rendez-vous sans rien deviner.
@@ -848,7 +933,7 @@ export const requestAppointment = onCall(async (request: CallableRequest) => {
       .where('patientUid', '==', patient.uid)
       .where('kindId', '==', kindId)
       .get(),
-    premierePlaceLibre(kindId, preference, patient.serviceId, practitionerId),
+    premierePlaceLibre(kindId, preference, patient.serviceId, practitionerId, patient.uid),
     practitionerId === null
       ? Promise.resolve(null)
       : db().collection(COLLECTIONS.practitioners).doc(practitionerId).get(),
@@ -892,17 +977,28 @@ export const requestAppointment = onCall(async (request: CallableRequest) => {
     dans l'agenda de quelqu'un. Le garde-fou vaut mieux ici que dans l'écran : l'écran
     peut être contourné, pas la fonction.
   */
-  const enCours = deja.docs.some((d) => {
+  const enCours = deja.docs.find((d) => {
     const data = d.data()
     if (data['status'] === 'requested') return true
     const jour = data['localDate'] as LocalDate | undefined
     return data['status'] === 'scheduled' && jour !== undefined && jour >= aujourdHui
   })
-  if (enCours) {
+  if (enCours !== undefined) {
+    /*
+      « Vous avez déjà un rendez-vous prévu avec cette personne » s'écrivait même pour une
+      simple demande en attente, et même quand aucune personne n'avait été choisie — la
+      garde porte sur le motif, pas sur quelqu'un. La phrase dit maintenant laquelle des
+      deux situations on lui oppose.
+    */
+    const nom = (motif.data()?.['name'] as string | undefined) ?? ''
     return {
       ok: false,
       scheduled: false,
-      message: 'Vous avez déjà un rendez-vous prévu avec cette personne. Parlez-en à un soignant.',
+      message: alreadyAskedMessage(
+        [{ id: kindId, name: nom, icon: '', isActive: true }],
+        kindId,
+        enCours.data()['status'] === 'requested' ? 'requested' : 'scheduled',
+      ),
     }
   }
 
@@ -967,6 +1063,7 @@ async function premierePlaceLibre(
   preference: 'matin' | 'apres-midi' | 'peu-importe',
   serviceId: string,
   practitionerId: string | null,
+  patientUid: string,
 ): Promise<{ practitionerId: string; name: string; slot: NonNullable<ReturnType<typeof findFirstSlot>> } | null> {
   // Le catalogue des intervenants tient en quelques dizaines de lignes : on le lit en
   // entier plutôt que de demander un index pour trois égalités.
@@ -1016,6 +1113,22 @@ async function premierePlaceLibre(
   // ne doit pas retenir de place, même quand la plage du jour est libre.
   const congesDesCandidats = await Promise.all(candidats.map((candidat) => congesDe(candidat.id)))
 
+  /*
+    Ce que le patient a déjà.
+
+    L'acceptation automatique posait tranquillement un rendez-vous par-dessus l'atelier
+    auquel la personne était inscrite : « Ma semaine » affichait les deux au même moment,
+    sans un mot, et c'est elle qui devait choisir. Un soignant qui fixe à la main recevait
+    déjà cet agenda ; la machine n'a aucune raison d'être moins prudente.
+  */
+  const occupePatient: BusySlot[] = (await busyBetween(db(), patientUid, depart, jusque)).map(
+    (entree) => ({
+      localDate: localDateOf(entree.start),
+      from: localTimeOf(entree.start),
+      to: localTimeOf(entree.end),
+    }),
+  )
+
   const agendas = await Promise.all(
     candidats.map((candidat) =>
       db()
@@ -1041,6 +1154,7 @@ async function premierePlaceLibre(
     const slot = findFirstSlot({
       windows: candidat.availability ?? [],
       busy: occupes,
+      patientBusy: occupePatient,
       preference,
       from: depart,
       horizonDays: AUTO_HORIZON_DAYS,
@@ -1175,9 +1289,16 @@ export const decideProposal = onCall(async (request: CallableRequest) => {
   return {
     ok: true,
     message:
-      decision === 'accepted'
-        ? 'Idée retenue. Créez l’activité : le titre et la description sont recopiés.'
-        : 'Réponse enregistrée. La personne lira votre phrase.',
+      decision !== 'accepted'
+        ? 'Réponse enregistrée. La personne lira votre phrase.'
+        : /*
+            « Créez l'activité » s'affichait encore après l'avoir créée : la décision est
+            enregistrée à la fin de l'enregistrement, et son message recouvrait celui de
+            la création.
+          */
+          activityId === null
+          ? 'Idée retenue. Créez l’activité : le titre et la description sont recopiés.'
+          : 'Idée retenue, et l’activité est créée. La personne qui l’a proposée le lira.',
   }
 })
 
@@ -1359,6 +1480,35 @@ async function supprimerParPaquets(references: FirebaseFirestore.DocumentReferen
 }
 
 /**
+ * Une séance supprimée définitivement devient une exception de la série.
+ *
+ * Sans cela, elle revenait au premier enregistrement suivant de l'activité — au même
+ * jour, à la même heure — et la suppression n'avait été définitive que pour les
+ * inscriptions. On supprime une séance parce qu'elle ne doit pas avoir lieu ; changer
+ * ensuite le lieu de l'activité la ramenait au programme des patients.
+ *
+ * Une activité ponctuelle n'a pas de récurrence à laquelle accrocher l'exception : on la
+ * retire du programme, ce qui revient au même — elle n'avait qu'une séance.
+ */
+async function oublierCeJour(activityId: string, localDate: string): Promise<boolean> {
+  if (activityId === '' || localDate === '') return false
+  const reference = db().collection(COLLECTIONS.activities).doc(activityId)
+  const snapshot = await reference.get()
+  if (!snapshot.exists) return false
+  const donnees = snapshot.data() ?? {}
+  const recurrence = donnees['recurrence'] as { skipDates?: string[] } | null | undefined
+  if (recurrence === null || recurrence === undefined) {
+    await reference.update({ isActive: false })
+    // Vrai : l'activité entière quitte le programme, et l'écran doit le dire.
+    return true
+  }
+  const sautees = recurrence.skipDates ?? []
+  if (sautees.includes(localDate)) return false
+  await reference.update({ recurrence: { ...recurrence, skipDates: [...sautees, localDate].sort() } })
+  return false
+}
+
+/**
  * Supprime une séance et ses inscriptions — celle-là seule, les autres semaines restent.
  *
  * À ne pas confondre avec l'annulation, qui est le geste courant : une séance annulée
@@ -1391,6 +1541,10 @@ export const deleteOccurrence = onCall(async (request: CallableRequest) => {
 
   await supprimerParPaquets(inscriptions.docs.map((d) => d.ref))
   await reference.delete()
+  const activiteRetiree = await oublierCeJour(
+    (donnees['activityId'] as string | undefined) ?? '',
+    (donnees['localDate'] as string | undefined) ?? '',
+  )
 
   const presences = inscriptions.docs.filter((d) => d.data()['attendance'] !== undefined).length
   logger.info('Séance supprimée', { occurrenceId, registrations: inscriptions.size, presences })
@@ -1407,7 +1561,16 @@ export const deleteOccurrence = onCall(async (request: CallableRequest) => {
       : presences === 1
         ? ' Une présence notée disparaît avec elle.'
         : ` ${presences} présences notées disparaissent avec elle.`
-  return { ok: true, message: `La séance de « ${titre} » est supprimée. ${combien}${notees}` }
+  /*
+    Une activité ponctuelle n'a qu'une séance : la supprimer la retire du programme.
+
+    Cela se faisait en silence — et c'est le cas par défaut du formulaire, donc la grande
+    majorité des activités.
+  */
+  const retiree = activiteRetiree
+    ? ' Cette activité n’avait que cette séance : elle est retirée du programme. Vous pouvez la remettre depuis « Les activités ».'
+    : ''
+  return { ok: true, message: `La séance de « ${titre} » est supprimée. ${combien}${notees}${retiree}` }
 })
 
 // ---------------------------------------------------------------------------
@@ -1646,18 +1809,25 @@ async function rendezVousPendant(
     .where('localDate', '>=', leave.from)
     .where('localDate', '<=', leave.to)
     .get()
-  return snapshot.docs.map((document) => {
-    const data = document.data()
-    const debut = data['start'] as Timestamp | undefined
-    const fin = data['end'] as Timestamp | undefined
-    return {
-      id: document.id,
-      patientUid: (data['patientUid'] as string | undefined) ?? '',
-      localDate: (data['localDate'] as LocalDate | undefined) ?? leave.from,
-      ...(debut === undefined ? {} : { start: debut.toDate() }),
-      ...(fin === undefined ? {} : { end: fin.toDate() }),
-    }
-  })
+  const maintenant = Date.now()
+  return snapshot.docs
+    .map((document) => {
+      const data = document.data()
+      const debut = data['start'] as Timestamp | undefined
+      const fin = data['end'] as Timestamp | undefined
+      return {
+        id: document.id,
+        patientUid: (data['patientUid'] as string | undefined) ?? '',
+        localDate: (data['localDate'] as LocalDate | undefined) ?? leave.from,
+        ...(debut === undefined ? {} : { start: debut.toDate() }),
+        ...(fin === undefined ? {} : { end: fin.toDate() }),
+      }
+    })
+    // Un rendez-vous déjà passé n'a pas à retourner dans la file : il a eu lieu.
+    .filter((rendezVous) => {
+      const fin = rendezVous.end ?? rendezVous.start
+      return fin === undefined || fin.getTime() >= maintenant
+    })
 }
 
 /**
@@ -1669,19 +1839,6 @@ async function rendezVousPendant(
  * d'annulation propose : on n'en invente pas un second pour dire la même chose.
  */
 const MOTIF_ABSENCE = "L'animateur est absent"
-
-/**
- * Ce que la période porte, en une phrase.
- *
- * Le nombre d'abord, la nature ensuite : « 3 séances et 1 rendez-vous » se lit d'un
- * coup d'œil, là où « des activités et des rendez-vous » oblige à aller compter plus bas.
- */
-function cePeriodePorte(rendezVous: number, seances: number): string {
-  const bouts: string[] = []
-  if (seances > 0) bouts.push(seances === 1 ? 'une séance que vous animez' : `${seances} séances que vous animez`)
-  if (rendezVous > 0) bouts.push(rendezVous === 1 ? 'un rendez-vous fixé' : `${rendezVous} rendez-vous fixés`)
-  return `Ce congé tombe sur ${bouts.join(' et ')}.`
-}
 
 /**
  * Déclarer un congé.
@@ -1707,7 +1864,7 @@ export const declareLeave = onCall(async (request: CallableRequest) => {
     from: requireString(request.data?.from, 'from', 10),
     to: requireString(request.data?.to, 'to', 10),
   }
-  const refus = leaveRefusal(leave)
+  const refus = leaveRefusal(leave, todayLocalDate())
   if (refus !== null) throw new HttpsError('invalid-argument', refus)
 
   const fiche = await db().collection(COLLECTIONS.practitioners).doc(practitionerId).get()
@@ -1729,9 +1886,20 @@ export const declareLeave = onCall(async (request: CallableRequest) => {
     demandait donc rien du tout, et l'atelier restait au programme sans personne pour
     l'animer. Constaté en service.
   */
+  /*
+    Seulement les séances qui n'ont pas encore eu lieu.
+
+    « Annuler » veut dire « n'aura pas lieu » : une séance de ce matin a eu lieu, et les
+    personnes qui y sont allées n'ont pas à lire qu'elle a été annulée. Le cas se pose dès
+    qu'un congé a commencé — on tombe malade sans prévenir, et c'est le lendemain qu'on
+    le déclare.
+  */
+  const maintenant = Date.now()
   const animees = seances.docs
     .filter((d) => {
       const data = d.data()
+      const fin = (data['end'] as Timestamp | undefined) ?? (data['start'] as Timestamp | undefined)
+      if (fin !== undefined && fin.toMillis() < maintenant) return false
       return data['facilitatorId'] === practitionerId && data['status'] === 'scheduled'
     })
     .map((d) => {
@@ -1769,7 +1937,17 @@ export const declareLeave = onCall(async (request: CallableRequest) => {
         start: rendezVous.start?.toISOString(),
         end: rendezVous.end?.toISOString(),
       })),
-      message: cePeriodePorte(enCours.length, animees.length),
+      /*
+        Qui anime : « vous » quand on déclare son propre congé, le nom sinon.
+
+        La phrase écrivait « animées par cette personne » à celui-là même qui les anime,
+        trois lignes au-dessus d'un titre qui, lui, sait écrire « Séances que vous
+        animez ».
+      */
+      message: leaveConflictSummary(enCours.length, animees.length, {
+        isSelf: requireStaff(request).practitionerId === practitionerId,
+        ...(typeof fiche.data()?.['name'] === 'string' ? { name: fiche.data()!['name'] as string } : {}),
+      }),
     }
   }
 
@@ -1800,6 +1978,11 @@ export const declareLeave = onCall(async (request: CallableRequest) => {
       cancellationReason: MOTIF_ABSENCE,
       // La séance a été touchée à la main : une régénération de la série l'épargne.
       overridden: true,
+      // Annulée par une décision humaine, et non par la régénération : elle ne se
+      // rétablit pas toute seule quand la série repasse dessus.
+      autoCancelled: false,
+      // C'est ce congé-ci qui l'a barrée : le retirer la rétablira, et lui seul.
+      cancelledByLeave: true,
     })
   }
   for (const rendezVous of enCours) {
@@ -1855,16 +2038,28 @@ function congeEnregistre(rouverts: number, seances: number): string {
   if (bouts.length === 0) {
     return 'Le congé est enregistré. Aucun rendez-vous ne sera proposé sur ces jours.'
   }
-  return `Le congé est enregistré. ${bouts.join(', et ')}.`
+  // La majuscule se remet ici : les morceaux sont fabriqués en minuscule, et
+  // « Le congé est enregistré. un rendez-vous… » se lisait mal.
+  return `Le congé est enregistré. ${phrase(bouts.join(', et '))}.`
 }
 
 /**
  * Retirer un congé.
  *
- * Les rendez-vous rouverts ne se referment pas d'eux-mêmes : ils sont retournés dans la
- * file, quelqu'un s'en occupe peut-être déjà, et les remettre à leur ancienne date sans
- * prévenir ferait deux rendez-vous là où il n'en faut qu'un. Le congé s'annule ; ce
- * qu'il a déplacé se refixe à la main.
+ * Les séances que ce congé avait annulées sont rétablies. Elles restaient barrées, avec
+ * le motif « L'animateur est absent », alors que l'animateur n'était plus en congé — et
+ * le message ne parlait que des rendez-vous, laissant croire que tout le reste était
+ * revenu à la normale. Un soignant qui se trompe de personne ou de dates doit pouvoir
+ * revenir en arrière.
+ *
+ * Seules celles-là : une séance annulée pour une autre raison, ou par quelqu'un d'autre,
+ * n'a rien à voir avec ce congé. Et seules celles à venir : rétablir une séance de la
+ * semaine dernière ne rétablit rien.
+ *
+ * Les rendez-vous rouverts, eux, ne se referment pas : ils sont retournés dans la file,
+ * quelqu'un s'en occupe peut-être déjà, et les remettre à leur ancienne date sans
+ * prévenir ferait deux rendez-vous là où il n'en faut qu'un. Ce qu'un congé a déplacé se
+ * refixe à la main.
  */
 export const removeLeave = onCall(async (request: CallableRequest) => {
   const practitionerId = requireString(request.data?.practitionerId, 'practitionerId')
@@ -1880,12 +2075,98 @@ export const removeLeave = onCall(async (request: CallableRequest) => {
     .doc(practitionerId)
     .set({ leaves: suivants, updatedAt: FieldValue.serverTimestamp() }, { merge: true })
 
+  const retablies = await retablirLesSeancesDuConge(practitionerId, leave)
+  const seances =
+    retablies === 0
+      ? ''
+      : retablies === 1
+        ? ' Une séance annulée pour ce congé est rétablie.'
+        : ` ${retablies} séances annulées pour ce congé sont rétablies.`
+
   return {
     ok: true,
-    message:
-      'Le congé est retiré. Les rendez-vous déjà remis dans la file y restent : ils se refixent à la main.',
+    message: `Le congé est retiré.${seances} Les rendez-vous déjà remis dans la file y restent : ils se refixent à la main.`,
   }
 })
+
+/** Vrai quand cette activité figure toujours au programme. */
+async function activiteAuProgramme(activityId: string): Promise<boolean> {
+  const fiche = await db().collection(COLLECTIONS.activities).doc(activityId).get()
+  return fiche.exists && (fiche.data() ?? {})['isActive'] !== false
+}
+
+/** Rétablit les séances à venir que ce congé avait barrées, et rend leur nombre. */
+async function retablirLesSeancesDuConge(practitionerId: string, leave: Leave): Promise<number> {
+  const aujourdHui = todayLocalDate()
+  const maintenant = Date.now()
+  const depart = leave.from > aujourdHui ? leave.from : aujourdHui
+  if (depart > leave.to) return 0
+
+  const seances = await db()
+    .collection(COLLECTIONS.occurrences)
+    .where('localDate', '>=', depart)
+    .where('localDate', '<=', leave.to)
+    .get()
+
+  /*
+    Par paquets, comme partout ailleurs : Firestore refuse au-delà de cinq cents
+    opérations par lot, et un congé d'un mois sur une activité quotidienne les dépasse.
+  */
+  const aRetablir: FirebaseFirestore.DocumentReference[] = []
+  for (const document of seances.docs) {
+    const data = document.data() as {
+      status?: string
+      cancellationReason?: string
+      facilitatorId?: string
+      cancelledByLeave?: boolean
+      activityId?: string
+      start?: Timestamp
+      end?: Timestamp
+    }
+    if (data.status !== 'cancelled') continue
+    /*
+      Le passé ne se rétablit pas plus qu'il ne s'annule : la déclaration épargne déjà
+      les séances terminées à l'instant près, et non à la journée.
+    */
+    const fin = (data.end as Timestamp | undefined) ?? (data.start as Timestamp | undefined)
+    if (fin !== undefined && fin.toMillis() < maintenant) continue
+    /*
+      L'activité doit toujours être au programme.
+
+      Congé posé sur une séance, activité retirée du programme pendant l'absence, puis
+      congé retiré : la séance réapparaissait dans le calendrier des patients, pour une
+      activité que l'équipe avait décidé d'arrêter.
+    */
+    const activityId = (data.activityId as string | undefined) ?? ''
+    if (activityId !== '' && !(await activiteAuProgramme(activityId))) continue
+    // La marque, et non le texte du motif : « L'animateur est absent » est aussi l'un
+    // des motifs que le bouton « Annuler cette séance » propose.
+    if (data.cancelledByLeave !== true) continue
+    if (data.facilitatorId !== practitionerId) continue
+    /*
+      La séance rentre dans sa série, et n'en sort pas.
+
+      `overridden` et `autoCancelled` se retirent tous les deux, comme au rétablissement
+      à la main. Sans cela, la séance rétablie restait marquée « modifiée isolément » :
+      elle gardait à jamais l'ancien titre, l'ancien lieu et l'ancienne heure.
+    */
+    aRetablir.push(document.ref)
+  }
+  for (let i = 0; i < aRetablir.length; i += 400) {
+    const lot = db().batch()
+    for (const reference of aRetablir.slice(i, i + 400)) {
+      lot.update(reference, {
+        status: 'scheduled',
+        cancellationReason: FieldValue.delete(),
+        overridden: false,
+        autoCancelled: false,
+        cancelledByLeave: FieldValue.delete(),
+      })
+    }
+    await lot.commit()
+  }
+  return aRetablir.length
+}
 
 // ---------------------------------------------------------------------------
 // « Voir à leur place » — outil de mise au point, réservé à l'administrateur

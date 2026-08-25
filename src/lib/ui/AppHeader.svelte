@@ -38,8 +38,28 @@
       </div>
     </div>
 
-    {#if !router.path.startsWith('/soignant') && router.path !== '/mes-inscriptions' && (store.isDemo || store.signedIn)}
-      <button type="button" class="btn btn-secondary" onclick={() => navigate('/mes-inscriptions')}>
+    <!--
+      Le bouton reste sur l'écran « Mes inscriptions », marqué comme la page en cours.
+
+      Il en disparaissait, l'entête se raccourcissait de soixante-dix-huit pixels, et le
+      bouton « Retour » du dessous sautait d'un écran à l'autre : c'est précisément ce que
+      les critères de revue du projet interdisent. Le laisser en place règle les deux
+      choses à la fois — la hauteur ne bouge plus, et l'on lit où l'on se trouve.
+    -->
+    <!--
+      Sans session, pas de bouton : l'écran du code n'a pas d'inscriptions à montrer.
+      En démonstration, `isDemo` le laissait en place après « Fermer mon accès » ; il
+      changeait l'adresse, faisait paraître un « Retour », et ramenait au même champ.
+    -->
+    {#if !router.path.startsWith('/soignant') && store.signedIn}
+      {@const ici = router.path === '/mes-inscriptions'}
+      <button
+        type="button"
+        class="btn btn-secondary"
+        aria-current={ici ? 'page' : undefined}
+        disabled={ici}
+        onclick={() => navigate('/mes-inscriptions')}
+      >
         <span aria-hidden="true">📋</span>
         <span>Mes inscriptions{registeredCount > 0 ? ` (${registeredCount})` : ''}</span>
       </button>

@@ -44,7 +44,23 @@
 {:else}
   <StaffNav />
   {#if activityId !== null}
-    <ActivityFormPage {activityId} date={dateChoisie} />
+    <!--
+      « key » : passer d'une activité à une autre reconstruit le formulaire.
+
+      Sans lui, le composant restait le même d'une adresse à l'autre, et son garde
+      « si déjà chargée, ne rien relire » l'empêchait de relire quoi que ce soit. On
+      ouvrait alors « Ping-pong » et l'on voyait « Relaxation » — champs, animateur,
+      public compris — avec le bouton « Enregistrer » actif. Enregistrer écrasait
+      « Ping-pong » par le contenu de l'autre, et le cadenas de la première ne
+      s'affichait pas : un intervenant pouvait ainsi réécrire l'activité d'un collègue
+      en changeant simplement l'adresse.
+
+      Le remontage règle les deux d'un coup, et se lit en une ligne — là où éparpiller
+      des remises à zéro dans le formulaire finirait par en oublier une.
+    -->
+    {#key `${activityId}|${dateChoisie ?? ''}`}
+      <ActivityFormPage {activityId} date={dateChoisie} />
+    {/key}
   {:else if router.path === '/soignant/activites'}
     <ActivitiesPage />
   {:else if router.path === '/soignant/catalogue'}

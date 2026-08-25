@@ -21,6 +21,9 @@
  * remplace pas la parole, il ne transporte pas de message à un soignant, et il n'y a rien
  * à y répondre sinon oui ou non.
  */
+import { accorde } from './francais'
+import { calendarDaysSince } from './time'
+
 export type ProposalStatus = 'proposed' | 'accepted' | 'declined'
 
 export type ActivityProposal = {
@@ -74,6 +77,23 @@ export const PROPOSAL_IDEAS: readonly string[] = [
 ]
 
 /** Ce que le formulaire dit de lui-même, pour que le texte libre reste à sa place. */
+/**
+ * À partir de combien de caractères restants on annonce la limite.
+ *
+ * Les deux champs de l'écran ne suivaient pas la même règle : le nom se taisait jusqu'aux
+ * vingt derniers caractères, la description annonçait « Il vous reste 300 caractères »
+ * sur un champ vide. Trois cents ne veut rien dire avant d'avoir écrit, et cette phrase
+ * de plus se lit comme une consigne pour qui lit avec effort.
+ */
+export const REMAINING_NOTICE_FROM = 20
+
+/** Ce qu'on écrit sous un champ dont la longueur est limitée. `null` tant qu'il reste de la place. */
+export function remainingNotice(restant: number, atteint: string): string | null {
+  if (restant > REMAINING_NOTICE_FROM) return null
+  if (restant <= 0) return atteint
+  return `Il vous reste ${accorde(restant, 'caractère', 'caractères')}.`
+}
+
 export const PROPOSAL_GUIDANCE =
   'Décrivez l’activité : ce qu’on y ferait, et ce qu’il faudrait pour la faire. Ce n’est pas un message à un soignant : ce que vous écrivez ici sert seulement à comprendre votre idée.'
 
@@ -114,7 +134,15 @@ export function patientProposalLabel(proposal: ActivityProposal): string {
     case 'proposed':
       return 'Votre idée est envoyée. Un soignant va la lire.';
     case 'accepted':
-      return 'Votre idée est acceptée. L’activité est au programme.'
+      /*
+        « Retenue », et non « au programme ».
+
+        Retenir une idée ouvre le formulaire de création ; l'activité n'existe pas encore,
+        et le soignant peut être appelé ailleurs avant de l'avoir enregistrée — ou la créer
+        sans la mettre au programme tout de suite. Le patient lisait « l'activité est au
+        programme » et allait la chercher dans un calendrier où elle ne figurait pas.
+      */
+      return 'Votre idée est retenue. Un soignant prépare l’activité.'
     case 'declined':
       return proposal.declineReason
         ? `Votre idée n’a pas été retenue — ${proposal.declineReason}`
@@ -134,8 +162,14 @@ export function pendingProposals(proposals: ActivityProposal[]): ActivityProposa
  * qu'un refus : l'attente doit se voir.
  */
 export function waitingDays(proposal: ActivityProposal, now: Date = new Date()): number {
-  const jours = Math.floor((now.getTime() - proposal.createdAt.getTime()) / 86_400_000)
-  return jours < 0 ? 0 : jours
+  /*
+    La même règle que la file des rendez-vous, et pour la même raison.
+
+    Celle-ci comptait des tranches de vingt-quatre heures : deux dépôts faits au même
+    instant s'affichaient « Demandé hier » d'un côté et « Déposée aujourd'hui » de
+    l'autre, sur deux écrans voisins du même espace soignant.
+  */
+  return calendarDaysSince(proposal.createdAt, now)
 }
 
 /**

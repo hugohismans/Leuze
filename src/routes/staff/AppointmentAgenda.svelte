@@ -1,6 +1,14 @@
 <script lang="ts">
   import { staffStore } from '../../lib/staffState.svelte'
-  import { AGENDA_INLINE_DAYS, bookableSlots, suggestionMessage } from '../../lib/domain/agenda'
+  import {
+    AGENDA_INLINE_DAYS,
+    bookableSlots,
+    noAvailabilityDeclared,
+    onLeaveThroughout,
+    onLeaveThroughoutMessage,
+    noAvailabilityMessage,
+    suggestionMessage,
+  } from '../../lib/domain/agenda'
   import type { AppointmentPlanning } from '../../lib/data/staffPorts'
   import {
     addMinutes,
@@ -9,6 +17,7 @@
     formatTime,
     instantOf,
   } from '../../lib/domain/time'
+  import { de } from '../../lib/domain/francais'
   import type { LocalDate, LocalTime } from '../../lib/domain/types'
 
   /**
@@ -180,10 +189,32 @@
     boite?.close()
   }
 
+  /*
+    Une plage jamais déclarée n'est pas un agenda plein.
+
+    L'écran disait « aucun créneau ne convient aux deux dans les trois semaines qui
+    viennent » à qui n'avait tout simplement jamais dit quand il recevait : on cherchait
+    une saturation qui n'existait pas, et rien ne disait où déclarer les plages.
+  */
+  const aucunePlage = $derived(planning !== null && noAvailabilityDeclared(planning.week))
+
+  /*
+    Un congé qui couvre tout l'horizon n'est ni l'un ni l'autre.
+
+    « Aucun créneau ne convient aux deux dans les trois semaines qui viennent » laisse
+    chercher un trou, sous vingt et une lignes « 🌴 En congé » qui disaient déjà qu'il
+    n'y en aurait pas.
+  */
+  const congeTotal = $derived(planning !== null && onLeaveThroughout(planning.week))
+
   const message = $derived(
     planning === null
       ? null
-      : suggestionMessage(
+      : congeTotal
+        ? onLeaveThroughoutMessage(practitionerName)
+        : aucunePlage
+          ? noAvailabilityMessage(practitionerName)
+          : suggestionMessage(
           planning.suggestion,
           preference,
           planning.suggestion === null
@@ -312,10 +343,20 @@
         {/each}
       </ul>
 
+      <!--
+        « les deux agendas : celui de Docteur Lemaire . » — la phrase promettait deux
+        agendas puis n'en nommait qu'un, avec un espace avant le point. Sans patient
+        désigné, il n'y en a qu'un, et la phrase le dit.
+      -->
       <p class="mt-3 text-base text-ink-soft">
-        « Pris » rassemble les deux agendas : celui de {practitionerName}
-        {#if patientFirstName !== ''}et celui de {patientFirstName}{/if}. Ci-dessus, la
-        semaine qui vient ; « Voir tous les créneaux possibles » va jusqu'à trois semaines.
+        {#if patientFirstName !== ''}
+          « Pris » rassemble les deux agendas : celui {de(practitionerName)} et celui
+          {de(patientFirstName)}.
+        {:else}
+          « Pris », c'est l'agenda {de(practitionerName)}.
+        {/if}
+        Ci-dessus, la semaine qui vient ; « Voir tous les créneaux possibles » va jusqu'à
+        trois semaines.
       </p>
 
       {#snippet failed()}
@@ -360,8 +401,8 @@
               avant que vous appuyiez sur « {validationLabel} ».
             </p>
             <p class="mt-1 text-base text-ink-soft">
-              {durationMin} minutes, dans l'agenda de {practitionerName}{#if patientFirstName !== ''}{' '}et
-                de {patientFirstName}{/if}.
+              {durationMin} minutes, dans l'agenda {de(practitionerName)}{#if patientFirstName !== ''}{' '}et
+                {de(patientFirstName)}{/if}.
             </p>
 
             <ul class="mt-4 grid gap-4">

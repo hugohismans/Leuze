@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { agendaWeek, bookableSlots } from './agenda'
+import {
+  agendaWeek,
+  bookableSlots,
+  freeSlotsOn,
+  noAvailabilityDeclared,
+  noAvailabilityMessage,
+} from './agenda'
 import type { LocalDate } from './types'
+import { formatLocalTime } from './availability'
 
 const lundi = '2026-08-24' as LocalDate
 
@@ -74,5 +81,85 @@ describe('bookableSlots', () => {
     // Rien pendant l'activité, ni à cheval sur elle.
     expect(times).not.toContain('10:00')
     expect(times).not.toContain('09:45')
+  })
+})
+
+describe('un intervenant qui n’a jamais déclaré de plage', () => {
+  const jour = (localDate: string, windows: { from: string; to: string }[]) => ({
+    localDate,
+    windows,
+    taken: [],
+    free: [],
+  })
+
+  it('se distingue d’un agenda plein', () => {
+    expect(noAvailabilityDeclared([jour('2026-08-25', []), jour('2026-08-26', [])])).toBe(true)
+    expect(
+      noAvailabilityDeclared([jour('2026-08-25', []), jour('2026-08-26', [{ from: '09:00', to: '12:00' }])]),
+    ).toBe(false)
+  })
+
+  it('ne conclut rien d’une semaine vide : il n’y a rien à conclure', () => {
+    expect(noAvailabilityDeclared([])).toBe(false)
+  })
+
+  it('dit la vérité, et où déclarer les plages', () => {
+    const texte = noAvailabilityMessage('Julien')
+    expect(texte).toContain('Julien')
+    expect(texte).toContain("n'a déclaré aucune plage")
+    expect(texte).toContain('Le personnel')
+    // Rien n'est interdit pour autant : une urgence se cale hors des plages.
+    expect(texte).toContain("l'heure de votre choix")
+  })
+})
+
+describe('une garde du soir, qui finit à minuit', () => {
+  it('produit de vrais créneaux — pas zéro', () => {
+    /*
+      La plage était acceptée par l'éditeur, affichée partout, et ne rendait pas un seul
+      créneau : la fermeture valait zéro, donc avant l'ouverture. L'écran répondait
+      « aucun créneau ne convient aux deux dans les trois semaines qui viennent ».
+    */
+    // `freeSlotsOn` rend des plages libres ; c'est `bookableSlots` qui les découpe.
+    const libres = freeSlotsOn([{ weekday: 1, from: '18:00', to: '00:00' }], [], lundi, 60)
+    expect(libres).toEqual([{ from: '18:00', to: '24:00' }])
+
+    const semaine = agendaWeek([lundi], [{ weekday: 1, from: '18:00', to: '00:00' }], [], 60)
+    const heures = bookableSlots(semaine, 60)[0]?.times ?? []
+    expect(heures.length).toBeGreaterThan(0)
+    expect(heures).toContain('18:00')
+    // Le dernier créneau d'une heure commence à 23h00 et finit à minuit, pas au-delà.
+    expect(heures.at(-1)).toBe('23:00')
+  })
+
+  it('ne déborde jamais sur le lendemain', () => {
+    const semaine = agendaWeek([lundi], [{ weekday: 1, from: '22:00', to: '00:00' }], [], 60)
+    const heures = bookableSlots(semaine, 60)[0]?.times ?? []
+    expect(heures.at(-1)).toBe('23:00')
+    expect(heures.every((h) => h < '24:00')).toBe(true)
+  })
+
+  it('s’écrit « minuit », et jamais « 24h00 »', () => {
+    expect(formatLocalTime('24:00')).toBe('minuit')
+    expect(formatLocalTime('00:00')).toBe('minuit')
+    expect(formatLocalTime('18:00')).toBe('18h00')
+  })
+})
+
+describe('quelqu’un en congé sur tout l’horizon', () => {
+  it('n’est pas confondu avec quelqu’un qui n’a jamais déclaré de plage', () => {
+    // Le message envoyait déclarer des plages sur la fiche de quelqu'un qui en avait, et
+    // qui était simplement absent — juste au-dessus de sept lignes « En congé ».
+    const enConge = [
+      { localDate: '2026-08-25', windows: [], onLeave: true, taken: [], free: [] },
+      { localDate: '2026-08-26', windows: [], onLeave: true, taken: [], free: [] },
+    ]
+    expect(noAvailabilityDeclared(enConge)).toBe(false)
+
+    const rienDeclare = [
+      { localDate: '2026-08-25', windows: [], onLeave: false, taken: [], free: [] },
+      { localDate: '2026-08-26', windows: [], onLeave: true, taken: [], free: [] },
+    ]
+    expect(noAvailabilityDeclared(rienDeclare)).toBe(true)
   })
 })

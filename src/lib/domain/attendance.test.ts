@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   attendanceLabel,
+  attendanceOpen,
   attendanceRefusal,
   isLedByPatient,
   canMarkAttendance,
@@ -63,7 +64,12 @@ describe('le compte de l’appel', () => {
   it('se lit en toutes lettres', () => {
     expect(attendanceLabel({ present: 6, absent: 2, unmarked: 1 })).toBe('6 présents, 2 absents, 1 sans réponse')
     expect(attendanceLabel({ present: 1, absent: 0, unmarked: 0 })).toBe('1 présent')
-    expect(attendanceLabel({ present: 0, absent: 0, unmarked: 0 })).toBe('Personne d’inscrit')
+    /*
+      Rien à compter : rien à écrire. « Personne d'inscrit » s'empilait au-dessus de
+      « Personne n'est inscrit à cette activité. », qui dit la même chose en français
+      simple ; l'écran laisse maintenant la place à cette seule phrase.
+    */
+    expect(attendanceLabel({ present: 0, absent: 0, unmarked: 0 })).toBe('')
   })
 })
 
@@ -128,5 +134,58 @@ describe('ce que l’écran dit quand l’appel n’est pas possible', () => {
 
   it('reste compréhensible quand le compte existe mais pas le nom', () => {
     expect(attendanceRefusal({ facilitatorId: 'marc' })).toContain('réservé à la personne')
+  })
+})
+
+describe('une séance annulée', () => {
+  it("n'a pas d'appel : le bouton ne doit même pas être proposé", () => {
+    expect(attendanceOpen({ facilitatorId: 'marc', status: 'cancelled' })).toBe(false)
+    expect(attendanceOpen({ facilitatorId: 'marc', status: 'scheduled' })).toBe(true)
+  })
+
+  it('refuse de noter, à l’administrateur comme à l’animateur', () => {
+    const seance = { facilitatorId: 'marc', status: 'cancelled' }
+    expect(canMarkAttendance({ role: 'admin', practitionerId: null }, seance)).toBe(false)
+    expect(canMarkAttendance({ role: 'staff', practitionerId: 'marc' }, seance)).toBe(false)
+  })
+
+  it('dit pourquoi, avec le motif quand il y en a un', () => {
+    const texte = attendanceRefusal({
+      facilitatorId: 'marc',
+      status: 'cancelled',
+      cancellationReason: "L'animateur est absent",
+    })
+    expect(texte).toContain('annulée')
+    expect(texte).toContain("L'animateur est absent")
+    expect(attendanceRefusal({ facilitatorId: 'marc', status: 'cancelled' })).toContain('annulée')
+  })
+})
+
+/**
+ * Une consigne qu'on ne peut pas suivre.
+ *
+ * L'écran « Aujourd'hui » disait « Modifiez l'activité pour désigner quelqu'un » à un
+ * soignant à qui il venait de retirer le bouton « Modifier l'activité » : la phrase et
+ * les boutons, corrigés le même jour, ne se sont pas vus. Une consigne impossible est
+ * pire que pas de consigne — elle laisse croire à une maladresse de sa part.
+ */
+describe('le refus d’appel, selon qui le lit', () => {
+  const sansPersonne = { status: 'scheduled' }
+  const nommeSansCompte = { status: 'scheduled', facilitator: 'Fatima' }
+
+  it('dit de modifier l’activité à qui le peut', () => {
+    expect(attendanceRefusal(sansPersonne, true)).toContain("Modifiez l'activité")
+    expect(attendanceRefusal(nommeSansCompte, true)).toContain('« Le personnel »')
+  })
+
+  it('renvoie vers un administrateur à qui ne le peut pas', () => {
+    expect(attendanceRefusal(sansPersonne, false)).toContain('Demandez à un administrateur')
+    expect(attendanceRefusal(sansPersonne, false)).not.toContain("Modifiez l'activité")
+    expect(attendanceRefusal(nommeSansCompte, false)).toContain('Demandez à un administrateur')
+    expect(attendanceRefusal(nommeSansCompte, false)).not.toContain('« Le personnel »')
+  })
+
+  it('nomme quand même la personne qui anime, dans les deux cas', () => {
+    expect(attendanceRefusal(nommeSansCompte, false)).toContain('Fatima')
   })
 })

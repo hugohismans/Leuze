@@ -169,7 +169,7 @@
       <p class="card p-5 text-lg" aria-live="polite">Lecture des inscriptions…</p>
     {:else if plannings.length === 0}
       <p class="card p-5 text-lg text-ink-soft">
-        Aucune personne enregistrée dans ce service. Créez-les depuis « Les patients ».
+        Aucune personne enregistrée dans ce service. Vous pouvez en ajouter depuis « Les patients ».
       </p>
     {:else}
       <!--
@@ -183,7 +183,12 @@
         onclick={() => window.print()}
       >
         <span aria-hidden="true">🖨️</span>
-        {chargement ? 'Lecture des inscriptions…' : `Imprimer les ${plannings.length} plannings`}
+        <!-- « Imprimer les 1 plannings » : l'accord manquait sur le bouton principal. -->
+        {chargement
+          ? 'Lecture des inscriptions…'
+          : plannings.length === 1
+            ? 'Imprimer le planning'
+            : `Imprimer les ${plannings.length} plannings`}
       </button>
 
       <ul class="grid gap-2">
