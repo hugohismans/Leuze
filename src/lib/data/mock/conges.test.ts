@@ -434,3 +434,99 @@ describe('un congé qui a déjà commencé', () => {
     expect(resultat.message).toContain('passé')
   })
 })
+
+/**
+ * Retirer un congé, quand le monde a bougé entre-temps.
+ *
+ * Le rétablissement passe par une Cloud Function en ligne ; la démonstration doit dire
+ * la même chose qu'elle, faute de quoi ce qu'on montre à l'équipe n'est pas ce qui
+ * arrivera. Trois écarts avaient été constatés entre les deux, et ce sont eux qu'on
+ * fixe ici : le passé, l'activité retirée du programme, et le double appui.
+ */
+describe('retirer un congé pendant que le monde a bougé', () => {
+  const hier = addLocalDays(todayLocalDate(), -1)
+  const demain = addLocalDays(todayLocalDate(), 1)
+  const conge = { from: hier, to: demain }
+
+  beforeEach(() => {
+    resetWorld()
+    mockCatalog.reset()
+    world.occurrences.clear()
+    world.leaves = {}
+  })
+
+  const admin = async () => {
+    const app = createMockStaffApp()
+    await app.session.signIn('admin@exemple.test', 'peu-importe')
+    return app
+  }
+
+  /**
+   * Une séance annulée par ce congé, à la date demandée.
+   *
+   * On pose l'état à la main plutôt que de passer par la déclaration : celle-ci refuse
+   * les jours passés, et c'est précisément une séance passée qu'il faut ici. Le congé
+   * est déposé dans le monde de la même façon.
+   */
+  const annuleeParConge = (localDate: string, activityId = 'groupe-de-parole') => {
+    const debut = instantOf(localDate as LocalDate, '14:30')
+    const id = `${activityId}_${localDate.replaceAll('-', '')}T1430`
+    world.occurrences.set(
+      id,
+      makeOccurrence({
+        id,
+        activityId,
+        title: 'Groupe de parole',
+        localDate: localDate as LocalDate,
+        start: debut,
+        end: addMinutes(debut, 90),
+        status: 'cancelled',
+        cancellationReason: "L'animateur est absent",
+        cancelledByLeave: true,
+        autoCancelled: true,
+        overridden: true,
+        facilitatorId: 'docteur-lemaire',
+      }),
+    )
+    world.leaves = { 'docteur-lemaire': [conge] }
+    return id
+  }
+
+  it('ne remet pas au programme une séance déjà terminée', async () => {
+    const passee = annuleeParConge(hier)
+    const aVenir = annuleeParConge(demain)
+
+    const app = await admin()
+    const retrait = await app.repository.removeLeave('docteur-lemaire', conge)
+    expect(retrait.ok).toBe(true)
+
+    // Celle d'hier a eu lieu, ou n'a pas eu lieu : dans les deux cas c'est fini.
+    expect(world.occurrences.get(passee)?.status).toBe('cancelled')
+    expect(world.occurrences.get(aVenir)?.status).toBe('scheduled')
+  })
+
+  it('ne ramène pas une séance dont l’activité a été retirée du programme', async () => {
+    const id = annuleeParConge(demain, 'activite-arretee')
+
+    const app = await admin()
+    const retrait = await app.repository.removeLeave('docteur-lemaire', conge)
+    expect(retrait.ok).toBe(true)
+
+    // L'équipe a décidé d'arrêter cette activité : le retour du soignant ne la rouvre pas.
+    expect(world.occurrences.get(id)?.status).toBe('cancelled')
+  })
+
+  it('ne rétablit rien au deuxième appui, et le dit', async () => {
+    const id = annuleeParConge(demain)
+
+    const app = await admin()
+    await app.repository.removeLeave('docteur-lemaire', conge)
+    // La séance est annulée de nouveau, pour une tout autre raison, depuis un autre écran.
+    await app.repository.cancelOccurrence(id, 'La salle est prise')
+
+    const second = await app.repository.removeLeave('docteur-lemaire', conge)
+    expect(second.ok).toBe(true)
+    expect(second.message).toContain('Rien n’a changé')
+    expect(world.occurrences.get(id)?.cancellationReason).toBe('La salle est prise')
+  })
+})

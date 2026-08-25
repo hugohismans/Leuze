@@ -2089,6 +2089,7 @@ async function activiteAuProgramme(activityId: string): Promise<boolean> {
 /** Rétablit les séances à venir que ce congé avait barrées, et rend leur nombre. */
 async function retablirLesSeancesDuConge(practitionerId: string, leave: Leave): Promise<number> {
   const aujourdHui = todayLocalDate()
+  const maintenant = Date.now()
   const depart = leave.from > aujourdHui ? leave.from : aujourdHui
   if (depart > leave.to) return 0
 
@@ -2098,8 +2099,11 @@ async function retablirLesSeancesDuConge(practitionerId: string, leave: Leave): 
     .where('localDate', '<=', leave.to)
     .get()
 
-  const lot = db().batch()
-  let retablies = 0
+  /*
+    Par paquets, comme partout ailleurs : Firestore refuse au-delà de cinq cents
+    opérations par lot, et un congé d'un mois sur une activité quotidienne les dépasse.
+  */
+  const aRetablir: FirebaseFirestore.DocumentReference[] = []
   for (const document of seances.docs) {
     const data = document.data() as {
       status?: string
@@ -2107,8 +2111,16 @@ async function retablirLesSeancesDuConge(practitionerId: string, leave: Leave): 
       facilitatorId?: string
       cancelledByLeave?: boolean
       activityId?: string
+      start?: Timestamp
+      end?: Timestamp
     }
     if (data.status !== 'cancelled') continue
+    /*
+      Le passé ne se rétablit pas plus qu'il ne s'annule : la déclaration épargne déjà
+      les séances terminées à l'instant près, et non à la journée.
+    */
+    const fin = (data.end as Timestamp | undefined) ?? (data.start as Timestamp | undefined)
+    if (fin !== undefined && fin.toMillis() < maintenant) continue
     /*
       L'activité doit toujours être au programme.
 
@@ -2129,17 +2141,22 @@ async function retablirLesSeancesDuConge(practitionerId: string, leave: Leave): 
       à la main. Sans cela, la séance rétablie restait marquée « modifiée isolément » :
       elle gardait à jamais l'ancien titre, l'ancien lieu et l'ancienne heure.
     */
-    lot.update(document.ref, {
-      status: 'scheduled',
-      cancellationReason: FieldValue.delete(),
-      overridden: false,
-      autoCancelled: false,
-      cancelledByLeave: FieldValue.delete(),
-    })
-    retablies += 1
+    aRetablir.push(document.ref)
   }
-  if (retablies > 0) await lot.commit()
-  return retablies
+  for (let i = 0; i < aRetablir.length; i += 400) {
+    const lot = db().batch()
+    for (const reference of aRetablir.slice(i, i + 400)) {
+      lot.update(reference, {
+        status: 'scheduled',
+        cancellationReason: FieldValue.delete(),
+        overridden: false,
+        autoCancelled: false,
+        cancelledByLeave: FieldValue.delete(),
+      })
+    }
+    await lot.commit()
+  }
+  return aRetablir.length
 }
 
 // ---------------------------------------------------------------------------

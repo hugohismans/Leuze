@@ -964,12 +964,25 @@ export function createMockStaffApp(): StaffApp {
         if (identity.role !== 'admin' && identity.practitionerId !== practitionerId) {
           return { ok: false, message: 'Vous ne pouvez retirer que vos propres congés.' }
         }
-        world.leaves = {
-          ...world.leaves,
-          [practitionerId]: withoutLeave(world.leaves[practitionerId] ?? [], leave),
+        const avant = world.leaves[practitionerId] ?? []
+        const apres = withoutLeave(avant, leave)
+        world.leaves = { ...world.leaves, [practitionerId]: apres }
+
+        /*
+          On ne rétablit rien si l'on n'a rien retiré.
+
+          `withoutLeave` rend la liste inchangée quand le congé n'y figure pas — deux
+          onglets ouverts, un double appui — et l'on rétablissait alors des séances au nom
+          d'un congé qui n'avait pas bougé.
+        */
+        if (apres.length === avant.length) {
+          return {
+            ok: true,
+            message: 'Ce congé n’était plus déclaré. Rien n’a changé.',
+          }
         }
 
-        const aujourdHui = todayLocalDate()
+        const maintenant = Date.now()
         let retablies = 0
         for (const [id, occurrence] of world.occurrences) {
           if (occurrence.status !== 'cancelled') continue
@@ -978,7 +991,14 @@ export function createMockStaffApp(): StaffApp {
           if (occurrence.cancelledByLeave !== true) continue
           if (occurrence.facilitatorId !== practitionerId) continue
           if (occurrence.localDate < leave.from || occurrence.localDate > leave.to) continue
-          if (occurrence.localDate < aujourdHui) continue
+          /*
+            Le passé ne se rétablit pas plus qu'il ne s'annule.
+
+            La déclaration épargne déjà les séances terminées — à l'instant près, et non
+            à la journée. Le retrait comparait des jours : une séance de ce matin, déjà
+            tenue, réapparaissait donc au programme de l'après-midi.
+          */
+          if (occurrence.end.getTime() < maintenant) continue
           /*
             L'activité doit toujours être au programme.
 
