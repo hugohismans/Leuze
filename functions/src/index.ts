@@ -633,8 +633,17 @@ export const regeneratePatientCode = onCall({ secrets: [CODE_PEPPER] }, async (r
 })
 
 /**
- * Fin de séjour. Le code cesse de fonctionner et la personne sort des listes ; ses
- * inscriptions restent, la purge planifiée s'en chargera le moment venu.
+ * Fin de séjour. Le code cesse de fonctionner, la personne sort des listes, et les
+ * places qu'elle retenait pour les séances à venir sont rendues.
+ *
+ * Ce dernier point manquait, et il coûtait des places à d'autres : la personne était
+ * partie, mais son inscription de jeudi tenait toujours un siège sur douze, la liste
+ * d'attente n'avançait pas, et plus aucun écran ne permettait de l'en retirer — elle
+ * avait disparu des listes où l'on désinscrit. Une séance affichait « complet » pour
+ * quelqu'un qui n'était plus là.
+ *
+ * Le passé ne bouge pas : qui était présent à la séance de lundi l'a été, et une feuille
+ * d'appel déjà remplie ne se réécrit pas.
  */
 export const endPatientStay = onCall(async (request: CallableRequest) => {
   requireAdmin(request)
@@ -647,8 +656,65 @@ export const endPatientStay = onCall(async (request: CallableRequest) => {
   await batch.commit()
   await auth().revokeRefreshTokens(uid).catch(() => undefined)
 
-  return { ok: true, message: 'Le séjour est clôturé. Le code ne fonctionne plus.' }
+  const rendues = await libereLesPlacesAVenir(uid)
+
+  return {
+    ok: true,
+    message:
+      rendues === 0
+        ? 'Le séjour est clôturé. Le code ne fonctionne plus.'
+        : rendues === 1
+          ? 'Le séjour est clôturé. Le code ne fonctionne plus. Une place retenue a été rendue.'
+          : `Le séjour est clôturé. Le code ne fonctionne plus. ${rendues} places retenues ont été rendues.`,
+  }
 })
+
+/**
+ * Rend les places qu'une personne retenait sur les séances qui n'ont pas encore eu lieu.
+ *
+ * Chaque désinscription passe par la transaction habituelle : c'est elle qui fait monter
+ * le premier de la liste d'attente et qui tient les compteurs à jour. Une séance qui
+ * échoue n'empêche pas les autres — le séjour est clôturé de toute façon, et laisser la
+ * moitié des places prises serait pire que tout.
+ */
+async function libereLesPlacesAVenir(patientUid: string): Promise<number> {
+  const maintenant = Date.now()
+  const inscriptions = await db()
+    .collection(COLLECTIONS.registrations)
+    .where('patientUid', '==', patientUid)
+    .get()
+  const aVenir = inscriptions.docs
+    .map((document) => document.data() as { occurrenceId?: string; status?: string })
+    .filter((ligne) => ligne.status === 'confirmed' || ligne.status === 'waitlist')
+    .map((ligne) => ligne.occurrenceId)
+    .filter((occurrenceId): occurrenceId is string => typeof occurrenceId === 'string')
+    .filter((occurrenceId) => {
+      const debut = debutDeLaSeance(occurrenceId)
+      return debut !== null && debut.getTime() >= maintenant
+    })
+
+  let rendues = 0
+  for (const occurrenceId of new Set(aVenir)) {
+    const resultat = await unregisterTx(db(), { occurrenceId, patientUid }).catch(() => ({ ok: false }))
+    if (resultat.ok) rendues += 1
+  }
+  return rendues
+}
+
+/**
+ * L'heure de début d'une séance, lue dans son identifiant.
+ *
+ * Les identifiants d'occurrence sont déterministes — `{activityId}_{yyyyMMddTHHmm}` — ce
+ * qui évite de relire chaque séance pour savoir si elle est passée. Rend `null` si
+ * l'identifiant n'a pas cette forme : on ne touche alors à rien.
+ */
+function debutDeLaSeance(occurrenceId: string): Date | null {
+  const marque = occurrenceId.slice(occurrenceId.lastIndexOf('_') + 1)
+  if (!/^\d{8}T\d{4}$/.test(marque)) return null
+  const jour = `${marque.slice(0, 4)}-${marque.slice(4, 6)}-${marque.slice(6, 8)}`
+  const heure = `${marque.slice(9, 11)}:${marque.slice(11, 13)}`
+  return instantOf(jour, heure)
+}
 
 /**
  * De quoi poser un rendez-vous sans rien deviner.

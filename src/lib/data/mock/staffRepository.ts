@@ -299,8 +299,14 @@ export function createMockStaffApp(): StaffApp {
             .filter((o) => o.localDate >= from && o.localDate <= to)
             .map((o) => o.id),
         )
+        const maintenant = Date.now()
         return world.patients
           .filter((patient) => serviceId === undefined || patient.serviceId === serviceId)
+          // Un séjour terminé ne reçoit plus de feuille. Le serveur l'écarte déjà ; la
+          // démonstration le gardait, et « Les patients » et « Les plannings » se
+          // contredisaient — la personne avait disparu d'un écran, sa feuille s'imprimait
+          // encore dans l'autre.
+          .filter((patient) => patient.expiresAt === undefined || patient.expiresAt.getTime() > maintenant)
           .sort((a, b) => a.firstName.localeCompare(b.firstName, 'fr'))
           .map((patient) => ({
             patientUid: patient.uid,
@@ -411,12 +417,51 @@ export function createMockStaffApp(): StaffApp {
         }
       },
 
+      /**
+       * Fin de séjour : le code cesse de fonctionner, et les places retenues pour les
+       * séances à venir sont rendues.
+       *
+       * Sans cela, l'inscription de jeudi tenait toujours un siège sur douze pour
+       * quelqu'un qui était parti, la liste d'attente n'avançait pas, et plus aucun
+       * écran ne permettait de l'en retirer : la personne avait disparu des listes où
+       * l'on désinscrit. Le passé, lui, ne bouge pas — une feuille d'appel déjà remplie
+       * ne se réécrit pas.
+       */
       async endStay(patientUid: string) {
         exigeAdministrateur()
         world.patients = world.patients.map((p) =>
           p.uid === patientUid ? { ...p, expiresAt: new Date(Date.now() - 1000) } : p,
         )
-        return { ok: true, message: 'Le séjour est clôturé. Le code ne fonctionne plus.' }
+
+        const maintenant = Date.now()
+        const aVenir = new Set(
+          world.registrations
+            .filter((r) => r.patientUid === patientUid && r.status !== 'cancelled')
+            .map((r) => r.occurrenceId)
+            .filter((occurrenceId) => {
+              const seance = world.occurrences.get(occurrenceId)
+              return seance !== undefined && seance.start.getTime() >= maintenant
+            }),
+        )
+        let rendues = 0
+        for (const occurrenceId of aVenir) {
+          const board = boardOf(occurrenceId)
+          if (board === null) continue
+          const outcome = domainUnregister(board, patientUid)
+          if (!outcome.ok) continue
+          applyBoard(outcome.board)
+          rendues += 1
+        }
+
+        return {
+          ok: true,
+          message:
+            rendues === 0
+              ? 'Le séjour est clôturé. Le code ne fonctionne plus.'
+              : rendues === 1
+                ? 'Le séjour est clôturé. Le code ne fonctionne plus. Une place retenue a été rendue.'
+                : `Le séjour est clôturé. Le code ne fonctionne plus. ${rendues} places retenues ont été rendues.`,
+        }
       },
 
       async registerPatient(occurrenceId: string, patientUid: string, options = {}) {

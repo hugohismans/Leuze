@@ -28,29 +28,53 @@
   let chargement = $state(true)
   let erreur = $state<string | null>(null)
 
+  /*
+    Le numéro de la lecture en cours. Un `let` ordinaire, non réactif : le lire dans
+    l'effet en ferait une dépendance, et l'écrire relancerait l'effet sans fin.
+
+    Il sert à jeter une réponse en retard. On passe d'une personne à l'autre en changeant
+    l'adresse, sans recharger la page : deux lectures peuvent voyager en même temps, et
+    celle de la personne précédente peut arriver en dernier. Sur une feuille de semaine,
+    cela veut dire le rendez-vous de quelqu'un d'autre.
+  */
+  let lecture = 0
+
+  /*
+    L'effet dépend de la personne, pas seulement de la semaine.
+
+    Sans `patientUid` dans ses dépendances, passer de #/soignant/planning/A à
+    #/soignant/planning/B ne relançait rien : le composant gardait les inscriptions de A
+    — titre compris — pendant que la liste des rendez-vous, elle, se recalculait pour B.
+    La feuille « La semaine de A » portait donc le rendez-vous médical de B.
+  */
   $effect(() => {
     const debut = staffStore.week[0]
-    if (debut === undefined) return
-    void charger()
+    const qui = patientUid
+    if (debut === undefined || qui === '') return
+    void charger(qui)
   })
 
-  async function charger(): Promise<void> {
+  async function charger(qui: string): Promise<void> {
+    const mienne = ++lecture
     chargement = true
     erreur = null
     try {
       // Deux lectures indépendantes : elles partent ensemble.
       const [, tous] = await Promise.all([staffStore.loadAppointments(), staffStore.weekPlannings()])
-      planning = tous.find((p) => p.patientUid === patientUid) ?? null
+      if (mienne !== lecture) return
+      planning = tous.find((p) => p.patientUid === qui) ?? null
     } catch (error) {
+      if (mienne !== lecture) return
       erreur = enClair(error)
     } finally {
-      chargement = false
+      if (mienne === lecture) chargement = false
     }
   }
 
   const semaine = $derived.by(() => {
-    if (planning === null) return []
-    const inscriptions = planning.lines
+    const charge = planning
+    if (charge === null) return []
+    const inscriptions = charge.lines
       .map((ligne) => {
         const occurrence = staffStore.occurrences.find((o) => o.id === ligne.occurrenceId)
         return occurrence === undefined ? null : { occurrence, status: ligne.status }
@@ -58,9 +82,15 @@
       .filter((v) => v !== null)
     const debut = staffStore.week[0] ?? ''
     const fin = staffStore.week[6] ?? ''
+    /*
+      Les rendez-vous se filtrent sur la personne du planning chargé, jamais sur le
+      `patientUid` de l'adresse. Les deux disent normalement la même chose ; le jour où
+      ils divergent — une lecture en retard, un effet mal branché — c'est le rendez-vous
+      de quelqu'un d'autre qui s'écrit sur la feuille, et cela ne doit pas pouvoir arriver.
+    */
     const rendezVous = staffStore.appointments.filter(
       (r) =>
-        r.patientUid === patientUid &&
+        r.patientUid === charge.patientUid &&
         r.status === 'scheduled' &&
         r.localDate !== undefined &&
         r.localDate >= debut &&

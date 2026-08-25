@@ -96,10 +96,18 @@ class StaffStore {
    */
   voirToutesLesUnites = $state(false)
 
+  /**
+   * L'unité du compte, que la case « voir toutes les unités » soit cochée ou non.
+   *
+   * C'est celle qu'un formulaire propose. Regarder l'hôpital entier ne change pas la
+   * bulle où l'on travaille : sans cette distinction, cocher la case faisait retomber le
+   * menu « Service » sur la première du catalogue, et la personne créée sans y regarder
+   * atterrissait dans une autre unité que celle du compte — avec le programme qui va avec.
+   */
+  readonly accountUnit = $derived(resolveUnit(store.services, this.unitId))
+
   /** L'unité qui filtre réellement les écrans, une fois la case et le catalogue pris en compte. */
-  readonly unit = $derived(
-    this.voirToutesLesUnites ? null : resolveUnit(store.services, this.unitId),
-  )
+  readonly unit = $derived(this.voirToutesLesUnites ? null : this.accountUnit)
   /** Son nom, pour l'écrire. `null` quand il n'y a rien à écrire. */
   readonly unitLabel = $derived(unitName(store.services, this.unit))
 
@@ -345,10 +353,19 @@ class StaffStore {
     return code
   }
 
-  async endStay(patientUid: string): Promise<void> {
+  /**
+   * Clôturer un séjour. Le prénom sert au message : « Le séjour de Sofia est clôturé. »
+   *
+   * Sans lui, le retour était « Le séjour est clôturé » — sans dire lequel. Un appui sur
+   * la mauvaise carte passait alors complètement inaperçu.
+   */
+  async endStay(patientUid: string, firstName?: string): Promise<void> {
     try {
       const resultat = await (await this.app$()).repository.endStay(patientUid)
-      this.message = resultat.message
+      this.message =
+        firstName === undefined || firstName === ''
+          ? resultat.message
+          : resultat.message.replace('Le séjour est clôturé.', `Le séjour de ${firstName} est clôturé.`)
     } catch (error) {
       // Un refus du serveur doit se lire à l'écran, pas finir dans la console.
       this.message =
@@ -977,6 +994,26 @@ class StaffStore {
   async weekPlannings(serviceId?: string): Promise<PatientPlanning[]> {
     const jours = this.week
     return (await this.app$()).repository.weekPlannings(jours[0]!, jours[6]!, serviceId)
+  }
+
+  /**
+   * De quoi dire qui est en activité **maintenant** — la semaine d'aujourd'hui, jamais
+   * celle qu'on est en train de feuilleter ailleurs.
+   *
+   * « Les patients » répond à « où est cette personne à cette heure-ci ». Il lisait la
+   * semaine choisie dans le calendrier : après un appui sur « Semaine précédente », tout
+   * le monde devenait « Libre », et après « Semaine suivante » quelqu'un se voyait
+   * attribuer une séance qui n'aurait lieu que huit jours plus tard. Rien à l'écran ne
+   * disait de quelle semaine on parlait.
+   */
+  async currentWeekPlannings(): Promise<{ plannings: PatientPlanning[]; occurrences: Occurrence[] }> {
+    const jours = weekDays(todayLocalDate())
+    const app = await this.app$()
+    const [plannings, occurrences] = await Promise.all([
+      app.repository.weekPlannings(jours[0]!, jours[6]!),
+      app.repository.listOccurrences(jours[0]!, jours[6]!).catch(() => []),
+    ])
+    return { plannings, occurrences }
   }
 
   /** Rétablir une séance annulée. Même principe : elle cesse d'être barrée tout de suite. */
