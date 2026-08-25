@@ -73,8 +73,8 @@ export function tutorialSteps(serviceName: string | null): TutorialStep[] {
       emoji: '📅',
       title: 'Ce qui est prévu',
       lines: [
-        'Voici le premier écran : les activités proposées.',
-        '« Jour » montre une journée. « Semaine » montre toute la semaine.',
+        'Voici le premier écran : les activités de la semaine, jour par jour.',
+        '« Semaine » est déjà choisi. « Jour » n’en montre qu’une, « Mois » montre le mois entier.',
         'Les deux flèches vous font avancer dans le temps.',
       ],
     },
