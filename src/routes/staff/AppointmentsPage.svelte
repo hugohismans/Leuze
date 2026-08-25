@@ -780,11 +780,28 @@
               </select>
 
               <div class="mt-4 flex flex-wrap gap-2">
-                <button type="button" class="btn btn-primary" disabled={busy} onclick={() => fixer(demande.id)}>
+                <!--
+                  Désactivé plutôt que muet : le bouton restait actif et chaque appui ne
+                  produisait rien — ni enregistrement, ni message, ni champ signalé. On
+                  appuyait trois fois avant de chercher ailleurs. La phrase juste en
+                  dessous dit ce qui manque.
+                -->
+                <button
+                  type="button"
+                  class="btn btn-primary"
+                  disabled={busy || avecQui.trim().length === 0}
+                  onclick={() => fixer(demande.id)}
+                >
                   Fixer le rendez-vous
                 </button>
                 <button type="button" class="btn btn-secondary" onclick={() => (ouvert = null)}>Annuler</button>
               </div>
+              {#if avecQui.trim().length === 0}
+                <p class="mt-2 text-base font-semibold text-ink">
+                  <span aria-hidden="true">⚠️</span>
+                  Écrivez le nom que le patient lira dans « Avec qui », plus haut.
+                </p>
+              {/if}
             </div>
           {:else}
             <div class="mt-3 flex flex-wrap gap-2">

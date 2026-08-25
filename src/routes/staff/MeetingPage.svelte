@@ -62,8 +62,7 @@
     // Un choix à la main est un choix : l'unité du compte ne le défera pas.
     semee = true
     serviceId = valeur === '' ? null : valeur
-    selection = null
-    dernierMessage = null
+    changerDActivite(null)
     if (typeof localStorage !== 'undefined') {
       if (serviceId === null) localStorage.removeItem(MEMOIRE)
       else localStorage.setItem(MEMOIRE, serviceId)
@@ -214,19 +213,33 @@
     dernierMessage = resultat.message
   }
 
+  /**
+   * Changer d'activité efface tout ce qui portait sur la précédente.
+   *
+   * Deux encadrés restaient à l'écran après le changement : la demande de dépassement et
+   * l'avertissement de chevauchement. Ils se recalculaient alors sur la nouvelle séance
+   * et affirmaient des choses fausses — « L'activité est complète : 5 inscrits pour 8
+   * places » là où il restait trois places. Pire, « Oui, dépasser » inscrivait alors
+   * quelqu'un à la nouvelle activité, avec le drapeau de dépassement, sans qu'il y ait
+   * eu le moindre dépassement.
+   */
+  function changerDActivite(id: string | null): void {
+    selection = id
+    dernierMessage = null
+    aConfirmer = null
+    chevauchement = null
+  }
+
   function allerA(decalage: number): void {
     if (courante === null) return
     const index = semaine.findIndex((o) => o.id === courante.id)
     const suivante = semaine[index + decalage]
-    if (suivante) {
-      selection = suivante.id
-      dernierMessage = null
-    }
+    if (suivante) changerDActivite(suivante.id)
   }
 
   const semaineDe = (decalage: number): void => {
     staffStore.date = addLocalDays(startOfIsoWeek(staffStore.date), decalage * 7)
-    selection = null
+    changerDActivite(null)
     void staffStore.refresh()
   }
 
@@ -264,7 +277,7 @@
         <span aria-hidden="true">←</span> Semaine précédente
       </button>
       {#if startOfIsoWeek(staffStore.date) !== startOfIsoWeek(todayLocalDate())}
-        <button type="button" class="btn btn-secondary" onclick={() => { staffStore.date = todayLocalDate(); selection = null; void staffStore.refresh() }}>
+        <button type="button" class="btn btn-secondary" onclick={() => { staffStore.date = todayLocalDate(); changerDActivite(null); void staffStore.refresh() }}>
           Cette semaine
         </button>
       {/if}
@@ -314,7 +327,7 @@
                 class:bg-brand-50={active}
                 class:border-line={!active}
                 aria-current={active ? 'true' : undefined}
-                onclick={() => { selection = occurrence.id; dernierMessage = null }}
+                onclick={() => changerDActivite(occurrence.id)}
               >
                 <p class="text-lg font-bold text-ink">{occurrence.title}</p>
                 <p class="text-base text-ink-soft">

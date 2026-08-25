@@ -149,6 +149,16 @@ export function createMockRepository(options: { now?: () => Date } = {}): MockRe
     const board = boardOf(occurrenceId)
     const uid = world.session.patientUid
     if (!board || uid === null) return null
+    /*
+      Le filtre par service vaut aussi pour ce qui est à soi.
+
+      `listBetween` et `get` filtraient ; `listMine` non. « Mes inscriptions » et « Ma
+      semaine » — à un seul appui du calendrier — affichaient donc le titre, l'horaire et
+      le lieu d'activités réservées à un autre service, que le calendrier venait de
+      masquer. C'est l'invariant n° 1 du projet : un titre ne doit pas franchir la
+      cloison, et il n'y a pas d'écran d'exception.
+    */
+    if (!isVisibleToService(board.occurrence, world.session.serviceId)) return null
     const mine = registrationOf(board, uid)
     if (mine === null || mine.status === 'cancelled') return null
     return {

@@ -43,7 +43,7 @@ const httpsCallable: typeof httpsCallableSansLimite = ((...args: Parameters<type
   const appel = httpsCallableSansLimite(...args)
   return ((donnees?: unknown) => ecrire(appel(donnees))) as ReturnType<typeof httpsCallableSansLimite>
 }) as typeof httpsCallableSansLimite
-import { audienceQueryKeys } from '../../domain/audience'
+import { audienceQueryKeys, isVisibleToService } from '../../domain/audience'
 import { enClair } from '../../erreurs'
 import { patientIdentityOf } from '../../domain/session'
 import {
@@ -242,6 +242,16 @@ export function createFirestoreRepository(): AppRepository {
         return lines
           .map((line, index) => ({ line, occurrence: occurrences[index] }))
           .filter((entry): entry is { line: MineLine; occurrence: Occurrence } => entry.occurrence != null)
+          /*
+            Le filtre par service vaut aussi pour ce qui est à soi.
+
+            Les autres lectures le posent dans la requête ; celle-ci part d'inscriptions
+            et remonte aux séances une par une, sans jamais le reposer. « Mes
+            inscriptions » et « Ma semaine » montraient donc le titre d'activités
+            réservées à un autre service. C'est l'invariant n° 1 du projet, et il n'a
+            pas d'écran d'exception.
+          */
+          .filter(({ occurrence }) => isVisibleToService(occurrence, session.serviceId))
           .map(({ line, occurrence }) => ({
             occurrence,
             status: line.status,

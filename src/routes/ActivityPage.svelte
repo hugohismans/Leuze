@@ -192,7 +192,30 @@
     <section aria-labelledby="titre-inscription" class="grid grid-cols-1 gap-3">
       <h2 id="titre-inscription" class="sr-only">Inscription</h2>
 
-      {#if mine}
+      {#if occurrence.status === 'cancelled'}
+        <!--
+          Une séance annulée passe avant tout le reste.
+
+          Le bloc vert « ✓ Vous êtes inscrit » s'affichait juste sous « Cette activité est
+          annulée » : deux affirmations contraires à trois centimètres l'une de l'autre,
+          la seconde en vert et en gros. On rappelle donc ici, et là seulement, que
+          l'inscription tenait — mais que la séance n'aura pas lieu.
+        -->
+        <div
+          class="card p-5 text-xl"
+          style="background: var(--color-warn-bg); color: var(--color-warn-fg); border-color: var(--color-warn-fg);"
+        >
+          <p><strong>Cette séance n'aura pas lieu.</strong></p>
+          {#if mine}
+            <p class="mt-1">
+              Vous étiez inscrit. Il n'y a rien à faire : un soignant peut vous proposer
+              autre chose.
+            </p>
+          {:else}
+            <p class="mt-1">Un soignant peut vous proposer autre chose.</p>
+          {/if}
+        </div>
+      {:else if mine}
         <div
           class="card p-5 text-xl"
           style={mine.status === 'confirmed'

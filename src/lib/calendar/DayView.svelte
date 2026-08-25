@@ -16,8 +16,20 @@
   </h2>
 
   {#if activities.length === 0}
+    <!--
+      « Il n'y a pas d'activité ce jour-là » est faux quand un filtre est posé : il y en
+      a, elles sont simplement écartées. Le patient en concluait qu'il n'y avait rien, et
+      ne venait pas. La phrase dit maintenant laquelle des deux situations il lit, et
+      comment en sortir.
+    -->
     <p class="card p-6 text-lg">
-      Il n'y a pas d'activité ce jour-là. Vous pouvez regarder un autre jour avec les boutons ci-dessus.
+      {#if store.hasFilters}
+        Aucune activité ne correspond à votre choix ce jour-là. Retirez le filtre, plus
+        haut, pour voir tout le programme.
+      {:else}
+        Il n'y a pas d'activité ce jour-là. Vous pouvez regarder un autre jour avec les
+        boutons ci-dessus.
+      {/if}
     </p>
   {:else}
     <ul class="grid grid-cols-1 gap-4">

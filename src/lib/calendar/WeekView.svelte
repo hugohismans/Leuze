@@ -34,7 +34,10 @@
       </h2>
 
       {#if activities.length === 0}
-        <p class="px-3 text-base text-ink-soft">Pas d'activité</p>
+        <!-- Voir la vue jour : avec un filtre, « pas d'activité » serait faux. -->
+        <p class="px-3 text-base text-ink-soft">
+          {store.hasFilters ? 'Rien avec ce filtre' : "Pas d'activité"}
+        </p>
       {:else}
         <ul class="grid grid-cols-1 gap-3">
           {#each activities as occurrence (occurrence.id)}

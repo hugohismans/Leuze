@@ -891,7 +891,17 @@
       {#if repetition === 'une-fois'}
         <label for="date" class="mt-4 mb-2 block text-lg font-semibold text-ink">Date</label>
         <input id="date" type="date" bind:value={dateUnique} class={champ} style="min-height: 56px;" />
-        <p class="mt-1 text-base text-ink-soft">{formatLongDayLabel(dateUnique)}</p>
+        <!--
+          Un champ « date » se vide d'un geste, et une chaîne vide n'est pas une date :
+          la mettre en toutes lettres levait une exception à chaque rendu, et la phrase
+          restait figée sur la date d'avant — elle affirmait donc un jour que le champ ne
+          portait plus.
+        -->
+        {#if /^\d{4}-\d{2}-\d{2}$/.test(dateUnique)}
+          <p class="mt-1 text-base text-ink-soft">{formatLongDayLabel(dateUnique)}</p>
+        {:else}
+          <p class="mt-1 text-base text-ink-soft">Choisissez une date.</p>
+        {/if}
       {:else}
       <div class="mt-4 flex flex-wrap gap-2">
         {#each JOURS as jour (jour.valeur)}
