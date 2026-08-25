@@ -1050,9 +1050,18 @@ export function createMockStaffApp(): StaffApp {
         return {
           ok: true,
           message:
-            decision === 'accepted'
-              ? 'Idée retenue. Créez l’activité : le titre et la description sont recopiés.'
-              : 'Réponse enregistrée. La personne lira votre phrase.',
+            decision !== 'accepted'
+              ? 'Réponse enregistrée. La personne lira votre phrase.'
+              : /*
+                  Le message dépend de ce qui vient de se passer.
+
+                  « Créez l'activité » s'affichait encore **après** l'avoir créée : la
+                  décision est enregistrée à la fin de l'enregistrement, et son message
+                  recouvrait celui de la création.
+                */
+                options.activityId === undefined
+                ? 'Idée retenue. Créez l’activité : le titre et la description sont recopiés.'
+                : 'Idée retenue, et l’activité est créée. La personne qui l’a proposée le lira.',
         }
       },
 

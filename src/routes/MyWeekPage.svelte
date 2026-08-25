@@ -54,7 +54,9 @@
   -->
   <div class="no-print mb-4 flex flex-wrap gap-2">
     <button type="button" class="btn btn-secondary" onclick={() => deplacer(-1)}>
-      <span aria-hidden="true">←</span> Semaine passée
+      <!-- Les mêmes mots que le calendrier : « Semaine passée » devenait faux dès le
+           deuxième appui, et deux écrans voisins ne nommaient pas le même geste. -->
+      <span aria-hidden="true">←</span> Semaine précédente
     </button>
     <button type="button" class="btn btn-secondary" onclick={() => deplacer(1)}>
       Semaine suivante <span aria-hidden="true">→</span>

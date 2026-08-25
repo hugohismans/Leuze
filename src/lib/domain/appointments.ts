@@ -74,6 +74,27 @@ export function patientStatusLabel(appointment: Appointment, kinds: AppointmentK
 }
 
 /**
+ * Le refus opposé à une seconde demande pour le même motif.
+ *
+ * Une seule demande à la fois par motif — en attente comme déjà fixée : sans cela,
+ * quelqu'un d'inquiet qui appuie trois fois prendrait trois créneaux dans l'agenda de
+ * quelqu'un. La phrase, elle, disait « Vous avez déjà un rendez-vous prévu avec cette
+ * personne » alors qu'il ne s'agissait souvent que d'une demande en attente, et
+ * qu'aucune personne n'avait été choisie. Elle dit maintenant laquelle des deux.
+ */
+export function alreadyAskedMessage(
+  kinds: AppointmentKind[],
+  kindId: string,
+  etat: 'requested' | 'scheduled',
+): string {
+  const nomme = dansLaPhrase(kindName(kinds, kindId))
+  const qui = nomme === null ? 'ce professionnel' : nomme
+  return etat === 'requested'
+    ? `Vous avez déjà demandé à voir ${qui}. Un soignant vous dira quand.`
+    : `Vous avez déjà un rendez-vous prévu pour voir ${qui}. Parlez-en à un soignant si vous voulez en changer.`
+}
+
+/**
  * Le nom à écrire pour un rendez-vous, côté soignant.
  *
  * Un rendez-vous concerne un patient de l'hôpital — on lit alors son prénom dans la

@@ -109,7 +109,15 @@
 <main id="contenu">
   {#if espaceSoignant}
     <StaffApp />
-  {:else if !store.isDemo && !store.signedIn}
+  <!--
+    L'écran du code s'affiche aussi en démonstration, une fois l'accès fermé.
+
+    Il était sauté : après « Fermer mon accès », la démonstration continuait de proposer
+    de s'inscrire, et répondait « Cette activité n'a pas été trouvée ». On y montre donc
+    ce qu'un patient voit vraiment — et le bouton de démonstration, plus bas, rouvre la
+    session d'un geste.
+  -->
+  {:else if !store.signedIn}
     <!--
       Tant qu'on ne sait pas si une session existe, ne rien montrer plutôt qu'un
       calendrier vide : sur un réseau lent, un écran vide sans explication est ce qui

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   PREFERENCE_LABELS,
+  alreadyAskedMessage,
   cancelledToShow,
   kindName,
   nextScheduled,
@@ -315,5 +316,28 @@ describe('un motif sans article', () => {
 
   it('garde le nom quand il porte son article', () => {
     expect(patientStatusLabel(demande(), kinds)).toContain('le psychiatre')
+  })
+})
+
+describe('une seconde demande pour le même motif', () => {
+  it('distingue une demande en attente d’un rendez-vous déjà fixé', () => {
+    const attente = alreadyAskedMessage(kinds, 'psychiatre', 'requested')
+    expect(attente).toContain('déjà demandé')
+    expect(attente).toContain('le psychiatre')
+    // Ce n'est pas un rendez-vous : ne pas le dire.
+    expect(attente).not.toContain('rendez-vous prévu')
+
+    const fixe = alreadyAskedMessage(kinds, 'psychiatre', 'scheduled')
+    expect(fixe).toContain('rendez-vous prévu')
+  })
+
+  it('ne parle jamais d’« une personne » : la règle porte sur le motif', () => {
+    const texte = alreadyAskedMessage(kinds, 'psychiatre', 'requested')
+    expect(texte).not.toContain('cette personne')
+  })
+
+  it('reste lisible avec un motif sans article', () => {
+    const sansArticle: AppointmentKind[] = [{ id: 'autre', name: 'Autre', icon: '👤', isActive: true }]
+    expect(alreadyAskedMessage(sansArticle, 'autre', 'requested')).toContain('ce professionnel')
   })
 })

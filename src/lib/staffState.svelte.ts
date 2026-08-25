@@ -969,7 +969,14 @@ class StaffStore {
       ]
     }
     this.message = 'Copie créée. Elle est en brouillon : relisez-la, puis mettez-la au programme.'
-    void this.refresh()
+    /*
+      La relecture est attendue, et non lancée en arrière-plan.
+
+      Le bouton se referme le temps du geste ; sans cette attente, le geste durait une
+      microtâche en démonstration, le bouton redevenait actif avant même le second appui
+      d'un double clic, et l'on se retrouvait avec deux copies.
+    */
+    await this.refresh()
     return nouvelId
   }
 

@@ -22,6 +22,7 @@ import {
   unregisterTx,
 } from './lib/registration'
 import { patientConflictNotice, type BusyEntry } from './domain/conflicts'
+import { alreadyAskedMessage } from './domain/appointments'
 import {
   effectivePermissions,
   isAllowed,
@@ -960,17 +961,28 @@ export const requestAppointment = onCall(async (request: CallableRequest) => {
     dans l'agenda de quelqu'un. Le garde-fou vaut mieux ici que dans l'écran : l'écran
     peut être contourné, pas la fonction.
   */
-  const enCours = deja.docs.some((d) => {
+  const enCours = deja.docs.find((d) => {
     const data = d.data()
     if (data['status'] === 'requested') return true
     const jour = data['localDate'] as LocalDate | undefined
     return data['status'] === 'scheduled' && jour !== undefined && jour >= aujourdHui
   })
-  if (enCours) {
+  if (enCours !== undefined) {
+    /*
+      « Vous avez déjà un rendez-vous prévu avec cette personne » s'écrivait même pour une
+      simple demande en attente, et même quand aucune personne n'avait été choisie — la
+      garde porte sur le motif, pas sur quelqu'un. La phrase dit maintenant laquelle des
+      deux situations on lui oppose.
+    */
+    const nom = (motif.data()?.['name'] as string | undefined) ?? ''
     return {
       ok: false,
       scheduled: false,
-      message: 'Vous avez déjà un rendez-vous prévu avec cette personne. Parlez-en à un soignant.',
+      message: alreadyAskedMessage(
+        [{ id: kindId, name: nom, icon: '', isActive: true }],
+        kindId,
+        enCours.data()['status'] === 'requested' ? 'requested' : 'scheduled',
+      ),
     }
   }
 
@@ -1261,9 +1273,16 @@ export const decideProposal = onCall(async (request: CallableRequest) => {
   return {
     ok: true,
     message:
-      decision === 'accepted'
-        ? 'Idée retenue. Créez l’activité : le titre et la description sont recopiés.'
-        : 'Réponse enregistrée. La personne lira votre phrase.',
+      decision !== 'accepted'
+        ? 'Réponse enregistrée. La personne lira votre phrase.'
+        : /*
+            « Créez l'activité » s'affichait encore après l'avoir créée : la décision est
+            enregistrée à la fin de l'enregistrement, et son message recouvrait celui de
+            la création.
+          */
+          activityId === null
+          ? 'Idée retenue. Créez l’activité : le titre et la description sont recopiés.'
+          : 'Idée retenue, et l’activité est créée. La personne qui l’a proposée le lira.',
   }
 })
 

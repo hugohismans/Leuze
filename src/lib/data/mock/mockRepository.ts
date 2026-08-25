@@ -33,6 +33,7 @@ import {
   type BusySlot,
 } from '../../domain/autoAccept'
 import { registrationBlockMessage, type RegistrationBlock } from '../../domain/capacity'
+import { alreadyAskedMessage } from '../../domain/appointments'
 import type {
   Appointment,
   AppointmentKind,
@@ -387,18 +388,22 @@ export function createMockRepository(options: { now?: () => Date } = {}): MockRe
           créneaux dans l'agenda de quelqu'un.
         */
         const aujourdHui = todayLocalDate(clock())
-        const dejaEnCours = world.appointments.some(
+        const dejaEnCours = world.appointments.find(
           (a) =>
             a.patientUid === uid &&
             a.kindId === kindId &&
             (a.status === 'requested' ||
               (a.status === 'scheduled' && (a.localDate ?? '') >= aujourdHui)),
         )
-        if (dejaEnCours) {
+        if (dejaEnCours !== undefined) {
           return {
             ok: false,
             scheduled: false,
-            message: 'Vous avez déjà un rendez-vous prévu avec cette personne. Parlez-en à un soignant.',
+            message: alreadyAskedMessage(
+              mockCatalog.appointmentKinds(),
+              kindId,
+              dejaEnCours.status === 'requested' ? 'requested' : 'scheduled',
+            ),
           }
         }
         const commun = {

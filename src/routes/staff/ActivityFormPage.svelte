@@ -178,6 +178,7 @@
       if (pour !== activityId || chargee) return
       if (activity === null) {
         erreur = "Cette activité n'a pas été trouvée."
+        introuvable = true
         chargee = true
         return
       }
@@ -288,6 +289,15 @@
           isoWeekdayOf,
         ),
   )
+  /*
+    L'activité demandée n'existe pas.
+
+    Le formulaire s'ouvrait quand même, actif, intitulé « Modifier l'activité » — et
+    l'enregistrer créait une activité vide sous un identifiant inventé. Une adresse
+    fautive ou une activité effacée entre-temps suffisait.
+  */
+  let introuvable = $state(false)
+
   let avertissementConge = $state(false)
 
   /*
@@ -357,6 +367,17 @@
     }
     if (!(duree > 0)) {
       erreur = 'Choisissez la durée de l’activité.'
+      return
+    }
+    /*
+      Un nombre de places vide s'enregistrait comme « pas de limite ».
+
+      L'activité était alors dite à places limitées côté soignant et annoncée « places non
+      limitées » au patient : deux écrans qui se contredisent, et une salle de huit
+      personnes ouverte à quarante.
+    */
+    if (placesLimitees && !(capacite > 0)) {
+      erreur = 'Écrivez un nombre de places, au moins 1 — ou décochez « Places limitées ».'
       return
     }
     /*
@@ -584,6 +605,16 @@
     </p>
   {/if}
 
+  {#if introuvable}
+    <!--
+      Pas de formulaire du tout : il s'ouvrait actif, intitulé « Modifier l'activité »,
+      et l'enregistrer créait une activité vide sous un identifiant inventé.
+    -->
+    <button type="button" class="btn btn-secondary" onclick={() => navigate('/soignant/activites')}>
+      <span aria-hidden="true">←</span> Retour aux activités
+    </button>
+  {:else}
+
   <!--
     Avant le formulaire : on vient de cliquer sur une séance précise, et neuf fois sur
     dix c'est pour elle qu'on est là — pas pour modifier l'activité de toutes les semaines.
@@ -755,11 +786,23 @@
         Il reste à choisir le jour, l'heure et le lieu.
       </p>
       {#if venuDUneIdee.wantsToLead}
+        <!--
+          Le conseil suivait le choix, et non l'inverse : « Désignez tout de même un
+          soignant » s'affichait alors que l'écran venait lui-même de cocher « Un patient,
+          seul ». Les deux se contredisaient sur la même page.
+        -->
         <p class="mt-2 text-lg text-ink">
           <span aria-hidden="true">🙋</span>
           {venuDUneIdee.patientFirstName ?? 'La personne'} s'est proposé{venuDUneIdee.patientFirstName ? '' : 'e'}
-          pour l'animer. Désignez tout de même un soignant responsable — c'est lui qui fera
-          l'appel — puis parlez-en avec {venuDUneIdee.patientFirstName ?? 'la personne'}.
+          pour l'animer.
+          {#if animeParUnPatient}
+            C'est ce qui est coché plus bas : l'activité n'aura pas d'appel. Si un soignant
+            doit en être responsable, choisissez-le à la place — et parlez-en avec
+            {venuDUneIdee.patientFirstName ?? 'la personne'}.
+          {:else}
+            Vous avez désigné un soignant : c'est lui qui fera l'appel. Parlez-en avec
+            {venuDUneIdee.patientFirstName ?? 'la personne'}.
+          {/if}
         </p>
       {/if}
     </div>
@@ -854,6 +897,12 @@
               onchange={() => {
                 animeParUnPatient = true
                 facilitatorId = ''
+                /*
+                  Le nom du soignant ne reste pas dans « Son prénom » : le champ demande
+                  le prénom d'un patient, et l'y trouver pré-rempli avec « Marc » invite à
+                  l'enregistrer tel quel.
+                */
+                facilitator = ''
               }}
               class="size-6"
             />
@@ -880,6 +929,13 @@
             s'affichera sur le programme, comme pour tout animateur.
           </p>
         {:else}
+          <!--
+            Une étiquette, comme les menus « Catégorie », « Lieu » et « Durée ». Sans elle,
+            un lecteur d'écran annonce un menu sans dire de quoi il parle.
+          -->
+          <label for="animateur" class="mt-3 mb-2 block text-lg font-semibold text-ink">
+            Qui anime cette activité
+          </label>
           <select
             id="animateur"
             class={champ}
@@ -1051,6 +1107,15 @@
           <div>
             <label for="capacite" class="mb-2 block text-lg font-semibold text-ink">Nombre de places</label>
             <input id="capacite" type="number" min="1" max="200" bind:value={capacite} class={champ} style="min-height: 56px;" />
+            <!--
+              Un champ « number » se vide d'un geste, et rendait `null` : l'activité était
+              dite à places limitées et annoncée « places non limitées » au patient.
+            -->
+            {#if placesLimitees && !(capacite > 0)}
+              <p class="mt-1 text-base font-semibold text-ink">
+                <span aria-hidden="true">⚠️</span> Écrivez un nombre de places, au moins 1.
+              </p>
+            {/if}
           </div>
           <label class="flex items-center gap-3 self-end text-lg text-ink" style="min-height: 56px;">
             <input type="checkbox" bind:checked={listeAttente} class="size-6" />
@@ -1173,4 +1238,5 @@
       </button>
     </div>
   </form>
+  {/if}
 </section>
