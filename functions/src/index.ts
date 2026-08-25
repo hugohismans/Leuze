@@ -21,7 +21,7 @@ import {
   rosterFor,
   unregisterTx,
 } from './lib/registration'
-import { patientConflictNotice, type BusyEntry } from './domain/conflicts'
+import { patientRegistrationDecision, type BusyEntry } from './domain/conflicts'
 import { alreadyAskedMessage } from './domain/appointments'
 import {
   effectivePermissions,
@@ -239,10 +239,15 @@ export const register = onCall(async (request: CallableRequest) => {
   const occurrenceId = requireString(request.data?.occurrenceId, 'occurrenceId')
 
   /*
-    Un rendez-vous déjà fixé interdit de s'inscrire par-dessus : quelqu'un a bloqué du
-    temps pour cette personne, et c'est le rendez-vous qui sauterait. Une autre activité
-    au même moment ne bloque pas — on arrive parfois en retard, et personne n'en fait un
-    drame — mais elle est dite.
+    On ne peut pas être à deux endroits à la fois, et c'est ici que cela se décide.
+
+    Décision de l'hôpital, prise après un essai en service : un patient s'était inscrit à
+    deux activités de quatorze heures. L'avertissement seul ne suffisait pas — il se lit,
+    ou ne se lit pas.
+
+    Un rendez-vous ferme la porte : un patient ne le décommande pas tout seul, et il n'y a
+    donc rien à lui proposer. Une activité, elle, s'échange — la personne dit ce qu'elle
+    quitte, et l'application le fait pour elle.
 
     Le contrôle vit ici et non dans la transaction : il lit d'autres documents que ceux
     qu'elle verrouille, et une transaction qui lit trop finit par échouer sous la
@@ -258,20 +263,80 @@ export const register = onCall(async (request: CallableRequest) => {
   ])
   if (!ouvert.ok) return { ok: false, reason: 'closed', message: ouvert.message }
 
-  const avis = patientConflictNotice(conflits)
-  if (avis !== null && avis.blocking) {
-    return { ok: false, reason: 'conflict', message: avis.message }
+  const decision = patientRegistrationDecision(conflits)
+  if (decision.kind === 'rendez-vous') {
+    return { ok: false, reason: 'conflict', message: decision.message }
   }
 
+  /** Les séances que la personne accepte de quitter pour prendre celle-ci. */
+  const aQuitter = decision.kind === 'activites' ? decision.aQuitter.map((e) => e.occurrenceId!) : []
+
+  if (decision.kind === 'activites') {
+    /*
+      L'échange se demande explicitement.
+
+      L'écran a posé la question et rendu la réponse ; sans elle, on refuse en disant ce
+      qu'il faudrait quitter. Un client qui n'aurait pas posé la question n'échange donc
+      rien à l'insu de la personne.
+    */
+    const demandees = Array.isArray(request.data?.replacing)
+      ? (request.data.replacing as unknown[]).filter((x): x is string => typeof x === 'string')
+      : []
+    const toutes =
+      aQuitter.every((id) => demandees.includes(id)) && demandees.every((id) => aQuitter.includes(id))
+    if (!toutes) {
+      return { ok: false, reason: 'conflict', message: decision.message, mustLeave: aQuitter }
+    }
+
+    /*
+      Encore faut-il que le service laisse les patients se retirer seuls.
+
+      Le réglage existe, et fermé il rend l'échange impossible : on ne va pas désinscrire
+      quelqu'un d'une activité dont il n'aurait pas le droit de sortir de lui-même.
+    */
+    const peutSortir = await patientMay('unregister', patient.uid)
+    if (!peutSortir.ok) {
+      return {
+        ok: false,
+        reason: 'conflict',
+        message: `${decision.message} Adressez-vous à un soignant : il peut changer votre inscription.`,
+      }
+    }
+  }
+
+  /*
+    On prend la nouvelle place d'abord, on quitte l'ancienne ensuite.
+
+    C'est le seul ordre qui ne fait rien perdre. Quitter d'abord, c'est risquer de trouver
+    la nouvelle activité complète et de se retrouver sans rien — pendant que quelqu'un
+    d'autre prend la place qu'on vient de libérer. Dans l'autre sens, le pire qui puisse
+    arriver est de rester inscrit aux deux un instant, ce qu'un second appui corrige.
+  */
   const resultat = await registerTx(db(), {
     occurrenceId,
     patientUid: patient.uid,
     by: 'patient',
     serviceId: patient.serviceId,
   })
-  // L'avertissement voyage avec le succès : l'inscription est prise, et la personne sait
-  // qu'elle a deux choses en même temps.
-  return avis !== null && resultat.ok ? { ...resultat, warning: avis.message } : resultat
+  if (!resultat.ok) return resultat
+
+  const quittees: string[] = []
+  for (const id of aQuitter) {
+    const sortie = await unregisterTx(db(), { occurrenceId: id, patientUid: patient.uid }).catch(
+      () => ({ ok: false as const }),
+    )
+    if (sortie.ok) quittees.push(id)
+  }
+  if (quittees.length === 0) return resultat
+  const noms = decision.kind === 'activites' ? decision.aQuitter.map((e) => e.label) : []
+  return {
+    ...resultat,
+    left: quittees,
+    swapMessage:
+      noms.length === 1
+        ? `Vous n’êtes plus inscrit à « ${noms[0]} ».`
+        : `Vous n’êtes plus inscrit à ${noms.length} autres activités.`,
+  }
 })
 
 export const unregister = onCall(async (request: CallableRequest) => {

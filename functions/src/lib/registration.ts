@@ -148,6 +148,8 @@ export async function busyOn(
       end: occurrence.end,
       label: occurrence.title,
       kind: 'activity',
+      // C'est par lui que l'échange se fait : quitter celle-ci pour prendre l'autre.
+      occurrenceId: document.id,
     })
   }
 
