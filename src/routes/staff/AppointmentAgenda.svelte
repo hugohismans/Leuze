@@ -4,6 +4,8 @@
     AGENDA_INLINE_DAYS,
     bookableSlots,
     noAvailabilityDeclared,
+    onLeaveThroughout,
+    onLeaveThroughoutMessage,
     noAvailabilityMessage,
     suggestionMessage,
   } from '../../lib/domain/agenda'
@@ -196,12 +198,23 @@
   */
   const aucunePlage = $derived(planning !== null && noAvailabilityDeclared(planning.week))
 
+  /*
+    Un congé qui couvre tout l'horizon n'est ni l'un ni l'autre.
+
+    « Aucun créneau ne convient aux deux dans les trois semaines qui viennent » laisse
+    chercher un trou, sous vingt et une lignes « 🌴 En congé » qui disaient déjà qu'il
+    n'y en aurait pas.
+  */
+  const congeTotal = $derived(planning !== null && onLeaveThroughout(planning.week))
+
   const message = $derived(
     planning === null
       ? null
-      : aucunePlage
-        ? noAvailabilityMessage(practitionerName)
-        : suggestionMessage(
+      : congeTotal
+        ? onLeaveThroughoutMessage(practitionerName)
+        : aucunePlage
+          ? noAvailabilityMessage(practitionerName)
+          : suggestionMessage(
           planning.suggestion,
           preference,
           planning.suggestion === null

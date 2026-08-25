@@ -42,7 +42,13 @@ import {
   type ActivityProposal,
 } from './domain/proposals'
 import { PLANNING_HORIZON_DAYS, agendaWeek, firstBookableDay, suggestSlot } from './domain/agenda'
-import { leaveRefusal, normalizeLeaves, withoutLeave, type Leave } from './domain/leave'
+import {
+  leaveConflictSummary,
+  leaveRefusal,
+  normalizeLeaves,
+  withoutLeave,
+  type Leave,
+} from './domain/leave'
 import { phrase } from './domain/francais'
 import { attendanceRefusal, canMarkAttendance } from './domain/attendance'
 import {
@@ -1823,25 +1829,6 @@ async function rendezVousPendant(
 const MOTIF_ABSENCE = "L'animateur est absent"
 
 /**
- * Ce que la période porte, en une phrase.
- *
- * Le nombre d'abord, la nature ensuite : « 3 séances et 1 rendez-vous » se lit d'un
- * coup d'œil, là où « des activités et des rendez-vous » oblige à aller compter plus bas.
- */
-function cePeriodePorte(rendezVous: number, seances: number): string {
-  const bouts: string[] = []
-  // « que vous animez » s'écrivait même quand un administrateur déclare le congé de
-  // quelqu'un d'autre, ce qui est le cas courant.
-  if (seances > 0) {
-    bouts.push(
-      seances === 1 ? 'une séance animée par cette personne' : `${seances} séances animées par cette personne`,
-    )
-  }
-  if (rendezVous > 0) bouts.push(rendezVous === 1 ? 'un rendez-vous fixé' : `${rendezVous} rendez-vous fixés`)
-  return `Ce congé tombe sur ${bouts.join(' et ')}.`
-}
-
-/**
  * Déclarer un congé.
  *
  * En deux temps quand des rendez-vous sont déjà fixés pendant ces jours-là : le premier
@@ -1938,7 +1925,17 @@ export const declareLeave = onCall(async (request: CallableRequest) => {
         start: rendezVous.start?.toISOString(),
         end: rendezVous.end?.toISOString(),
       })),
-      message: cePeriodePorte(enCours.length, animees.length),
+      /*
+        Qui anime : « vous » quand on déclare son propre congé, le nom sinon.
+
+        La phrase écrivait « animées par cette personne » à celui-là même qui les anime,
+        trois lignes au-dessus d'un titre qui, lui, sait écrire « Séances que vous
+        animez ».
+      */
+      message: leaveConflictSummary(enCours.length, animees.length, {
+        isSelf: requireStaff(request).practitionerId === practitionerId,
+        ...(typeof fiche.data()?.['name'] === 'string' ? { name: fiche.data()!['name'] as string } : {}),
+      }),
     }
   }
 

@@ -207,6 +207,20 @@
 
   $effect(() => {
     if (motifSeme || kinds.length === 0) return
+    /*
+      On attend le catalogue des intervenants avant de semer.
+
+      Les motifs arrivent en une lecture, les intervenants en quatre : le semis se
+      déclenchait donc le plus souvent alors que `monIntervenant` valait encore `null`,
+      retombait sur la première entrée du catalogue — « Le psychiatre » — et ne se
+      relançait plus jamais, puisqu'il se verrouille au premier passage. Le motif proposé
+      d'office n'était le sien qu'une fois sur deux.
+
+      Un compte qui n'est relié à aucun intervenant n'a rien à attendre : pour lui, la
+      première entrée est le bon défaut, et l'attendre laisserait le menu vide.
+    */
+    const lien = staffStore.identity.practitionerId
+    if (lien !== null && lien !== undefined && store.practitioners.length === 0) return
     motifSeme = true
     const mien = monIntervenant?.kindId ?? ''
     const propose = kinds.find((k) => k.id === mien) ?? kinds[0]!
@@ -336,6 +350,7 @@
       staffStore.leavesOf(intervenantDirect),
       dateDirecte,
       intervenantChoisi?.name ?? 'Cette personne',
+      intervenantDirect !== '' && intervenantDirect === staffStore.identity.practitionerId,
     ),
   )
 
@@ -378,6 +393,7 @@
       staffStore.leavesOf(intervenantFile),
       date,
       intervenantDeLaFile?.name ?? 'Cette personne',
+      intervenantFile !== '' && intervenantFile === staffStore.identity.practitionerId,
     ),
   )
 

@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { agendaWeek, firstBookableDay, freeSlotsOn, suggestSlot, suggestionMessage } from './agenda'
+import {
+  agendaWeek,
+  firstBookableDay,
+  freeSlotsOn,
+  noAvailabilityDeclared,
+  onLeaveThroughout,
+  onLeaveThroughoutMessage,
+  suggestSlot,
+  suggestionMessage,
+} from './agenda'
 import { instantOf } from './time'
 import type { AvailabilityWindow } from './types'
 import type { BusyEntry } from './conflicts'
@@ -312,5 +321,43 @@ describe('les dimanches de changement d’heure', () => {
     const libres = freeSlotsOn(plages, [pris], '2026-03-29', 60)
     expect(libres.some((t) => t.from <= '14:00' && '15:00' <= t.to)).toBe(false)
     expect(libres.some((t) => t.from <= '15:00' && '16:00' <= t.to)).toBe(true)
+  })
+})
+
+/**
+ * Trois façons de n'avoir aucun créneau, et elles ne se disent pas de la même manière.
+ *
+ * Un agenda plein, un agenda jamais rempli, et une personne en congé : l'écran les
+ * confondait. « Aucun créneau ne convient aux deux dans les trois semaines qui
+ * viennent » laisse chercher un trou, sous vingt et une lignes « 🌴 En congé » qui
+ * disaient déjà qu'il n'y en aurait pas.
+ */
+describe('un agenda vide, et pourquoi', () => {
+  const jour = (windows: unknown[], onLeave = false) => ({ windows, onLeave })
+
+  it('ne confond pas « rien déclaré » avec « en congé »', () => {
+    // Trois jours ouvrables sans plage, quatre en congé : rien n'a jamais été déclaré.
+    const melange = [jour([]), jour([]), jour([]), jour([], true)]
+    expect(noAvailabilityDeclared(melange)).toBe(true)
+    expect(onLeaveThroughout(melange)).toBe(false)
+  })
+
+  it('se tait sur « rien déclaré » quand tout l’horizon est en congé', () => {
+    const tout = [jour([], true), jour([], true), jour([], true)]
+    expect(noAvailabilityDeclared(tout)).toBe(false)
+    expect(onLeaveThroughout(tout)).toBe(true)
+  })
+
+  it('ne dit ni l’un ni l’autre quand des plages existent', () => {
+    const ouvert = [jour([{ from: '09:00', to: '12:00' }]), jour([], true)]
+    expect(noAvailabilityDeclared(ouvert)).toBe(false)
+    expect(onLeaveThroughout(ouvert)).toBe(false)
+  })
+
+  it('nomme la personne et dit quoi faire', () => {
+    const avis = onLeaveThroughoutMessage('Docteur Lemaire')
+    expect(avis).toContain('Docteur Lemaire')
+    expect(avis).toContain('en congé')
+    expect(avis).toContain('Vous pouvez tout de même fixer')
   })
 })

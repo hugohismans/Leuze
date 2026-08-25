@@ -172,6 +172,43 @@ export function leaveClashes(
 }
 
 /**
+ * Ce que la période porte, en une phrase.
+ *
+ * Le nombre d'abord, la nature ensuite : « 3 séances et 1 rendez-vous » se lit d'un coup
+ * d'œil, là où « des activités et des rendez-vous » oblige à aller compter plus bas.
+ *
+ * La phrase vivait en trois exemplaires — le serveur, la démonstration, et le titre de la
+ * liste juste en dessous — et ils ne disaient pas la même chose : le titre savait écrire
+ * « Séances que vous animez » sur son propre congé, la phrase du dessus restait à
+ * « animées par cette personne ». On lisait donc, l'un sous l'autre, deux façons de
+ * désigner le même être.
+ */
+export function leaveConflictSummary(
+  appointments: number,
+  sessions: number,
+  who: { name?: string; isSelf?: boolean } = {},
+): string {
+  // Le complément ne s'accorde pas : « que vous animez », « qu'anime Claire » et
+  // « animée(s) par cette personne » — seul le dernier suit le nombre.
+  const qui =
+    who.isSelf === true
+      ? { singulier: 'que vous animez', pluriel: 'que vous animez' }
+      : who.name !== undefined && who.name !== ''
+        ? { singulier: `qu’anime ${who.name}`, pluriel: `qu’anime ${who.name}` }
+        : { singulier: 'animée par cette personne', pluriel: 'animées par cette personne' }
+  const bouts: string[] = []
+  if (sessions > 0) {
+    bouts.push(
+      sessions === 1 ? `une séance ${qui.singulier}` : `${sessions} séances ${qui.pluriel}`,
+    )
+  }
+  if (appointments > 0) {
+    bouts.push(appointments === 1 ? 'un rendez-vous fixé' : `${appointments} rendez-vous fixés`)
+  }
+  return `Ce congé tombe sur ${bouts.join(' et ')}.`
+}
+
+/**
  * L'avertissement à écrire quand on pose un rendez-vous un jour de congé.
  *
  * L'application connaissait le congé — l'agenda croisé de la même page l'affichait — mais
@@ -187,7 +224,19 @@ export function leaveWarning(
   leaves: Leave[],
   localDate: LocalDate,
   practitionerName: string,
+  /*
+    Qui est en congé : « vous » quand c'est soi-même, un nom sinon.
+
+    L'avertissement disait « Claire est en congé ce jour-là […] prévenez la personne
+    concernée » à Claire, sur son propre agenda, juste sous celui des plages qui, lui,
+    avait appris à dire « vous ». Deux phrases voisines, deux façons de nommer le même
+    être — et une consigne qui demande de se prévenir soi-même.
+  */
+  isSelf = false,
 ): string | null {
   if (!isOnLeave(leaves, localDate)) return null
+  if (isSelf) {
+    return 'Vous êtes en congé ce jour-là. Vous pouvez tout de même fixer le rendez-vous.'
+  }
   return `${practitionerName} est en congé ce jour-là. Vous pouvez tout de même fixer le rendez-vous, mais prévenez la personne concernée.`
 }

@@ -375,6 +375,23 @@ export function noAvailabilityDeclared(week: { windows: unknown[]; onLeave?: boo
   return ouvrables.length > 0 && ouvrables.every((jour) => jour.windows.length === 0)
 }
 
+/**
+ * Vrai quand l'intervenant est en congé sur tout l'horizon.
+ *
+ * Troisième cas, longtemps confondu avec les deux autres : ce n'est ni un agenda plein
+ * ni un agenda jamais rempli. « Aucun créneau ne convient aux deux dans les trois
+ * semaines qui viennent » laisse chercher un trou ; « il est en congé » dit tout de
+ * suite qu'il n'y en aura pas, et pourquoi.
+ */
+export function onLeaveThroughout(week: { onLeave?: boolean }[]): boolean {
+  return week.length > 0 && week.every((jour) => jour.onLeave === true)
+}
+
+/** Ce qu'on dit alors, en nommant la personne. */
+export function onLeaveThroughoutMessage(practitionerName: string): string {
+  return `${practitionerName} est en congé sur les trois semaines qui viennent : l'application ne peut rien proposer d'ici là. Vous pouvez tout de même fixer le rendez-vous à l'heure de votre choix, ou attendre son retour.`
+}
+
 /** Ce qu'il faut faire quand personne n'a déclaré de plage — et où le faire. */
 export function noAvailabilityMessage(practitionerName: string): string {
   return `${practitionerName} n'a déclaré aucune plage de disponibilité : l'application ne peut donc rien proposer. Les plages se déclarent dans « Le personnel », sur sa fiche. Vous pouvez tout de même fixer le rendez-vous à l'heure de votre choix.`

@@ -4,7 +4,13 @@
  */
 import { addLocalDays, addMinutes, instantOf, todayLocalDate } from '../../domain/time'
 import { PLANNING_HORIZON_DAYS, agendaWeek, firstBookableDay, suggestSlot } from '../../domain/agenda'
-import { leaveRefusal, normalizeLeaves, withoutLeave, type Leave } from '../../domain/leave'
+import {
+  leaveConflictSummary,
+  leaveRefusal,
+  normalizeLeaves,
+  withoutLeave,
+  type Leave,
+} from '../../domain/leave'
 import { blockingConflicts, type BusyEntry } from '../../domain/conflicts'
 import { hasOverrides, type PatientActionOverrides, type PatientPermissions } from '../../domain/permissions'
 import type { ActivityProposal } from '../../domain/proposals'
@@ -860,19 +866,6 @@ export function createMockStaffApp(): StaffApp {
           .sort((a, b) => a.localDate.localeCompare(b.localDate))
 
         if ((enCours.length > 0 || animees.length > 0) && options.force !== true) {
-          const bouts: string[] = []
-          if (animees.length > 0) {
-            bouts.push(
-              animees.length === 1
-                ? 'une séance animée par cette personne'
-                : `${animees.length} séances animées par cette personne`,
-            )
-          }
-          if (enCours.length > 0) {
-            bouts.push(
-              enCours.length === 1 ? 'un rendez-vous fixé' : `${enCours.length} rendez-vous fixés`,
-            )
-          }
           return {
             ok: false,
             needsConfirmation: true,
@@ -885,7 +878,14 @@ export function createMockStaffApp(): StaffApp {
               ...(a.start === undefined ? {} : { start: a.start.toISOString() }),
               ...(a.end === undefined ? {} : { end: a.end.toISOString() }),
             })),
-            message: `Ce congé tombe sur ${bouts.join(' et ')}.`,
+            // La même phrase que le serveur, et pour la même raison : « animées par
+            // cette personne » s'écrivait à celle-là même qui les anime.
+            message: leaveConflictSummary(enCours.length, animees.length, {
+              isSelf: identity.practitionerId === practitionerId,
+              ...(mockCatalog.practitioners().find((p) => p.id === practitionerId)?.name === undefined
+                ? {}
+                : { name: mockCatalog.practitioners().find((p) => p.id === practitionerId)!.name }),
+            }),
           }
         }
 

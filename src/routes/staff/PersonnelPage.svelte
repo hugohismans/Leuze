@@ -565,7 +565,13 @@
   {#snippet plages(personne: Practitioner)}
     {@const resume = availabilityLabel(personne.availability ?? [])}
     <div class="mt-3 rounded-xl border-2 border-line p-4">
-      <h4 class="text-lg font-semibold text-ink">Quand cette personne reçoit</h4>
+      <!-- « Vous » sur sa propre fiche : le bouton du bas le fait déjà, et l'écran ne
+           doit pas désigner le même être de deux façons. -->
+      <h4 class="text-lg font-semibold text-ink">
+        {staffStore.identity.practitionerId === personne.id
+          ? 'Quand vous recevez'
+          : 'Quand cette personne reçoit'}
+      </h4>
       <p class="mt-1 text-base text-ink-soft">
         {resume === ''
           ? 'Rien n’est indiqué. Personne ne sait donc quand proposer un rendez-vous.'
