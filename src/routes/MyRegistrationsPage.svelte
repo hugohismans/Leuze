@@ -138,6 +138,26 @@
   {/if}
 
   <!--
+    Revoir le petit tour.
+
+    Il s'ouvre tout seul à la première connexion, et une fois refermé il ne revient plus.
+    Quelqu'un qui l'a fermé par mégarde — ce qui arrivera, c'est le premier geste d'une
+    personne qui découvre l'écran — se retrouverait sans aucun moyen de le rappeler. Le
+    bouton est ici, sur l'écran où l'on gère ses affaires, et non sur le calendrier :
+    c'est un geste occasionnel, il n'a rien à faire sur le chemin quotidien.
+  -->
+  {#if store.signedIn}
+    <button
+      type="button"
+      class="btn btn-quiet mt-4 w-full"
+      onclick={() => (store.tutorielOuvert = true)}
+    >
+      <span aria-hidden="true">💡</span>
+      <span>Revoir le petit tour de l'application</span>
+    </button>
+  {/if}
+
+  <!--
     Fermer son accès : en bas, après ses inscriptions, jamais à côté d'un bouton
     d'inscription — un geste de sortie ne se met pas sur le chemin d'un geste courant.
   -->

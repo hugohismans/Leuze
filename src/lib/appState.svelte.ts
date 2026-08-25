@@ -81,6 +81,24 @@ class AppStore {
   /** Service du patient connecté : décide de ce que le calendrier contient. */
   serviceId = $state<string | null>(null)
   firstName = $state<string | null>(null)
+  /**
+   * Le compte de la personne connectée.
+   *
+   * Il ne sert qu'à une chose côté patient : savoir à qui l'on a déjà montré le petit
+   * tour sur cet appareil. Une tablette d'unité sert à tout le monde, et le prénom ne
+   * suffit pas à distinguer deux personnes.
+   */
+  patientUid = $state<string | null>(null)
+
+  /**
+   * Le petit tour est-il ouvert ?
+   *
+   * Il vit ici, et non dans un écran, parce que deux endroits l'ouvrent : la première
+   * connexion, depuis la racine de l'application, et le bouton « Revoir le petit tour »
+   * de « Mes inscriptions ». Le passer de l'un à l'autre par des propriétés obligerait à
+   * le faire traverser trois composants qui n'ont rien à en savoir.
+   */
+  tutorielOuvert = $state(false)
   /** Vrai tant que le patient n'a pas saisi son code (hors démonstration). */
   signedIn = $state<boolean>(false)
   occurrences = $state<Occurrence[]>([])
@@ -167,6 +185,7 @@ class AppStore {
     const session = this.repository.session.current()
     this.serviceId = session.serviceId
     this.firstName = session.firstName
+    this.patientUid = session.patientUid
     this.signedIn = session.patientUid !== null
   }
 
