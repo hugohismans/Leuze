@@ -124,6 +124,18 @@
                   <span aria-hidden="true">✓</span>
                   <span>Vous êtes inscrit</span>
                 </span>
+              {:else if registration.status === 'spectator'}
+                <!--
+                  Ni inscrit, ni en attente : la personne vient regarder. L'écrire évite
+                  qu'elle se croie engagée à participer — et qu'elle renonce à venir.
+                -->
+                <span
+                  class="badge"
+                  style="background: var(--color-brand-100); color: var(--color-brand-900);"
+                >
+                  <span aria-hidden="true">👀</span>
+                  <span>Vous venez regarder</span>
+                </span>
               {:else}
                 <span class="badge" style="background: var(--color-warn-bg); color: var(--color-warn-fg);">
                   <span aria-hidden="true">⏳</span>

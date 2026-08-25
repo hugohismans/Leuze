@@ -167,6 +167,16 @@
                           <span aria-hidden="true">⏳</span>
                           Vous êtes sur la liste d'attente. Un soignant vous préviendra.
                         </p>
+                      {:else if entree.watching}
+                        <!--
+                          La ligne est la même, mais elle ne veut pas dire la même chose :
+                          personne n'attend de cette personne qu'elle participe. Le dire
+                          ici évite qu'elle renonce à venir en se croyant engagée.
+                        -->
+                        <p class="text-lg text-ink">
+                          <span aria-hidden="true">👀</span>
+                          Vous venez regarder.
+                        </p>
                       {/if}
                     {:else}
                       <p class="text-lg font-bold text-ink">

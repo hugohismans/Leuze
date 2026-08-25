@@ -154,6 +154,12 @@
                 <p class="text-base text-ink-soft">
                   {store.serviceOf(ligne.serviceId ?? '')?.name ?? ''}
                   {#if ligne.status === 'waitlist'}· en liste d'attente{/if}
+                  <!--
+                    Le spectateur est nommé, et il l'est en toutes lettres : il est là, il
+                    ne participe pas, et il ne compte dans aucune place. L'animateur a
+                    besoin de le savoir avant d'ouvrir la séance, pas en la voyant.
+                  -->
+                  {#if ligne.status === 'spectator'}· vient regarder, sans participer{/if}
                 </p>
               </div>
               {#if staffStore.canMarkAttendance}

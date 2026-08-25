@@ -298,6 +298,9 @@
   }
 
   const enAttente = $derived(staffStore.roster.filter((l) => l.status === 'waitlist'))
+  // Ceux qui viennent seulement regarder : cochés comme les autres, mais dits comme tels.
+  // Sans cela, un soignant en réunion croit la personne inscrite et compte un de trop.
+  const spectateurs = $derived(staffStore.roster.filter((l) => l.status === 'spectator'))
 </script>
 
 <section class="mx-auto max-w-[1400px] px-4 py-6">
@@ -492,6 +495,7 @@
               {#each eligibles as patient (patient.uid)}
                 {@const inscrit = staffStore.isRegistered(patient.uid)}
                 {@const attente = enAttente.some((l) => l.patientUid === patient.uid)}
+                {@const regarde = spectateurs.some((l) => l.patientUid === patient.uid)}
                 <li>
                   <button
                     type="button"
@@ -510,6 +514,7 @@
                     <span class="block text-base text-ink-soft">
                       {store.serviceOf(patient.serviceId)?.name ?? patient.serviceId}
                       {#if attente}· en liste d'attente{/if}
+                      {#if regarde}· vient regarder{/if}
                     </span>
                   </button>
 

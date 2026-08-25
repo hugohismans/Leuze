@@ -572,6 +572,18 @@
       ? []
       : staffStore.roster.filter((ligne) => ligne.status === 'waitlist'),
   )
+  /**
+   * Ceux qui viennent seulement regarder.
+   *
+   * Une troisième liste, et non une mention à côté d'un prénom : l'animateur compte ses
+   * participants d'un coup d'œil, et les mêler à la liste lui ferait compter faux. Ils
+   * ne prennent aucune place — mais ils seront dans la salle, et il doit le savoir.
+   */
+  const spectateurs = $derived(
+    seance === null || inscritsCharges !== seance.id
+      ? []
+      : staffStore.roster.filter((ligne) => ligne.status === 'spectator'),
+  )
 
   /**
    * Supprimer la séance, à ne pas confondre avec l'annuler.
@@ -592,7 +604,7 @@
     seance === null
       ? []
       : deletionConsequences({
-          registrations: inscrits.length + enAttente.length,
+          registrations: inscrits.length + enAttente.length + spectateurs.length,
           sessions: 0,
           pastSessions: 0,
           attendances: staffStore.roster.filter((l) => l.attendance !== undefined).length,
@@ -789,6 +801,21 @@
           </h3>
           <ul class="mt-1">
             {#each enAttente as ligne (ligne.patientUid)}{@render ligneInscrite(ligne, true)}{/each}
+          </ul>
+        {/if}
+
+        {#if spectateurs.length > 0}
+          <h3 class="mt-4 text-xl font-bold text-ink">
+            {spectateurs.length === 1
+              ? 'Une personne vient regarder'
+              : `${spectateurs.length} personnes viennent regarder`}
+          </h3>
+          <p class="text-base text-ink-soft">
+            Elles ne participent pas et ne prennent aucune place. Prévoyez seulement de
+            quoi s'asseoir.
+          </p>
+          <ul class="mt-1">
+            {#each spectateurs as ligne (ligne.patientUid)}{@render ligneInscrite(ligne, false)}{/each}
           </ul>
         {/if}
 
