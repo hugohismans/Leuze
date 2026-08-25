@@ -114,6 +114,7 @@ describe('ce que porte une feuille, en toutes lettres', () => {
     categoryId: 'creatif',
     cancelled,
     waiting: false,
+    watching: false,
   })
   const rendezVous = (): WeekEntry => ({
     kind: 'appointment',
@@ -221,6 +222,7 @@ describe('deux choses en même temps dans la semaine', () => {
     categoryId: 'sport',
     cancelled: annulee,
     waiting: false,
+    watching: false,
   })
   const rendezVous = (debut: string, fin: string, withWhom?: string): WeekEntry => ({
     kind: 'appointment',

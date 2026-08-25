@@ -341,6 +341,8 @@ export function busyOn(
       kind: 'activity',
       // C'est par lui que l'échange se fait : quitter celle-ci pour prendre l'autre.
       occurrenceId: occurrence.id,
+      // Venir regarder occupe autant qu'une inscription — mais ne se dit pas pareil.
+      ...(inscription.status === 'spectator' ? { spectator: true } : {}),
     })
   }
 

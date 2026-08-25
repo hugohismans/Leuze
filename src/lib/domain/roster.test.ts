@@ -92,11 +92,11 @@ describe('le refus arrivé en retard', () => {
 describe('le nombre affiché', () => {
   it('se compte sur la liste, jamais ailleurs', () => {
     const liste = [ligne('a'), ligne('b'), ligne('c', 'waitlist')]
-    expect(countsOf(liste)).toEqual({ confirmedCount: 2, waitlistCount: 1 })
+    expect(countsOf(liste)).toEqual({ confirmedCount: 2, waitlistCount: 1, spectatorCount: 0 })
   })
 
   it('vaut zéro pour une liste vide', () => {
-    expect(countsOf([])).toEqual({ confirmedCount: 0, waitlistCount: 0 })
+    expect(countsOf([])).toEqual({ confirmedCount: 0, waitlistCount: 0, spectatorCount: 0 })
   })
 
   it('suit le clic qu’on vient de faire', () => {

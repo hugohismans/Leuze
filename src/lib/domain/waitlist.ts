@@ -1,5 +1,5 @@
-import { registrationBlock, type RegistrationBlock } from './capacity'
-import type { Occurrence, Registration } from './types'
+import { registrationBlock, type RegistrationBlock, type RegistrationKind } from './capacity'
+import type { Occurrence, Registration, RegistrationStatus } from './types'
 
 /**
  * État complet d'une occurrence et de ses inscriptions.
@@ -27,7 +27,15 @@ const byQueueOrder = (a: Registration, b: Registration) => a.queuedAt.getTime() 
 export function recount(board: Board): Board {
   const confirmedCount = board.registrations.filter((r) => r.status === 'confirmed').length
   const waitlistCount = board.registrations.filter((r) => r.status === 'waitlist').length
-  return { ...board, occurrence: { ...board.occurrence, confirmedCount, waitlistCount } }
+  // Les spectateurs sont comptés à part, et surtout : jamais dans `confirmedCount`.
+  // C'est ce compteur-là qui décide s'il reste des places.
+  const spectatorCount = board.registrations.filter((r) => r.status === 'spectator').length
+  return { ...board, occurrence: { ...board.occurrence, confirmedCount, waitlistCount, spectatorCount } }
+}
+
+/** Participer, ou regarder. Le statut le dit ; ceci évite de l'écrire dix fois. */
+export function kindOf(registration: Registration): RegistrationKind {
+  return registration.status === 'spectator' ? 'spectator' : 'participant'
 }
 
 export function registrationOf(board: Board, patientUid: string): Registration | null {
@@ -42,8 +50,53 @@ export function waitlistPosition(board: Board, patientUid: string): number | nul
 }
 
 export type RegisterOutcome =
-  | { ok: true; status: 'confirmed' | 'waitlist'; position: number | null; board: Board }
+  | {
+      ok: true
+      status: 'confirmed' | 'waitlist' | 'spectator'
+      position: number | null
+      board: Board
+      /**
+       * L'inscription écrite : celle qu'on vient de créer, ou celle qui a changé de nature.
+       *
+       * Elle est rendue pour la même raison que `unregister` rend celle qu'il annule :
+       * celui qui écrit en base ne doit pas redeviner l'identifiant du document. Quelqu'un
+       * qui passe de participant à spectateur ne crée rien — il change une ligne qui
+       * existe, et en créer une seconde en laisserait deux actives à son nom.
+       */
+      registration: Registration
+      /** Vrai quand rien n'a été créé : c'est un changement, pas une inscription. */
+      changed: boolean
+      /**
+       * Le premier de la file, promu par la place que ce changement vient de libérer.
+       *
+       * Passer de participant à spectateur rend une place. Elle doit revenir à celui qui
+       * l'attendait, dans le même geste — sinon elle reste vide jusqu'à ce qu'un soignant
+       * s'en aperçoive, et la liste d'attente cesse d'être une file pour devenir une
+       * loterie.
+       */
+      promoted: Registration | null
+    }
   | { ok: false; reason: RegistrationBlock | 'already-registered' }
+
+/**
+ * La place qui vient de se libérer revient au premier de la file.
+ *
+ * Partagé entre la désinscription et le passage en spectateur : les deux rendent une
+ * place, et les deux doivent la donner de la même façon. Deux copies auraient fini par
+ * diverger — c'est déjà arrivé ailleurs dans ce fichier.
+ */
+function promoteFirst(
+  registrations: Registration[],
+  capacity: number | null,
+): { registrations: Registration[]; promoted: Registration | null } {
+  const confirmed = registrations.filter((r) => r.status === 'confirmed').length
+  const first = registrations.filter((r) => r.status === 'waitlist').sort(byQueueOrder)[0]
+  if (first === undefined || (capacity !== null && confirmed >= capacity)) {
+    return { registrations, promoted: null }
+  }
+  const promoted: Registration = { ...first, status: 'confirmed' }
+  return { registrations: registrations.map((r) => (r.id === first.id ? promoted : r)), promoted }
+}
 
 /**
  * Cette inscription ferait-elle dépasser le nombre de places ?
@@ -85,16 +138,37 @@ export function register(
      * reste la limite. C'est vérifié ici, pas seulement à l'écran.
      */
     overCapacity?: boolean
+    /**
+     * Participer, ou seulement regarder.
+     *
+     * Un spectateur ne prend aucune place : il n'entre pas dans `confirmedCount`, il ne
+     * va jamais en liste d'attente, et une activité complète lui reste ouverte. Voir
+     * `RegistrationStatus` dans les types.
+     */
+    as?: RegistrationKind
   },
 ): RegisterOutcome {
-  if (registrationOf(board, patientUid) !== null) return { ok: false, reason: 'already-registered' }
+  const genre: RegistrationKind = options.as ?? 'participant'
+
+  /*
+    Changer d'avis n'est pas s'inscrire deux fois.
+
+    Quelqu'un qui est inscrit et qui veut finalement seulement regarder — ou l'inverse —
+    ne crée pas une seconde ligne : il change celle qu'il a. Deux lignes actives au nom de
+    la même personne feraient dire n'importe quoi aux compteurs, et le refus sec
+    (« Vous êtes déjà inscrit ») obligerait à se désinscrire d'abord, c'est-à-dire à
+    lâcher sa place avant de savoir s'il y en aura une autre.
+  */
+  const existante = registrationOf(board, patientUid)
+  if (existante !== null && kindOf(existante) === genre) return { ok: false, reason: 'already-registered' }
 
   // « Sans inscription » n'empêche plus de s'inscrire : ne restent que les refus réels —
   // séance annulée, déjà commencée, ou complète sans liste d'attente.
   // Le dépassement n'appartient qu'au personnel : demandé par un patient, il est ignoré.
   const depassementAssume = options.overCapacity === true && options.by === 'staff'
 
-  const block = registrationBlock(board.occurrence, options.now)
+  // Le genre décide de ce qui bloque : une séance complète n'arrête pas un spectateur.
+  const block = registrationBlock(board.occurrence, options.now, genre)
   if (block !== null) {
     // L'appel passe outre « déjà commencée » — il se fait pendant l'activité. Le
     // dépassement de la réunion, non : on n'inscrit pas quelqu'un à une séance passée.
@@ -109,9 +183,14 @@ export function register(
   // Une personne présente est confirmée, même au-delà du nombre de places : la feuille
   // doit dire qui était là, pas ce qui était prévu.
   const goesToWaitlist =
-    options.walkIn !== true && !depassementAssume && capacity !== null && confirmed >= capacity
+    genre === 'participant' &&
+    options.walkIn !== true &&
+    !depassementAssume &&
+    capacity !== null &&
+    confirmed >= capacity
 
-  const status = goesToWaitlist ? ('waitlist' as const) : ('confirmed' as const)
+  const status: RegistrationStatus =
+    genre === 'spectator' ? 'spectator' : goesToWaitlist ? 'waitlist' : 'confirmed'
 
   /*
     L'heure de mise en file avance toujours, même quand l'horloge n'avance pas.
@@ -129,6 +208,42 @@ export function register(
   const dernier = board.registrations.reduce((max, r) => Math.max(max, r.queuedAt.getTime()), 0)
   const queuedAt = new Date(Math.max(options.now.getTime(), dernier + 1))
 
+  if (existante !== null) {
+    /*
+      On change la ligne existante, et l'heure d'arrivée ne bouge que pour entrer en file.
+
+      Quelqu'un qui regardait et qui veut participer garde l'heure à laquelle il s'était
+      annoncé : sur la feuille d'appel, il est là depuis le début. Entrer en liste
+      d'attente, en revanche, c'est se mettre dans une file — et l'on s'y met à la fin,
+      pas devant ceux qui attendaient déjà.
+    */
+    const changee: Registration = {
+      ...existante,
+      status,
+      ...(status === 'waitlist' ? { queuedAt } : {}),
+    }
+    let registrations = board.registrations.map((r) => (r.id === existante.id ? changee : r))
+
+    // Une place rendue ne reste pas vide : voir `promoteFirst`.
+    let promoted: Registration | null = null
+    if (existante.status === 'confirmed' && status !== 'confirmed') {
+      const apres = promoteFirst(registrations, capacity)
+      registrations = apres.registrations
+      promoted = apres.promoted
+    }
+
+    const suivant = recount({ ...board, registrations })
+    return {
+      ok: true,
+      status,
+      position: status === 'waitlist' ? waitlistPosition(suivant, patientUid) : null,
+      board: suivant,
+      registration: changee,
+      changed: true,
+      promoted,
+    }
+  }
+
   const registration: Registration = {
     id: options.registrationId,
     occurrenceId: board.occurrence.id,
@@ -145,6 +260,9 @@ export function register(
     status,
     position: goesToWaitlist ? waitlistPosition(next, patientUid) : null,
     board: next,
+    registration,
+    changed: false,
+    promoted: null,
   }
 }
 
@@ -162,6 +280,15 @@ export type UnregisterOutcome =
        * nouvelle restait active. Ici, l'identifiant ne se devine pas : il se transmet.
        */
       cancelled: Registration
+      /**
+       * Ce que la personne était avant ce geste — inscrite, en attente, ou simplement
+       * venue regarder.
+       *
+       * `cancelled` ne peut pas le dire : il porte déjà le statut d'après, qui vaut
+       * « annulé » pour tout le monde. Sans cette valeur, on répondait « Vous n'êtes plus
+       * inscrit » à quelqu'un qui ne s'était pas inscrit.
+       */
+      was: Registration['status']
       promoted: Registration | null
     }
   | { ok: false; reason: 'not-registered' }
@@ -177,18 +304,16 @@ export function unregister(board: Board, patientUid: string): UnregisterOutcome 
   const cancelled: Registration = { ...current, status: 'cancelled' }
   let registrations = board.registrations.map((r) => (r.id === current.id ? cancelled : r))
 
+  // Seul un départ de place confirmée libère quelque chose. Quitter la liste d'attente ne
+  // libère rien, et un spectateur ne rend rien : il n'avait pris la place de personne.
   let promoted: Registration | null = null
   if (current.status === 'confirmed') {
-    const capacity = board.occurrence.capacity
-    const confirmed = registrations.filter((r) => r.status === 'confirmed').length
-    const first = registrations.filter((r) => r.status === 'waitlist').sort(byQueueOrder)[0]
-    if (first && (capacity === null || confirmed < capacity)) {
-      promoted = { ...first, status: 'confirmed' }
-      registrations = registrations.map((r) => (r.id === first.id ? promoted! : r))
-    }
+    const apres = promoteFirst(registrations, board.occurrence.capacity)
+    registrations = apres.registrations
+    promoted = apres.promoted
   }
 
-  return { ok: true, board: recount({ ...board, registrations }), cancelled, promoted }
+  return { ok: true, board: recount({ ...board, registrations }), cancelled, was: current.status, promoted }
 }
 
 /**
@@ -213,10 +338,22 @@ export function promote(
   }
 }
 
-/** Liste destinée au soignant : confirmés d'abord, puis la file d'attente dans l'ordre. */
-export function rosterOf(board: Board): { confirmed: Registration[]; waitlist: Registration[] } {
+/**
+ * Liste destinée au soignant : confirmés d'abord, puis la file d'attente dans l'ordre,
+ * puis ceux qui viennent seulement regarder.
+ *
+ * Les spectateurs forment un troisième groupe, et non une mention à côté d'un prénom :
+ * l'animateur compte ses participants d'un coup d'œil, et les mêler à la liste lui ferait
+ * compter faux. Ils sont là, ils sont nommés — mais ailleurs.
+ */
+export function rosterOf(board: Board): {
+  confirmed: Registration[]
+  waitlist: Registration[]
+  spectators: Registration[]
+} {
   return {
     confirmed: board.registrations.filter((r) => r.status === 'confirmed').sort(byQueueOrder),
     waitlist: board.registrations.filter((r) => r.status === 'waitlist').sort(byQueueOrder),
+    spectators: board.registrations.filter((r) => r.status === 'spectator').sort(byQueueOrder),
   }
 }

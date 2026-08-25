@@ -26,6 +26,15 @@ export type WeekEntry =
       cancellationReason?: string
       /** Vrai quand la personne est sur la liste d'attente et non encore inscrite. */
       waiting: boolean
+      /**
+       * Vrai quand la personne vient seulement regarder.
+       *
+       * La ligne est la même — c'est bien à cette heure-là qu'elle sera là — mais elle ne
+       * doit pas se lire comme une inscription : on n'attend pas d'elle qu'elle
+       * participe, et lui laisser croire le contraire est la meilleure façon de la faire
+       * renoncer à venir.
+       */
+      watching: boolean
     }
   | {
       kind: 'appointment'
@@ -64,7 +73,7 @@ export type WeekDay = {
 
 type Registration = {
   occurrence: Occurrence
-  status: 'confirmed' | 'waitlist'
+  status: 'confirmed' | 'waitlist' | 'spectator'
 }
 
 /**
@@ -94,6 +103,7 @@ export function myWeek(
         ? { cancellationReason: occurrence.cancellationReason }
         : {}),
       waiting: status === 'waitlist',
+      watching: status === 'spectator',
     })
   }
 

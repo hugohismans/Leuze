@@ -14,6 +14,7 @@ const activite = (heure: string, fin: string): WeekEntry => ({
   categoryId: 'relaxation',
   cancelled: false,
   waiting: false,
+  watching: false,
 })
 
 const jour = (entries: WeekEntry[]): WeekDay => ({ date: '2026-09-01', entries })
@@ -89,6 +90,7 @@ describe('une activité qui se termine à minuit', () => {
             categoryId: 'detente',
             cancelled: false,
             waiting: false,
+            watching: false,
           },
         ],
       },

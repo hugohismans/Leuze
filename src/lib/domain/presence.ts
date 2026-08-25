@@ -6,7 +6,9 @@
  * ouvrir le planning pour savoir s'il faut attendre cinq minutes ou une heure.
  *
  * Une inscription en liste d'attente ne compte pas : la personne n'y participe pas.
- * Une séance annulée non plus.
+ * Une séance annulée non plus. Quelqu'un qui vient seulement regarder, en revanche, est
+ * bel et bien là — le chercher ailleurs serait perdre son temps, et lui proposer un
+ * rendez-vous à cette heure-là serait le faire choisir entre les deux.
  */
 import { addLocalDays, formatDayLabel, formatTime } from './time'
 import type { LocalDate, Occurrence } from './types'
@@ -23,11 +25,11 @@ export type Presence =
   */
   | { kind: 'free'; next: { title: string; start: Date; localDate: LocalDate } | null }
 
-export type PresenceLine = { occurrence: Occurrence; status: 'confirmed' | 'waitlist' }
+export type PresenceLine = { occurrence: Occurrence; status: 'confirmed' | 'waitlist' | 'spectator' }
 
 export function presenceOf(lines: PresenceLine[], now: Date): Presence {
   const retenues = lines
-    .filter((ligne) => ligne.status === 'confirmed' && ligne.occurrence.status !== 'cancelled')
+    .filter((ligne) => ligne.status !== 'waitlist' && ligne.occurrence.status !== 'cancelled')
     .map((ligne) => ligne.occurrence)
     .sort((a, b) => a.start.getTime() - b.start.getTime())
 

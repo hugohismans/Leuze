@@ -4,7 +4,7 @@
  */
 import { cancelledToShow, upcomingScheduled } from './domain/appointments'
 import { requestablePractitioners as requestableFor } from './domain/practitioners'
-import { capacityOf, likelyStatus } from './domain/capacity'
+import { capacityOf, likelyStatus, type RegistrationKind } from './domain/capacity'
 import {
   OPEN_TO_PATIENTS,
   isAllowed,
@@ -278,15 +278,30 @@ class AppStore {
    */
   async registerTo(
     occurrenceId: string,
-    options: { replacing?: string[] } = {},
+    options: { replacing?: string[]; as?: RegistrationKind } = {},
   ): Promise<RegisterResult> {
     const service = (await this.repo()).registrations
     const occurrence = this.occurrences.find((o) => o.id === occurrenceId) ?? null
-    const dejaInscrit = this.mine.some((r) => r.occurrence.id === occurrenceId)
+    const avant = this.mine.find((r) => r.occurrence.id === occurrenceId) ?? null
 
-    if (occurrence !== null && !dejaInscrit) {
+    /*
+      Ce que l'écran affiche pendant que la réponse voyage.
+
+      Venir regarder n'a pas d'état intermédiaire : c'est toujours accepté quand la séance
+      a lieu. Participer, en revanche, peut finir en liste d'attente — `likelyStatus` fait
+      la même prévision que le bouton, pour que les deux ne se contredisent jamais.
+    */
+    if (occurrence !== null) {
+      const attendu =
+        options.as === 'spectator' ? ('spectator' as const) : likelyStatus(occurrence)
       this.#versionMine += 1
-      this.mine = [...this.mine, { occurrence, status: likelyStatus(occurrence), position: null }]
+      this.mine =
+        avant === null
+          ? [...this.mine, { occurrence, status: attendu, position: null }]
+          : // Changer d'avis ne crée pas une seconde ligne : celle-ci change de nature.
+            this.mine.map((r) =>
+              r.occurrence.id === occurrenceId ? { ...r, status: attendu, position: null } : r,
+            )
     }
 
     this.#ecrituresInscription += 1
@@ -299,8 +314,16 @@ class AppStore {
 
     this.#versionMine += 1
     if (!resultat.ok) {
-      // Refusé : on défait cette inscription-là, et rien d'autre.
-      if (!dejaInscrit) this.mine = this.mine.filter((r) => r.occurrence.id !== occurrenceId)
+      /*
+        Refusé : on défait ce geste-là, et rien d'autre.
+
+        Quelqu'un qui essayait de changer d'avis reprend l'état qu'il avait — refuser un
+        changement ne doit jamais lui coûter la place qu'il tenait déjà.
+      */
+      this.mine =
+        avant === null
+          ? this.mine.filter((r) => r.occurrence.id !== occurrenceId)
+          : this.mine.map((r) => (r.occurrence.id === occurrenceId ? avant : r))
     } else if (occurrence !== null) {
       // Le serveur a tranché : on aligne le statut et la position sur ce qu'il dit.
       this.mine = this.mine.map((r) =>

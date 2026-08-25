@@ -1,6 +1,10 @@
 import type { Firestore } from 'firebase-admin/firestore'
 import { isVisibleToService } from '../domain/audience'
-import { registrationBlockMessage } from '../domain/capacity'
+import {
+  registrationBlockMessage,
+  unregisteredMessage,
+  type RegistrationKind,
+} from '../domain/capacity'
 import type { Occurrence, Registration } from '../domain/types'
 import {
   register as domainRegister,
@@ -25,7 +29,7 @@ import { COLLECTIONS, docToOccurrence, docToRegistration, registrationToDoc } fr
 export type RegisterOutput =
   | {
       ok: true
-      status: 'confirmed' | 'waitlist'
+      status: 'confirmed' | 'waitlist' | 'spectator'
       position: number | null
       /**
        * L'inscription créée. Rendue pour que l'appel puisse noter la présence sans
@@ -63,6 +67,8 @@ function writeCounters(
   transaction.update(database.collection(COLLECTIONS.occurrences).doc(occurrence.id), {
     confirmedCount: occurrence.confirmedCount,
     waitlistCount: occurrence.waitlistCount,
+    // Compté à part, et jamais mêlé aux inscrits : un spectateur ne prend pas de place.
+    spectatorCount: occurrence.spectatorCount ?? 0,
   })
 }
 
@@ -136,6 +142,16 @@ export async function busyOn(
       : Promise.resolve(null),
   ])
 
+  /*
+    Ce que la personne avait fait sur chaque séance : s'inscrire, ou venir regarder.
+
+    Les documents rendus par `getAll` ne le portent pas — ils décrivent la séance, pas
+    l'inscription. On repasse donc par les inscriptions déjà lues : la phrase du refus en
+    dépend, et « Vous êtes déjà inscrit » dit à quelqu'un qui avait seulement annoncé
+    qu'il passerait regarder est faux.
+  */
+  const genrePar = new Map(memeJour.map((r) => [r.occurrenceId, r.status]))
+
   const occupe: BusyEntry[] = []
   for (const document of seances) {
     if (!document.exists) continue
@@ -150,6 +166,7 @@ export async function busyOn(
       kind: 'activity',
       // C'est par lui que l'échange se fait : quitter celle-ci pour prendre l'autre.
       occurrenceId: document.id,
+      ...(genrePar.get(document.id) === 'spectator' ? { spectator: true } : {}),
     })
   }
 
@@ -384,6 +401,8 @@ export async function registerTx(
      * pas dans l'appel.
      */
     overCapacity?: boolean
+    /** Participer, ou seulement regarder — sans prendre de place. Voir le domaine. */
+    as?: RegistrationKind
     now?: Date
   },
 ): Promise<RegisterOutput> {
@@ -405,6 +424,7 @@ export async function registerTx(
       by: options.by,
       ...(options.walkIn === true ? { walkIn: true } : {}),
       ...(options.overCapacity === true ? { overCapacity: true } : {}),
+      ...(options.as !== undefined ? { as: options.as } : {}),
     })
     if (!outcome.ok) {
       return {
@@ -420,13 +440,35 @@ export async function registerTx(
       }
     }
 
-    const created = outcome.board.registrations.find((r) => r.id === registrationId) as Registration
-    transaction.set(
-      database.collection(COLLECTIONS.registrations).doc(registrationId),
-      registrationToDoc(created),
-    )
+    /*
+      On écrit la ligne que le domaine a désignée, et pas celle qu'on croyait créer.
+
+      Quelqu'un qui passe de participant à spectateur — ou l'inverse — ne crée rien : sa
+      ligne change de nature. Écrire sous l'identifiant fraîchement tiré en laisserait
+      deux actives à son nom, et tous les compteurs deviendraient faux.
+    */
+    const ecrite = outcome.registration
+    const reference = database.collection(COLLECTIONS.registrations).doc(ecrite.id)
+    if (outcome.changed) {
+      /*
+        `merge` parce que le document porte plus que ce que le domaine connaît.
+
+        La présence notée par l'animateur (`attendance`) vit sur cette ligne et n'existe
+        pas dans le type du domaine : une écriture pleine l'effacerait. Quelqu'un noté
+        présent qui passerait ensuite en spectateur disparaîtrait de la feuille d'appel.
+      */
+      transaction.set(reference, registrationToDoc(ecrite), { merge: true })
+    } else {
+      transaction.set(reference, registrationToDoc(ecrite))
+    }
+    // La place rendue par un passage en spectateur revient au premier de la file, ici même.
+    if (outcome.promoted !== null) {
+      transaction.update(database.collection(COLLECTIONS.registrations).doc(outcome.promoted.id), {
+        status: 'confirmed',
+      })
+    }
     writeCounters(database, transaction, outcome.board.occurrence)
-    return { ok: true, status: outcome.status, position: outcome.position, registrationId }
+    return { ok: true, status: outcome.status, position: outcome.position, registrationId: ecrite.id }
   })
 }
 
@@ -479,7 +521,11 @@ export async function unregisterTx(
       })
     }
     writeCounters(database, transaction, outcome.board.occurrence)
-    return { ok: true, message: pourLeSoignant ? 'Retiré de la liste.' : 'Vous n’êtes plus inscrit.' }
+    // « Plus inscrit » ne se dit pas à quelqu'un qui venait seulement regarder.
+    return {
+      ok: true,
+      message: pourLeSoignant ? 'Retiré de la liste.' : unregisteredMessage(outcome.was),
+    }
   })
 }
 
@@ -513,7 +559,13 @@ export async function promoteTx(
 export async function myRegistrationsFor(
   database: Firestore,
   patientUid: string,
-): Promise<Array<{ occurrenceId: string; status: 'confirmed' | 'waitlist'; position: number | null }>> {
+): Promise<
+  Array<{
+    occurrenceId: string
+    status: 'confirmed' | 'waitlist' | 'spectator'
+    position: number | null
+  }>
+> {
   const mine = await database
     .collection(COLLECTIONS.registrations)
     .where('patientUid', '==', patientUid)
@@ -522,8 +574,10 @@ export async function myRegistrationsFor(
   const active = mine.docs.map(docToRegistration).filter((r) => r.status !== 'cancelled')
   const lignes = await Promise.all(
     active.map(async (registration) => {
-      if (registration.status === 'confirmed') {
-        return { occurrenceId: registration.occurrenceId, status: 'confirmed' as const, position: null }
+      if (registration.status === 'confirmed' || registration.status === 'spectator') {
+        // Ni l'un ni l'autre n'attend : aucune position à aller chercher, et donc aucune
+        // lecture de plus. Un spectateur n'entre jamais dans la file.
+        return { occurrenceId: registration.occurrenceId, status: registration.status, position: null }
       }
       const queue = await database
         .collection(COLLECTIONS.registrations)
@@ -546,7 +600,7 @@ export type RosterLine = {
   patientUid: string
   firstName: string
   serviceId: string | null
-  status: 'confirmed' | 'waitlist'
+  status: 'confirmed' | 'waitlist' | 'spectator'
   position: number | null
   /** Renseignée seulement pour qui a le droit de faire l'appel. */
   attendance?: 'present' | 'absent'
@@ -579,9 +633,9 @@ export async function rosterFor(
     occurrence: docToOccurrence(occurrenceSnapshot),
     registrations: registrationsSnapshot.docs.map(docToRegistration),
   }
-  const { confirmed, waitlist } = rosterOf(board)
+  const { confirmed, waitlist, spectators } = rosterOf(board)
 
-  const uids = [...new Set([...confirmed, ...waitlist].map((r) => r.patientUid))]
+  const uids = [...new Set([...confirmed, ...waitlist, ...spectators].map((r) => r.patientUid))]
   const patients = new Map<string, { firstName: string; serviceId: string }>()
   await Promise.all(
     uids.map(async (uid) => {
@@ -599,7 +653,11 @@ export async function rosterFor(
     }
   }
 
-  const line = (r: Registration, status: 'confirmed' | 'waitlist', position: number | null): RosterLine => ({
+  const line = (
+    r: Registration,
+    status: 'confirmed' | 'waitlist' | 'spectator',
+    position: number | null,
+  ): RosterLine => ({
     patientUid: r.patientUid,
     firstName: patients.get(r.patientUid)?.firstName ?? 'Prénom inconnu',
     serviceId: patients.get(r.patientUid)?.serviceId ?? null,
@@ -612,5 +670,7 @@ export async function rosterFor(
   return [
     ...confirmed.map((r) => line(r, 'confirmed', null)),
     ...waitlist.map((r, index) => line(r, 'waitlist', index + 1)),
+    // En dernier, et sans position : ils ne font la queue pour rien.
+    ...spectators.map((r) => line(r, 'spectator', null)),
   ]
 }
