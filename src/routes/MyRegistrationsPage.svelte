@@ -85,7 +85,9 @@
     -->
     {#if store.may('requestAppointment')}
       <button type="button" class="btn btn-secondary" onclick={() => navigate('/rendez-vous')}>
-        <span aria-hidden="true">📅</span> Demander un rendez-vous
+        <!-- « rendez-vous » ne se coupe pas au trait d'union : voir le calendrier. -->
+        <span aria-hidden="true">📅</span>
+        <span>Demander un <span class="whitespace-nowrap">rendez-vous</span></span>
       </button>
     {/if}
   </div>

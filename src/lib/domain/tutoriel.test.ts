@@ -68,6 +68,7 @@ describe('le petit tour', () => {
       '« Semaine »',
       '« Je m’inscris »',
       '« Voir ma semaine »',
+      '« Demander un rendez-vous »',
       '« Mes inscriptions »',
     ]) {
       expect(texte).toContain(bouton)

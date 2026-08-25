@@ -161,9 +161,16 @@
           </div>
         </div>
       {:else if etape.id === 'ma-semaine'}
+        <!--
+          Les deux boutons, l'un au-dessus de l'autre, comme sur le calendrier. C'est leur
+          voisinage qui se retient : « et moi, dans tout ça ? » se demande à deux endroits.
+        -->
         <div class="dessin" aria-hidden="true">
           <div class="entoure">
             <span class="faux-btn faux-fort">🗓️ Voir ma semaine</span>
+          </div>
+          <div class="entoure">
+            <span class="faux-btn">📅 Demander un rendez-vous</span>
           </div>
         </div>
       {:else if etape.id === 'mes-inscriptions'}
