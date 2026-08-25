@@ -252,3 +252,70 @@ describe('ce que l’animateur voit', () => {
     expect(lines.filter((l) => l.patientUid === DEMO_PATIENT_UID && l.status === 'confirmed')).toHaveLength(0)
   })
 })
+
+describe('le cycle de la réunion du lundi', () => {
+  beforeEach(() => {
+    resetWorld()
+    mockCatalog.reset()
+  })
+
+  /** L'état d'un prénom, lu dans le monde de la démonstration. */
+  const etatDe = (occurrenceId: string, patientUid: string) =>
+    world.registrations.find(
+      (r) => r.occurrenceId === occurrenceId && r.patientUid === patientUid && r.status !== 'cancelled',
+    )?.status ?? 'rien'
+
+  it('fait le tour en trois appuis : inscrit, spectateur, plus rien', async () => {
+    const seance = seanceAVenir()
+    const app = await ouvrirSoignant()
+    const qui = world.patients[0]!.uid
+
+    await app.repository.registerPatient(seance.id, qui)
+    expect(etatDe(seance.id, qui)).toBe('confirmed')
+
+    await app.repository.registerPatient(seance.id, qui, { as: 'spectator' })
+    expect(etatDe(seance.id, qui)).toBe('spectator')
+    // Une seule ligne à son nom : deux fausseraient tous les compteurs.
+    expect(
+      world.registrations.filter(
+        (r) => r.occurrenceId === seance.id && r.patientUid === qui && r.status !== 'cancelled',
+      ),
+    ).toHaveLength(1)
+
+    await app.repository.unregisterPatient(seance.id, qui)
+    expect(etatDe(seance.id, qui)).toBe('rien')
+  })
+
+  it('rend la place au premier de la file au deuxième appui', async () => {
+    const seance = seanceAVenir()
+    // Une seule place, pour que la file se forme.
+    const occurrence = world.occurrences.get(seance.id)!
+    world.registrations = world.registrations.filter((r) => r.occurrenceId !== seance.id)
+    world.occurrences.set(seance.id, { ...occurrence, capacity: 1, waitlistEnabled: true })
+
+    const app = await ouvrirSoignant()
+    const premier = world.patients[0]!.uid
+    const second = world.patients[1]!.uid
+
+    await app.repository.registerPatient(seance.id, premier)
+    await app.repository.registerPatient(seance.id, second)
+    expect(etatDe(seance.id, second)).toBe('waitlist')
+
+    // Le premier « ne fera pas, mais viendra » : sa place doit revenir au second.
+    await app.repository.registerPatient(seance.id, premier, { as: 'spectator' })
+    expect(etatDe(seance.id, premier)).toBe('spectator')
+    expect(etatDe(seance.id, second)).toBe('confirmed')
+    expect(world.occurrences.get(seance.id)!.confirmedCount).toBe(1)
+    expect(world.occurrences.get(seance.id)!.spectatorCount).toBe(1)
+  })
+
+  it('dit au soignant ce qui vient de se passer, dans ses mots', async () => {
+    const seance = seanceAVenir()
+    const app = await ouvrirSoignant()
+    const qui = world.patients[0]!.uid
+    const resultat = await app.repository.registerPatient(seance.id, qui, { as: 'spectator' })
+    expect(resultat.ok).toBe(true)
+    expect(resultat.message).toContain('regarder')
+    expect(resultat.message).toContain('sans prendre de place')
+  })
+})

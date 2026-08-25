@@ -31,6 +31,12 @@ import type { Leave } from './domain/leave'
 import type { LeaveOutcome } from './data/staffPorts'
 import { store } from './appState.svelte'
 import { countsOf, undoToggle, withToggled } from './domain/roster'
+import {
+  meetingAction,
+  meetingStateOf,
+  type MeetingAction,
+  type MeetingState,
+} from './domain/reunion'
 import { appointmentsOfUnit, patientsOfUnit, resolveUnit, unitName } from './domain/unit'
 import { todayLocalDate, weekDays } from './domain/time'
 import { enClair } from './erreurs'
@@ -609,10 +615,16 @@ class StaffStore {
    * Sans cela, l'écran se contredisait : le prénom passait en vert, et « 8 inscrits sur
    * 12 » restait à 8 jusqu'à la relecture. La vraie valeur revient du serveur derrière.
    */
-  private ajusterCompteur(occurrenceId: string, delta: number): void {
+  private ajusterCompteur(occurrenceId: string, delta: number, deltaSpectateurs = 0): void {
     this.occurrences = this.occurrences.map((occurrence) =>
       occurrence.id === occurrenceId
-        ? { ...occurrence, confirmedCount: Math.max(0, occurrence.confirmedCount + delta) }
+        ? {
+            ...occurrence,
+            confirmedCount: Math.max(0, occurrence.confirmedCount + delta),
+            // Compté à part : un spectateur ne prend aucune place, et l'ajouter aux
+            // inscrits ferait afficher un dépassement qui n'existe pas.
+            spectatorCount: Math.max(0, (occurrence.spectatorCount ?? 0) + deltaSpectateurs),
+          }
         : occurrence,
     )
   }
@@ -621,19 +633,25 @@ class StaffStore {
     return this.roster.some((ligne) => ligne.patientUid === patientUid)
   }
 
+  /** Où en est ce prénom dans le cycle de la réunion : rien, inscrit, ou vient regarder. */
+  meetingStateFor(patientUid: string): MeetingState {
+    return meetingStateOf(this.roster.find((ligne) => ligne.patientUid === patientUid)?.status)
+  }
+
   /**
-   * Le geste de la réunion : on clique sur un prénom, il est inscrit ; on reclique,
-   * il est retiré. Rien d'autre à faire — le patient retrouvera l'activité dans son
-   * calendrier s'il ouvre l'application.
-   */
-  /**
-   * Inscrire ou désinscrire quelqu'un depuis la réunion.
+   * Le geste de la réunion : un prénom, trois états, un seul appui.
+   *
+   *     rien → inscrit → vient regarder → rien → …
+   *
+   * L'ordre vit dans le domaine (`domain/reunion`), avec la raison qui le fixe : retirer
+   * quelqu'un est l'erreur la plus difficile à rattraper, donc c'est l'appui le plus
+   * loin. Ici on ne fait que l'exécuter.
    *
    * Rend le résultat entier et non le seul message : un chevauchement d'horaire revient
    * du serveur avec la liste de ce qui tombe en même temps, et l'écran doit pouvoir la
    * montrer avant de redemander la même inscription.
    */
-  async togglePatient(
+  async cyclePatient(
     occurrenceId: string,
     patientUid: string,
     /**
@@ -642,49 +660,98 @@ class StaffStore {
      */
     options: { overCapacity?: boolean; overrideConflict?: boolean } = {},
   ): Promise<{ message: string; conflicts?: TimeConflict[] }> {
+    return this.#ecrireInscription(
+      occurrenceId,
+      patientUid,
+      meetingAction(this.meetingStateFor(patientUid)),
+      options,
+    )
+  }
+
+  /**
+   * Retirer quelqu'un, et rien d'autre.
+   *
+   * La fiche de séance a son propre bouton « Désinscrire », qui ne cycle pas : on y
+   * pointe une ligne précise et l'on veut la voir disparaître. Passer par le geste de la
+   * réunion en aurait fait un spectateur — le prénom serait resté sur la feuille, sous
+   * une autre rubrique, et personne n'aurait compris pourquoi.
+   */
+  async removePatient(occurrenceId: string, patientUid: string): Promise<{ message: string }> {
+    return this.#ecrireInscription(occurrenceId, patientUid, { kind: 'retirer' })
+  }
+
+  /**
+   * L'écriture d'une inscription, quel qu'en soit le geste.
+   *
+   * La ligne change d'état tout de suite, avant la réponse du serveur.
+   *
+   * L'inscription passe par une fonction appelable — la capacité et la liste d'attente
+   * se décident dans une transaction, et un navigateur n'a pas le droit d'écrire là.
+   * Cet aller-retour prend une à deux secondes, parfois plus quand la fonction dormait :
+   * on cliquait, il ne se passait rien, on recliquait. Autant de doubles inscriptions
+   * évitées de justesse, et une réunion qui traîne.
+   *
+   * On affiche donc ce qui va se passer, puis on le vérifie. En cas de refus — activité
+   * complète, rendez-vous à la même heure, réseau coupé — ce prénom-là seul revient
+   * dans l'état d'avant, et le message dit pourquoi.
+   */
+  async #ecrireInscription(
+    occurrenceId: string,
+    patientUid: string,
+    geste: MeetingAction,
+    options: { overCapacity?: boolean; overrideConflict?: boolean } = {},
+  ): Promise<{ message: string; conflicts?: TimeConflict[] }> {
     const repository = (await this.app$()).repository
-    const inscrit = this.isRegistered(patientUid)
 
-    /*
-      Le prénom change d'état tout de suite, avant la réponse du serveur.
-
-      L'inscription passe par une fonction appelable — la capacité et la liste d'attente
-      se décident dans une transaction, et un navigateur n'a pas le droit d'écrire là.
-      Cet aller-retour prend une à deux secondes, parfois plus quand la fonction dormait :
-      on cliquait, il ne se passait rien, on recliquait. Autant de doubles inscriptions
-      évitées de justesse, et une réunion qui traîne.
-
-      On affiche donc ce qui va se passer, puis on le vérifie. En cas de refus — activité
-      complète, rendez-vous à la même heure, réseau coupé — ce prénom-là seul revient
-      dans l'état d'avant, et le message dit pourquoi. C'est ce que fait n'importe quelle
-      application qui « répond du tac au tac » : elle n'attend pas le serveur pour se
-      redessiner.
-    */
     const personne = this.patients.find((p) => p.uid === patientUid)
     const ligneAvant = this.roster.find((ligne) => ligne.patientUid === patientUid) ?? null
     // Son rang, pour la remettre à sa place si le serveur refuse.
     const rangAvant = this.roster.findIndex((ligne) => ligne.patientUid === patientUid)
+
+    /*
+      Ce que les compteurs vont devenir.
+
+      Les places et les spectateurs se comptent séparément : passer d'inscrit à spectateur
+      rend une place *et* ajoute un spectateur, ce qui n'est pas la même chose que de
+      partir. Et quelqu'un qui était en liste d'attente n'occupait aucune place — la lui
+      retirer ferait afficher un nombre d'inscrits trop bas.
+    */
+    const tenaitUnePlace = ligneAvant?.status === 'confirmed'
+    const etaitSpectateur = ligneAvant?.status === 'spectator'
+    const deltaPlaces =
+      geste.kind === 'inscrire' ? 1 : tenaitUnePlace ? -1 : 0
+    const deltaSpectateurs =
+      geste.kind === 'faire-spectateur' ? 1 : etaitSpectateur ? -1 : 0
+
     // Toute modification locale périme les relectures déjà parties.
     this.#versionRoster += 1
     this.#ecrituresEnCours += 1
-    this.ajusterCompteur(occurrenceId, inscrit ? -1 : 1)
+    this.ajusterCompteur(occurrenceId, deltaPlaces, deltaSpectateurs)
+
+    const statutVise = geste.kind === 'faire-spectateur' ? ('spectator' as const) : ('confirmed' as const)
     this.roster = withToggled(
       this.roster,
-      ligneAvant ?? {
-        patientUid,
-        firstName: personne?.firstName ?? 'Cette personne',
-        serviceId: personne?.serviceId ?? null,
-        status: 'confirmed' as const,
-        position: null,
-      },
-      inscrit,
+      ligneAvant !== null
+        ? { ...ligneAvant, status: statutVise, position: null }
+        : {
+            patientUid,
+            firstName: personne?.firstName ?? 'Cette personne',
+            serviceId: personne?.serviceId ?? null,
+            status: statutVise,
+            position: null,
+          },
+      geste.kind === 'retirer',
     )
 
     let resultat
     try {
-      resultat = inscrit
-        ? await repository.unregisterPatient(occurrenceId, patientUid)
-        : await repository.registerPatient(occurrenceId, patientUid, options)
+      resultat =
+        geste.kind === 'retirer'
+          ? await repository.unregisterPatient(occurrenceId, patientUid)
+          : await repository.registerPatient(occurrenceId, patientUid, {
+              ...options,
+              ...(geste.kind === 'faire-spectateur' ? { as: 'spectator' as const } : {}),
+            })
     } finally {
       this.#ecrituresEnCours -= 1
     }
@@ -700,8 +767,8 @@ class StaffStore {
     */
     if (!resultat.ok) {
       this.#versionRoster += 1
-      this.ajusterCompteur(occurrenceId, inscrit ? 1 : -1)
-      this.roster = undoToggle(this.roster, patientUid, inscrit ? ligneAvant : null, rangAvant)
+      this.ajusterCompteur(occurrenceId, -deltaPlaces, -deltaSpectateurs)
+      this.roster = undoToggle(this.roster, patientUid, ligneAvant, rangAvant)
     }
 
     /*

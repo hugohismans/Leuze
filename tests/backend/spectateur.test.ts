@@ -249,6 +249,45 @@ describe('changer d’avis, dans la transaction', () => {
   })
 })
 
+describe('le cycle de la réunion, côté serveur', () => {
+  it('inscrit, puis fait spectateur, puis retire — sans jamais doubler la ligne', async () => {
+    await seedOccurrence(OCCURRENCE, { capacity: 4 })
+
+    const premier = await registerTx(db(), { occurrenceId: OCCURRENCE, patientUid: 'p_1', by: 'staff' })
+    expect(premier.ok && premier.status).toBe('confirmed')
+    expect(await compteurs()).toEqual({ confirmed: 1, waitlist: 0, spectateurs: 0 })
+
+    const second = await registerTx(db(), {
+      occurrenceId: OCCURRENCE,
+      patientUid: 'p_1',
+      by: 'staff',
+      as: 'spectator',
+    })
+    expect(second.ok && second.status).toBe('spectator')
+    expect(await lignesDe('p_1')).toHaveLength(1)
+    expect(await compteurs()).toEqual({ confirmed: 0, waitlist: 0, spectateurs: 1 })
+
+    await unregisterTx(db(), { occurrenceId: OCCURRENCE, patientUid: 'p_1', by: 'staff' })
+    expect(await lignesDe('p_1')).toHaveLength(0)
+    expect(await compteurs()).toEqual({ confirmed: 0, waitlist: 0, spectateurs: 0 })
+  })
+
+  it('laisse le soignant noter un spectateur sur une séance complète', async () => {
+    // Le nombre de places ne le concerne pas : c'est toute la raison d'être du geste.
+    await seedOccurrence(OCCURRENCE, { capacity: 1, waitlistEnabled: false })
+    await registerTx(db(), { occurrenceId: OCCURRENCE, patientUid: 'p_1', by: 'staff' })
+
+    const regard = await registerTx(db(), {
+      occurrenceId: OCCURRENCE,
+      patientUid: 'p_2',
+      by: 'staff',
+      as: 'spectator',
+    })
+    expect(regard.ok).toBe(true)
+    expect(await compteurs()).toEqual({ confirmed: 1, waitlist: 0, spectateurs: 1 })
+  })
+})
+
 describe('un spectateur est quelque part', () => {
   it('occupe la personne, et le dit comme un regard', async () => {
     await seedOccurrence(OCCURRENCE, { capacity: 4 })
