@@ -5,6 +5,8 @@ import {
   sameNameWarning,
   sharedFirstNames,
   sharesFirstName,
+  firstNameCounts,
+  sameNameNotice,
 } from './patientList'
 
 const services = [
@@ -93,5 +95,46 @@ describe('la longueur d’un prénom', () => {
   it('est bornée : sans quoi la liste déborde de l’écran', () => {
     expect(FIRST_NAME_MAX).toBeGreaterThanOrEqual(20)
     expect(FIRST_NAME_MAX).toBeLessThanOrEqual(40)
+  })
+})
+
+/**
+ * L'avertissement de la carte, qui doit compter comme celui du formulaire.
+ *
+ * Il annonçait « Une autre personne » qu'il y en ait une ou quatre. Trois Camille dans
+ * la même unité, c'est précisément le cas où l'on a besoin de savoir combien.
+ */
+describe('l’avertissement d’homonymie sur une carte', () => {
+  const gens = [
+    { serviceId: 'couturelle', firstName: 'Camille' },
+    { serviceId: 'couturelle', firstName: 'camille' },
+    { serviceId: 'couturelle', firstName: 'Camille' },
+    { serviceId: 'couturelle', firstName: 'Marc' },
+    { serviceId: 'mazurel', firstName: 'Camille' },
+  ]
+  const comptes = firstNameCounts(gens)
+
+  it('se tait quand personne d’autre ne porte ce prénom', () => {
+    expect(sameNameNotice(comptes, gens[3]!)).toBeNull()
+    // Une Camille seule dans son unité : les autres sont ailleurs, on ne les voit jamais
+    // côte à côte.
+    expect(sameNameNotice(comptes, gens[4]!)).toBeNull()
+  })
+
+  it('dit combien, et jamais « une autre » quand il y en a deux', () => {
+    expect(sameNameNotice(comptes, gens[0]!)).toContain('2 autres personnes')
+    expect(sameNameNotice(comptes, gens[0]!)).toContain('portent le même prénom')
+  })
+
+  it('écrit « Une autre personne » quand il n’y en a qu’une', () => {
+    const deux = [
+      { serviceId: 'couturelle', firstName: 'Pierre' },
+      { serviceId: 'couturelle', firstName: 'Pierre' },
+    ]
+    expect(sameNameNotice(firstNameCounts(deux), deux[0]!)).toContain('Une autre personne')
+  })
+
+  it('dit quoi faire, comme tous les avertissements de l’application', () => {
+    expect(sameNameNotice(comptes, gens[0]!)).toContain('Vérifiez avant')
   })
 })

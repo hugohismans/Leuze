@@ -14,9 +14,17 @@
    * pas la redemander. Elle n'accorde aucun droit — le compte voyait déjà tout ; le
    * réglage ne fait que retirer du bruit.
    */
-  const { hidden }: { hidden: number } = $props()
+  /*
+    `singulier` et `pluriel` nomment ce qui est caché — « demande », « personne ».
+    Sans eux, la phrase disait « en ont 10 » sans que rien alentour ne dise dix quoi.
+  */
+  const {
+    hidden,
+    singulier,
+    pluriel,
+  }: { hidden: number; singulier: string; pluriel: string } = $props()
 
-  const avis = $derived(unitFilterNotice(staffStore.unitLabel, hidden))
+  const avis = $derived(unitFilterNotice(staffStore.unitLabel, hidden, singulier, pluriel))
 </script>
 
 {#if staffStore.unitId !== null}

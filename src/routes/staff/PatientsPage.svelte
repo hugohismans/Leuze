@@ -14,8 +14,8 @@
     FIRST_NAME_MAX,
     groupByService,
     sameNameWarning,
-    sharedFirstNames,
-    sharesFirstName,
+    firstNameCounts,
+    sameNameNotice,
   } from '../../lib/domain/patientList'
   import { que } from '../../lib/domain/francais'
   import { formatLongDayLabel, formatTime, localDateOf, todayLocalDate } from '../../lib/domain/time'
@@ -144,7 +144,7 @@
     peut donc pas distinguer deux Camille. On peut au moins le dire, plutôt que de laisser
     deux cartes rigoureusement identiques côte à côte, avec les mêmes quatre boutons.
   */
-  const partages = $derived(sharedFirstNames(staffStore.patients))
+  const homonymes = $derived(firstNameCounts(staffStore.patients))
   const ecartes = $derived(staffStore.patients.length - staffStore.patientsOfUnit.length)
 
   /*
@@ -350,7 +350,7 @@
   {/if}
 
   <!-- L'unité de rattachement du compte, et de quoi en sortir. -->
-  <UnitFilter hidden={ecartes} />
+  <UnitFilter hidden={ecartes} singulier="personne" pluriel="personnes" />
 
   {#if staffStore.patients.length === 0}
     <p class="card p-5 text-lg text-ink-soft">
@@ -384,16 +384,16 @@
             <div class="flex flex-wrap items-baseline justify-between gap-3">
               <div class="min-w-0">
                 <h3 class="text-xl font-bold text-ink break-words">{patient.firstName}</h3>
-                {#if sharesFirstName(partages, patient)}
-                  <!--
-                    Deux personnes du même prénom dans la même unité. Sans nom de famille,
-                    l'application ne peut pas les distinguer — elle peut au moins prévenir,
-                    plutôt que de laisser agir à l'aveugle sur l'une ou sur l'autre.
-                  -->
+                <!--
+                  Deux personnes du même prénom dans la même unité. Sans nom de famille,
+                  l'application ne peut pas les distinguer — elle peut au moins prévenir,
+                  plutôt que de laisser agir à l'aveugle sur l'une ou sur l'autre. Et
+                  dire combien : à trois, c'est justement là que le doute est le plus fort.
+                -->
+                {#if sameNameNotice(homonymes, patient) !== null}
                   <p class="text-base font-semibold text-ink">
                     <span aria-hidden="true">⚠️</span>
-                    Une autre personne de ce service porte le même prénom. Vérifiez avant
-                    de délivrer un code ou de clôturer un séjour.
+                    {sameNameNotice(homonymes, patient)}
                   </p>
                 {/if}
                 <!-- L'icône double la couleur : l'état ne se lit jamais à la teinte seule. -->

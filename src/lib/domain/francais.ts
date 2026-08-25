@@ -10,13 +10,28 @@
  * fautive coûte une relecture ; dix phrases fautives font douter du reste.
  */
 
-/** Les lettres devant lesquelles « de » et « que » s'élident. */
-const VOYELLES = 'aàâäeéèêëiîïoôöuùûüyh'
+/** Les lettres devant lesquelles « de » et « que » s'élident sans discussion. */
+const VOYELLES = 'aàâäeéèêëiîïoôöuùûü'
 
-/** Vrai quand un mot commence par une voyelle — ou par un « h » muet, ce qu'on suppose. */
+/**
+ * Vrai quand un mot commence par une voyelle — ou par un « h » muet, ce qu'on suppose.
+ *
+ * Le « y » demande un détour. Il note tantôt une voyelle — « Yves », « Yvette »,
+ * « Yvon » — et l'on écrit alors « d'Yves » ; tantôt une semi-consonne — « Yannick »,
+ * « Yolande », « Youssef », comme « le yaourt » — et l'on écrit « de Yannick ».
+ * Ce qui les sépare s'entend : le « y » consonne est suivi d'une voyelle, le « y »
+ * voyelle est suivi d'une consonne. La règle est celle-là, et elle range correctement
+ * tous les prénoms que l'on rencontre.
+ */
 export function commenceParVoyelle(mot: string): boolean {
-  const premiere = mot.trim().charAt(0).toLocaleLowerCase('fr')
-  return premiere !== '' && VOYELLES.includes(premiere)
+  const propre = mot.trim().toLocaleLowerCase('fr')
+  const premiere = propre.charAt(0)
+  if (premiere === '') return false
+  if (premiere === 'y') {
+    const suivante = propre.charAt(1)
+    return suivante !== '' && !VOYELLES.includes(suivante)
+  }
+  return premiere === 'h' || VOYELLES.includes(premiere)
 }
 
 /** « de Marc », « d'Aline ». */

@@ -79,17 +79,31 @@ describe('les rendez-vous d’une unité', () => {
 })
 
 describe('ce que l’écran dit du filtre', () => {
+  const avis = (cache: number) => unitFilterNotice('La Couturelle', cache, 'demande', 'demandes')
+
   it('se tait quand il n’y a rien à cacher', () => {
-    expect(unitFilterNotice('La Couturelle', 0)).toBeNull()
-    expect(unitFilterNotice(null, 4)).toBeNull()
+    expect(avis(0)).toBeNull()
+    expect(unitFilterNotice(null, 4, 'demande', 'demandes')).toBeNull()
   })
 
   it('compte ce qui est écarté, sans parler de « lignes »', () => {
     // « lignes » est un mot de tableur : on compte des personnes, des rendez-vous,
     // des activités — jamais des lignes.
-    expect(unitFilterNotice('La Couturelle', 1)).toContain('en a une')
-    expect(unitFilterNotice('La Couturelle', 3)).toContain('en ont 3')
-    expect(unitFilterNotice('La Couturelle', 3)).toContain('La Couturelle')
-    expect(unitFilterNotice('La Couturelle', 3)).not.toContain('ligne')
+    expect(avis(1)).toContain('a une demande')
+    expect(avis(3)).toContain('ont 3 demandes')
+    expect(avis(3)).toContain('La Couturelle')
+    expect(avis(3)).not.toContain('ligne')
+  })
+
+  it('nomme ce qui est caché, et ne le remplace jamais par « en »', () => {
+    /*
+      La phrase disait « D'autres unités que La Couturelle en ont 10 ». Le pronom ne
+      renvoyait à rien : la seule autre phrase de l'encadré est « Voir toutes les
+      unités ». Dix quoi, personne ne pouvait le dire.
+    */
+    expect(unitFilterNotice('Le Mazurel', 10, 'personne', 'personnes')).toBe(
+      "D'autres unités que Le Mazurel ont 10 personnes, qui ne sont pas affichées.",
+    )
+    expect(avis(10)).not.toContain(' en ont')
   })
 })

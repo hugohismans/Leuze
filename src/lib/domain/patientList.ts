@@ -98,6 +98,39 @@ export function sharesFirstName(
   return partages.has(`${patient.serviceId}|${clef(patient.firstName)}`)
 }
 
+/** Combien de personnes portent chaque prénom, service par service. */
+export function firstNameCounts<P extends { serviceId: string; firstName: string }>(
+  patients: P[],
+): Map<string, number> {
+  const comptes = new Map<string, number>()
+  for (const patient of patients) {
+    const cle = `${patient.serviceId}|${clef(patient.firstName)}`
+    comptes.set(cle, (comptes.get(cle) ?? 0) + 1)
+  }
+  return comptes
+}
+
+/**
+ * L'avertissement porté par la carte d'une personne, quand une autre porte son prénom.
+ *
+ * La carte disait « Une autre personne de ce service porte le même prénom » quel que
+ * soit leur nombre, tandis que l'avertissement du formulaire, écrit le même jour,
+ * comptait juste. Trois Camille dans une unité, c'est justement le cas où le soignant a
+ * le plus besoin de savoir combien.
+ */
+export function sameNameNotice(
+  comptes: Map<string, number>,
+  patient: { serviceId: string; firstName: string },
+): string | null {
+  const combien = (comptes.get(`${patient.serviceId}|${clef(patient.firstName)}`) ?? 0) - 1
+  if (combien <= 0) return null
+  const qui =
+    combien === 1
+      ? 'Une autre personne de ce service porte le même prénom.'
+      : `${combien} autres personnes de ce service portent le même prénom.`
+  return `${qui} Vérifiez avant de délivrer un code ou de clôturer un séjour.`
+}
+
 /**
  * L'avertissement à écrire avant de créer une personne dont le prénom existe déjà.
  *

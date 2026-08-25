@@ -488,7 +488,7 @@
   {/if}
 
   <!-- L'unité de rattachement du compte, et de quoi en sortir. -->
-  <UnitFilter hidden={ecartes} />
+  <UnitFilter hidden={ecartes} singulier="demande" pluriel="demandes" />
 
   {#if monIntervenant !== null && monIntervenant !== undefined}
     <!--

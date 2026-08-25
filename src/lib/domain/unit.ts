@@ -77,12 +77,21 @@ export function appointmentsOfUnit<T extends { patientUid?: string }>(
  * Ce que l'écran dit du filtre, en toutes lettres.
  *
  * Un écran filtré qui ne dit pas qu'il l'est est un écran qui ment : on cherche une
- * demande, elle n'y est pas, et l'on conclut qu'elle n'existe plus. Le nombre de lignes
+ * demande, elle n'y est pas, et l'on conclut qu'elle n'existe plus. Le nombre de choses
  * écartées est donc écrit, et jamais remplacé par une nuance de couleur.
+ *
+ * L'appelant dit **quoi** est caché. La phrase écrivait « en ont 10 » : « lignes » avait
+ * été retiré, à raison — c'est un mot de tableur —, mais le pronom qui l'avait remplacé
+ * ne renvoyait à rien. Autour de la case, on ne lisait que « Voir toutes les unités » :
+ * dix quoi, personne ne pouvait le dire.
  */
-export function unitFilterNotice(name: string | null, hidden: number): string | null {
+export function unitFilterNotice(
+  name: string | null,
+  hidden: number,
+  singulier: string,
+  pluriel: string,
+): string | null {
   if (name === null || hidden <= 0) return null
-  // « lignes » est un mot de tableur : on compte des choses, pas des lignes.
-  if (hidden === 1) return `Une autre unité que ${name} en a une, qui n'est pas affichée.`
-  return `D'autres unités que ${name} en ont ${hidden}, qui ne sont pas affichées.`
+  if (hidden === 1) return `Une autre unité que ${name} a une ${singulier}, qui n'est pas affichée.`
+  return `D'autres unités que ${name} ont ${hidden} ${pluriel}, qui ne sont pas affichées.`
 }

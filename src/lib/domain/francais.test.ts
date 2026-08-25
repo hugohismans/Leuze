@@ -51,3 +51,29 @@ describe('la majuscule de début de phrase', () => {
     expect(phrase('   ')).toBe('')
   })
 })
+
+/**
+ * Le « y », qui n'est une voyelle qu'une fois sur deux.
+ *
+ * L'écran écrivait « Ce qu'Yannick peut faire » et « La semaine d'Yannick » : deux
+ * fautes là où le texte à la main n'en faisait aucune. Un prénom courant du service
+ * n'a pas à servir de contre-exemple à ce qui est affiché toute la journée.
+ */
+describe('l’élision devant un « y »', () => {
+  it('élide devant le « y » voyelle', () => {
+    expect(de('Yves')).toBe('d’Yves')
+    expect(de('Yvette')).toBe('d’Yvette')
+    expect(que('Yvon')).toBe('qu’Yvon')
+  })
+
+  it('n’élide pas devant le « y » semi-consonne', () => {
+    expect(de('Yannick')).toBe('de Yannick')
+    expect(de('Yolande')).toBe('de Yolande')
+    expect(que('Yannick')).toBe('que Yannick')
+    expect(que('Youssef')).toBe('que Youssef')
+  })
+
+  it('n’élide pas devant un « y » seul, faute de savoir ce qu’il note', () => {
+    expect(de('Y')).toBe('de Y')
+  })
+})

@@ -388,8 +388,8 @@
               avant que vous appuyiez sur « {validationLabel} ».
             </p>
             <p class="mt-1 text-base text-ink-soft">
-              {durationMin} minutes, dans l'agenda de {practitionerName}{#if patientFirstName !== ''}{' '}et
-                de {patientFirstName}{/if}.
+              {durationMin} minutes, dans l'agenda {de(practitionerName)}{#if patientFirstName !== ''}{' '}et
+                {de(patientFirstName)}{/if}.
             </p>
 
             <ul class="mt-4 grid gap-4">
