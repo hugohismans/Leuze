@@ -4,8 +4,9 @@
   import { navigate } from '../../lib/router.svelte'
   import { store } from '../../lib/appState.svelte'
   import { audienceLabelForStaff, isVisibleToService } from '../../lib/domain/audience'
-  import { capacityOf, staffCapacityLabel } from '../../lib/domain/capacity'
+  import { capacityOf, spectatorsOf, staffCapacityLabel } from '../../lib/domain/capacity'
   import { wouldExceedCapacity } from '../../lib/domain/waitlist'
+  import { MEETING_HINT, meetingAction, meetingBadge } from '../../lib/domain/reunion'
   import {
     addLocalDays,
     formatDayLabel,
@@ -233,9 +234,17 @@
     const confirmes = board.registrations.filter((r) => r.status === 'confirmed')
     const dejaVus = new Set(confirmes.map((r) => r.patientUid))
     const enVolInvisibles = [...enVolPour].filter((uid) => !dejaVus.has(uid)).length
+    /*
+      La question du dépassement ne se pose qu'au premier appui.
+
+      Le deuxième fait un spectateur, qui ne prend aucune place — demander « voulez-vous
+      être neuf pour huit ? » à quelqu'un qui vient justement de libérer une place serait
+      absurde, et le troisième retire. Seul « inscrire » peut faire déborder la salle.
+    */
+    const geste = meetingAction(staffStore.meetingStateFor(patientUid))
     const depasserait =
+      geste.kind === 'inscrire' &&
       places !== null &&
-      !staffStore.isRegistered(patientUid) &&
       (wouldExceedCapacity(board, patientUid) || confirmes.length + enVolInvisibles >= places)
     if (options.depassement !== true && depasserait) {
       aConfirmer = patientUid
@@ -244,11 +253,11 @@
     aConfirmer = null
     chevauchement = null
     enCours = patientUid
-    const inscrit = !staffStore.isRegistered(patientUid)
-    if (inscrit) enVolPour.add(patientUid)
+    // Seule une vraie inscription occupe une place en vol : voir `enVolPour`.
+    if (geste.kind === 'inscrire') enVolPour.add(patientUid)
     let resultat
     try {
-      resultat = await staffStore.togglePatient(courante.id, patientUid, {
+      resultat = await staffStore.cyclePatient(courante.id, patientUid, {
         ...(options.depassement === true ? { overCapacity: true } : {}),
         ...(options.malgreLeChevauchement === true ? { overrideConflict: true } : {}),
       })
@@ -298,9 +307,6 @@
   }
 
   const enAttente = $derived(staffStore.roster.filter((l) => l.status === 'waitlist'))
-  // Ceux qui viennent seulement regarder : cochés comme les autres, mais dits comme tels.
-  // Sans cela, un soignant en réunion croit la personne inscrite et compte un de trop.
-  const spectateurs = $derived(staffStore.roster.filter((l) => l.status === 'spectator'))
 </script>
 
 <section class="mx-auto max-w-[1400px] px-4 py-6">
@@ -407,6 +413,13 @@
                   {:else}
                     {occurrence.confirmedCount} inscrit{occurrence.confirmedCount > 1 ? 's' : ''}
                   {/if}
+                  <!--
+                    Les spectateurs à part, jamais additionnés aux inscrits : « 9 / 8 »
+                    ferait croire à un dépassement là où personne n'a pris de place.
+                  -->
+                  {#if spectatorsOf(occurrence) > 0}
+                    · {spectatorsOf(occurrence)} regarde{spectatorsOf(occurrence) > 1 ? 'nt' : ''}
+                  {/if}
                 </p>
               </button>
             </li>
@@ -457,9 +470,14 @@
           {/if}
 
           <h3 class="mt-4 mb-2 text-lg font-bold text-ink">Qui souhaite participer ?</h3>
-          <p class="mb-3 text-base text-ink-soft">
-            Touchez un prénom pour l'inscrire. Touchez-le à nouveau pour le retirer.
-          </p>
+          <!--
+            Le rappel des trois appuis.
+
+            Un cycle de trois ne se devine pas : il s'apprend en un essai, mais encore
+            faut-il avoir eu l'idée d'appuyer une deuxième fois. La phrase vit dans le
+            domaine, avec les mots des trois états.
+          -->
+          <p class="mb-3 text-base text-ink-soft">{MEETING_HINT}</p>
 
           <!--
             Une liste vide et une liste qu'on n'a pas pu lire se ressemblent à l'écran, et
@@ -493,29 +511,49 @@
           {:else}
             <ul class="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
               {#each eligibles as patient (patient.uid)}
-                {@const inscrit = staffStore.isRegistered(patient.uid)}
+                {@const etat = staffStore.meetingStateFor(patient.uid)}
+                {@const marque = meetingBadge(etat)}
                 {@const attente = enAttente.some((l) => l.patientUid === patient.uid)}
-                {@const regarde = spectateurs.some((l) => l.patientUid === patient.uid)}
                 <li>
+                  <!--
+                    Trois états, trois apparences — et jamais la couleur seule.
+
+                    Bleu pour un inscrit, orange pour qui vient seulement regarder, gris
+                    pour le reste. Ces deux couleurs se ressemblent pour beaucoup de gens,
+                    et c'est justement ce qu'on demande de distinguer d'un coup d'œil sur
+                    quarante prénoms : le signe et le mot voyagent donc avec.
+
+                    `aria-pressed` ne connaît que deux valeurs et dirait « enfoncé » aussi
+                    bien d'un inscrit que d'un spectateur. C'est le nom accessible qui
+                    porte l'état — le mot est dans le texte — et `aria-description` dit ce
+                    que fera le prochain appui.
+                  -->
                   <button
                     type="button"
                     class="w-full rounded-xl border-2 p-3 text-left"
-                    class:border-brand-700={inscrit}
-                    class:bg-brand-100={inscrit}
-                    class:border-line={!inscrit}
-                    aria-pressed={inscrit}
+                    class:border-brand-700={etat === 'inscrit'}
+                    class:bg-brand-100={etat === 'inscrit'}
+                    class:border-amber-600={etat === 'regarde'}
+                    class:bg-amber-100={etat === 'regarde'}
+                    class:border-line={etat === 'rien'}
                     onclick={() => basculer(patient.uid)}
                   >
                     <span class="text-lg font-semibold text-ink">
-                      <!-- Jamais la couleur seule : le signe dit l'état. -->
-                      <span aria-hidden="true">{inscrit ? '✓' : '＋'}</span>
+                      <!-- Décoratif : c'est le mot, en dessous, qui porte le sens. -->
+                      <span aria-hidden="true">{marque.icon}</span>
                       {patient.firstName}
                     </span>
                     <span class="block text-base text-ink-soft">
                       {store.serviceOf(patient.serviceId)?.name ?? patient.serviceId}
+                      {#if marque.word !== ''}· {marque.word}{/if}
                       {#if attente}· en liste d'attente{/if}
-                      {#if regarde}· vient regarder{/if}
                     </span>
+                    <!--
+                      Ce que fera le prochain appui, pour qui n'a pas la couleur sous les
+                      yeux. Dans le bouton plutôt que dans `aria-description`, qui n'est
+                      pas encore lu partout.
+                    -->
+                    <span class="sr-only">{marque.next}</span>
                   </button>
 
                   {#if chevauchement !== null && chevauchement.patientUid === patient.uid}

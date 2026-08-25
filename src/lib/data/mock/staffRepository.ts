@@ -616,6 +616,7 @@ export function createMockStaffApp(): StaffApp {
           registrationId: `${occurrenceId}--${patientUid}--${Date.now()}`,
           by: 'staff',
           ...(options.overCapacity === true ? { overCapacity: true } : {}),
+          ...(options.as !== undefined ? { as: options.as } : {}),
         })
         if (!outcome.ok) {
           return {
@@ -634,9 +635,11 @@ export function createMockStaffApp(): StaffApp {
           status: outcome.status,
           // Une phrase, comme « Retiré de la liste. » qui lui répond dans le même bandeau.
           message:
-            outcome.status === 'confirmed'
-              ? 'Inscrit à cette séance.'
-              : "Placé sur la liste d'attente.",
+            outcome.status === 'spectator'
+              ? 'Vient regarder, sans prendre de place.'
+              : outcome.status === 'confirmed'
+                ? 'Inscrit à cette séance.'
+                : "Placé sur la liste d'attente.",
         }
       },
 

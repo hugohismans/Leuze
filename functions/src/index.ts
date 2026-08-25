@@ -397,6 +397,18 @@ export const staffRegister = onCall(async (request: CallableRequest) => {
   const patientUid = requireString(request.data?.patientUid, 'patientUid')
   const overCapacity = request.data?.overCapacity === true
   const overrideConflict = request.data?.overrideConflict === true
+  /*
+    Inscrire, ou noter que la personne viendra seulement regarder.
+
+    C'est le deuxième appui du cycle de la réunion : « elle ne fera pas, mais elle
+    viendra ». Le geste ne crée pas une seconde ligne — c'est celle qui existe qui change
+    de nature, et qui rend sa place au premier de la file au passage. Voir `register`
+    dans le domaine.
+
+    Toute autre valeur vaut « participant » : un client qui enverrait n'importe quoi
+    obtient le geste ordinaire, jamais un passe-droit.
+  */
+  const genre: RegistrationKind = request.data?.as === 'spectator' ? 'spectator' : 'participant'
 
   /*
     Rien n'est interdit au soignant : il connaît la situation, il peut déplacer le
@@ -426,7 +438,7 @@ export const staffRegister = onCall(async (request: CallableRequest) => {
     }
   }
 
-  return registerTx(db(), { occurrenceId, patientUid, by: 'staff', overCapacity })
+  return registerTx(db(), { occurrenceId, patientUid, by: 'staff', overCapacity, as: genre })
 })
 
 export const staffUnregister = onCall(async (request: CallableRequest) => {

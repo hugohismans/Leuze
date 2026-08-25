@@ -2,6 +2,7 @@
  * Ports de l'espace soignant. Comme pour le patient, l'interface ne connaît que ceci —
  * jamais Firebase. Deux adapters les implémentent : `firestore/` et `mock/`.
  */
+import type { RegistrationKind } from '../domain/capacity'
 import type { Leave } from '../domain/leave'
 import type { PatientActionOverrides, PatientPermissions } from '../domain/permissions'
 import type { ActivityProposal } from '../domain/proposals'
@@ -334,7 +335,12 @@ export interface StaffRepository {
      * déjà une activité ou un rendez-vous à ce moment-là. Sans lui, le serveur refuse et
      * rend la liste de ce qui tombe en même temps, pour que l'écran puisse demander.
      */
-    options?: { overCapacity?: boolean; overrideConflict?: boolean },
+    /**
+     * `as: 'spectator'` : la personne viendra, mais ne participera pas. C'est le
+     * deuxième appui du cycle de la réunion. Elle ne prend alors aucune place, et si
+     * elle en tenait une, celle-ci revient au premier de la liste d'attente.
+     */
+    options?: { overCapacity?: boolean; overrideConflict?: boolean; as?: RegistrationKind },
   ): Promise<{
     ok: boolean
     status?: Exclude<RegistrationStatus, 'cancelled'>

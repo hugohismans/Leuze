@@ -624,7 +624,8 @@
     if (seance === null || retirant !== null) return
     retirant = patientUid
     try {
-      await staffStore.togglePatient(seance.id, patientUid)
+      // « Désinscrire » retire, et ne cycle pas : voir `removePatient`.
+      await staffStore.removePatient(seance.id, patientUid)
     } finally {
       retirant = null
     }

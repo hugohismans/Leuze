@@ -56,6 +56,7 @@ const httpsCallable: typeof httpsCallableSansLimite = ((...args: Parameters<type
   const appel = httpsCallableSansLimite(...args)
   return ((donnees?: unknown) => ecrire(appel(donnees))) as ReturnType<typeof httpsCallableSansLimite>
 }) as typeof httpsCallableSansLimite
+import type { RegistrationKind } from '../../domain/capacity'
 import type { CatalogRemoval } from '../../domain/catalog'
 import { friendlyError } from '../../domain/errors'
 import type { Account } from '../../domain/impersonation'
@@ -489,10 +490,11 @@ export function createFirestoreStaffApp(): StaffApp {
               patientUid: string
               overCapacity?: boolean
               overrideConflict?: boolean
+              as?: RegistrationKind
             },
             {
               ok: boolean
-              status?: 'confirmed' | 'waitlist'
+              status?: 'confirmed' | 'waitlist' | 'spectator'
               message?: string
               conflicts?: { label: string; kind: 'activity' | 'appointment'; start: string; end: string }[]
             }
@@ -503,13 +505,19 @@ export function createFirestoreStaffApp(): StaffApp {
               patientUid,
               ...(options.overCapacity === true ? { overCapacity: true } : {}),
               ...(options.overrideConflict === true ? { overrideConflict: true } : {}),
+              ...(options.as !== undefined ? { as: options.as } : {}),
             })
           ).data
           return {
             ok: resultat.ok,
             ...(resultat.status ? { status: resultat.status } : {}),
             message:
-              resultat.message ?? (resultat.status === 'waitlist' ? "Sur la liste d'attente" : 'Inscrit'),
+              resultat.message ??
+              (resultat.status === 'spectator'
+                ? 'Vient regarder'
+                : resultat.status === 'waitlist'
+                  ? "Sur la liste d'attente"
+                  : 'Inscrit'),
             // Les dates traversent l'appel en texte : elles redeviennent des dates ici,
             // à la frontière, comme partout ailleurs.
             ...(resultat.conflicts
