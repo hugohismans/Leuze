@@ -110,6 +110,62 @@ export function staffConflictWarning(firstName: string, conflicts: BusyEntry[]):
 }
 
 /**
+ * Ce que la personne a déjà, au moment d'une séance qu'elle regarde.
+ *
+ * Le serveur fait ce calcul au moment de l'inscription, et renvoie l'avertissement avec
+ * la réponse. C'était trop tard : on l'apprenait une fois inscrit. L'écran refait donc le
+ * même calcul avant, à partir de ce qu'il a déjà sous la main — ses propres inscriptions
+ * et ses propres rendez-vous. Aucune lecture de plus, et rien qui touche à quelqu'un
+ * d'autre.
+ *
+ * Ce n'est pas un garde-fou : le serveur reste seul juge de ce qui est refusé. C'est un
+ * avertissement, et un avertissement se donne avant le geste.
+ *
+ * La séance regardée est écartée : on ne se chevauche pas soi-même.
+ */
+export function myBusyAt(
+  candidate: TimeSpan & { id: string },
+  registrations: {
+    occurrence: { id: string; start: Date; end: Date; title: string; status: string }
+  }[],
+  appointments: {
+    start?: Date
+    end?: Date
+    status: string
+    withWhom?: string
+    kindLabel?: string
+  }[],
+): BusyEntry[] {
+  const occupe: BusyEntry[] = []
+
+  for (const { occurrence } of registrations) {
+    if (occurrence.id === candidate.id) continue
+    // Une séance annulée n'occupe plus personne.
+    if (occurrence.status === 'cancelled') continue
+    occupe.push({
+      start: occurrence.start,
+      end: occurrence.end,
+      label: occurrence.title,
+      kind: 'activity',
+    })
+  }
+
+  for (const rendezVous of appointments) {
+    if (rendezVous.status !== 'scheduled') continue
+    if (rendezVous.start === undefined || rendezVous.end === undefined) continue
+    const qui = rendezVous.withWhom ?? rendezVous.kindLabel
+    occupe.push({
+      start: rendezVous.start,
+      end: rendezVous.end,
+      label: qui === undefined || qui === '' ? 'Rendez-vous' : `Rendez-vous avec ${qui}`,
+      kind: 'appointment',
+    })
+  }
+
+  return conflictsWith(candidate, occupe)
+}
+
+/**
  * Le jour d'une occurrence, lu dans son identifiant.
  *
  * Les identifiants sont déterministes — `{activityId}_{yyyyMMdd}T{HHmm}` — et cette

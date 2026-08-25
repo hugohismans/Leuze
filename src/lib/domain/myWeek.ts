@@ -116,6 +116,41 @@ export function myWeek(
   }))
 }
 
+/**
+ * Ce qui, le même jour, tombe en même temps qu'une entrée donnée.
+ *
+ * « Ma semaine » alignait deux activités de quatorze heures l'une sous l'autre, sans un
+ * mot : rien ne disait qu'on ne pouvait pas aller aux deux. Constaté en service — une
+ * personne s'est inscrite aux deux, et c'est ici qu'elle aurait dû s'en apercevoir.
+ *
+ * Ce qui est annulé ne chevauche plus rien : la séance n'aura pas lieu, et la barrer puis
+ * l'annoncer comme un conflit serait deux fois faux.
+ */
+export function clashesWith(entries: WeekEntry[], entry: WeekEntry): WeekEntry[] {
+  if (entry.cancelled === true) return []
+  return entries.filter(
+    (autre) =>
+      autre !== entry &&
+      autre.cancelled !== true &&
+      entry.start.getTime() < autre.end.getTime() &&
+      autre.start.getTime() < entry.end.getTime(),
+  )
+}
+
+/** Le nom de ce qui tombe en même temps. `null` quand rien ne se chevauche. */
+export function clashLabel(
+  entries: WeekEntry[],
+  entry: WeekEntry,
+  appointmentLabel: (kindId: string) => string,
+): string | null {
+  const autres = clashesWith(entries, entry)
+  if (autres.length === 0) return null
+  const nomme = (e: WeekEntry): string =>
+    e.kind === 'activity' ? e.title : `Rendez-vous avec ${e.withWhom ?? appointmentLabel(e.kindId)}`
+  if (autres.length === 1) return `En même temps que « ${nomme(autres[0]!)} »`
+  return `En même temps que ${autres.length} autres choses`
+}
+
 export function weekEntryCount(week: WeekDay[]): number {
   return week.reduce((total, jour) => total + jour.entries.length, 0)
 }

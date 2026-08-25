@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import { makeOccurrence } from './fixtures'
-import { myWeek, weekEntryCount, weekSummary, type WeekDay, type WeekEntry } from './myWeek'
+import {
+  clashLabel,
+  clashesWith,
+  myWeek,
+  weekEntryCount,
+  weekSummary,
+  type WeekDay,
+  type WeekEntry,
+} from './myWeek'
 import type { Appointment } from './types'
 
 const JOURS = ['2026-08-31', '2026-09-01', '2026-09-02']
@@ -185,5 +193,87 @@ describe('un rendez-vous annulé sur la feuille de la semaine', () => {
     ])
     const entree = semaine[0]?.entries[0]
     expect(entree?.kind === 'appointment' && entree.cancelled).toBeUndefined()
+  })
+})
+
+/**
+ * Deux choses à la même heure, sur la feuille de la semaine.
+ *
+ * Constaté en service : un patient s'est inscrit à deux activités de quatorze heures.
+ * « Ma semaine » les alignait l'une sous l'autre sans un mot — elles se lisent alors
+ * comme deux rendez-vous de la journée, et l'on ne découvre le problème qu'une fois sur
+ * place.
+ */
+describe('deux choses en même temps dans la semaine', () => {
+  const seance = (
+    titre: string,
+    debut: string,
+    fin: string,
+    annulee = false,
+  ): WeekEntry => ({
+    kind: 'activity',
+    start: new Date(`2026-08-26T${debut}:00.000Z`),
+    end: new Date(`2026-08-26T${fin}:00.000Z`),
+    title: titre,
+    locationId: 'salle',
+    categoryId: 'sport',
+    cancelled: annulee,
+    waiting: false,
+  })
+  const rendezVous = (debut: string, fin: string, withWhom?: string): WeekEntry => ({
+    kind: 'appointment',
+    start: new Date(`2026-08-26T${debut}:00.000Z`),
+    end: new Date(`2026-08-26T${fin}:00.000Z`),
+    kindId: 'psychiatre',
+    ...(withWhom === undefined ? {} : { withWhom }),
+  })
+  const motif = () => 'le psychiatre'
+
+  it('se tait quand les horaires s’enchaînent sans se toucher', () => {
+    // Une activité qui finit à 15h00 et une qui commence à 15h00 s'enchaînent.
+    const entrees = [seance('Jonglerie', '12:30', '13:30'), seance('Jeux de cartes', '13:30', '14:30')]
+    expect(clashLabel(entrees, entrees[0]!, motif)).toBeNull()
+    expect(clashesWith(entrees, entrees[0]!)).toEqual([])
+  })
+
+  it('nomme ce qui tombe en même temps, des deux côtés', () => {
+    const entrees = [seance('Jonglerie', '12:30', '13:30'), seance('Jeux de cartes', '12:30', '13:30')]
+    expect(clashLabel(entrees, entrees[0]!, motif)).toBe('En même temps que « Jeux de cartes »')
+    expect(clashLabel(entrees, entrees[1]!, motif)).toBe('En même temps que « Jonglerie »')
+  })
+
+  it('repère un chevauchement partiel', () => {
+    const entrees = [seance('Jonglerie', '12:30', '14:00'), seance('Jeux de cartes', '13:30', '15:00')]
+    expect(clashLabel(entrees, entrees[0]!, motif)).toContain('Jeux de cartes')
+  })
+
+  it('nomme aussi un rendez-vous, avec la personne quand on la connaît', () => {
+    const avecNom = [seance('Jonglerie', '12:30', '13:30'), rendezVous('12:45', '13:15', 'Docteur Lemaire')]
+    expect(clashLabel(avecNom, avecNom[0]!, motif)).toBe(
+      'En même temps que « Rendez-vous avec Docteur Lemaire »',
+    )
+    const sansNom = [seance('Jonglerie', '12:30', '13:30'), rendezVous('12:45', '13:15')]
+    expect(clashLabel(sansNom, sansNom[0]!, motif)).toBe(
+      'En même temps que « Rendez-vous avec le psychiatre »',
+    )
+  })
+
+  it('compte, plutôt que d’énumérer, au-delà de deux', () => {
+    const entrees = [
+      seance('Jonglerie', '12:30', '13:30'),
+      seance('Jeux de cartes', '12:30', '13:30'),
+      seance('Chorale', '12:45', '13:15'),
+    ]
+    expect(clashLabel(entrees, entrees[0]!, motif)).toBe('En même temps que 2 autres choses')
+  })
+
+  it('ne compte pas ce qui est annulé, ni dans un sens ni dans l’autre', () => {
+    /*
+      Une séance annulée n'aura pas lieu : la barrer puis annoncer un conflit avec elle
+      serait deux fois faux, et inquiéterait pour rien.
+    */
+    const entrees = [seance('Jonglerie', '12:30', '13:30'), seance('Jeux de cartes', '12:30', '13:30', true)]
+    expect(clashLabel(entrees, entrees[0]!, motif)).toBeNull()
+    expect(clashLabel(entrees, entrees[1]!, motif)).toBeNull()
   })
 })
