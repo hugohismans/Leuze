@@ -281,7 +281,9 @@ export function createMockRepository(options: { now?: () => Date } = {}): MockRe
         const outcome = domainUnregister(board, uid)
         if (!outcome.ok) return { ok: false, message: "Vous n'étiez pas inscrit à cette activité." }
         applyBoard(outcome.board)
-        return { ok: true, message: 'Vous êtes désinscrit.' }
+        // Les mêmes mots que le serveur : deux phrases pour un seul geste, c'est deux
+        // écrans qui ne se ressemblent pas.
+        return { ok: true, message: 'Vous n’êtes plus inscrit.' }
       },
 
       async warmRegistration(): Promise<void> {

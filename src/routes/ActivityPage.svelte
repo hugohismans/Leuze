@@ -119,7 +119,9 @@
     try {
       const result = await store.unregisterFrom(occurrence.id)
       messageIsError = !result.ok
-      message = result.ok ? 'Vous êtes désinscrit.' : result.message
+      // Le message vient de la couche de données, comme partout ailleurs : l'écran ne
+      // récrit pas une phrase que le serveur a déjà écrite, sinon les deux divergent.
+      message = result.message
     } finally {
       busy = false
     }

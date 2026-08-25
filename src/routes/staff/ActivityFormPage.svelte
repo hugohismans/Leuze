@@ -287,6 +287,9 @@
           staffStore.leavesOf(facilitatorId),
           repetition === 'une-fois' ? { dates: [dateUnique] } : { weekdays: jours },
           isoWeekdayOf,
+          // Un congé déjà terminé faisait apparaître un avertissement sur une date
+          // passée, et bloquait le premier enregistrement pour rien.
+          todayLocalDate(),
         ),
   )
   /*

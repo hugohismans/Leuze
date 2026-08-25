@@ -266,7 +266,7 @@
     flex-wrap: wrap;
     gap: 1.5mm 3mm;
     margin-top: 2mm;
-    font-size: 0.85rem;
+    font-size: 1rem;
   }
   .legende li {
     display: flex;
@@ -278,16 +278,22 @@
     background: var(--teinte-fond, #fff);
   }
 
-  /* Tailles : lisibles à l'écran, resserrées sur le papier. */
+  /*
+    Tailles : jamais sous le plancher du projet à l'écran, resserrées sur le papier.
+
+    La grille était à 0,95 rem — dix-sept pixels — y compris sur l'écran d'un patient. Le
+    papier, lui, garde ses points : une semaine entière doit tenir sur une feuille, et
+    c'est une contrainte d'impression, pas un choix de lisibilité.
+  */
   .entete,
   .heure {
-    font-size: 0.95rem;
+    font-size: 1rem;
   }
   .titre {
-    font-size: 0.95rem;
+    font-size: 1rem;
   }
   .detail {
-    font-size: 0.85rem;
+    font-size: 1rem;
   }
 
   @media print {
