@@ -128,7 +128,25 @@
                   {@const chevauchement = clashLabel(jour.entries, entree, (kindId) =>
                     kindName(store.appointmentKinds, kindId).toLowerCase(),
                   )}
-                  <li class="entree rounded-xl border-2 border-line p-3">
+                  <!--
+                    Chaque ligne s'ouvre : les personnes qui ont essayé l'application
+                    appuyaient dessus et il ne se passait rien.
+
+                    Une carte encadrée, avec un titre, une heure et un lieu, ressemble à
+                    une carte du calendrier — et celles-là s'ouvrent. Ne rien faire est
+                    alors lu comme une panne : on appuie plus fort, puis on abandonne.
+
+                    Un lien, jamais un « div » cliquable : le lecteur d'écran annonce
+                    « lien », et l'ouverture dans un autre onglet fonctionne. Sur le
+                    papier, il redevient du texte — voir les styles d'impression.
+                  -->
+                  <li class="entree rounded-xl border-2 border-line">
+                    <a
+                      href={entree.kind === 'activity'
+                        ? `#/activite/${entree.occurrenceId}`
+                        : '#/rendez-vous'}
+                      class="ligne block p-3 no-underline"
+                    >
                     {#if entree.kind === 'activity'}
                       {@const categorie = store.categoryOf(entree.categoryId)}
                       <p class="text-lg font-bold text-ink" class:line-through={entree.cancelled}>
@@ -188,6 +206,7 @@
                         {chevauchement}
                       </p>
                     {/if}
+                    </a>
                   </li>
                 {/each}
               </ul>
@@ -229,6 +248,25 @@
   */
   .chevauche {
     color: var(--color-warn-fg);
+  }
+
+  /*
+    La ligne entière est la cible : on appuie n'importe où sur la carte, pas seulement
+    sur le titre. La couleur du texte ne change pas — ce sont des cartes, pas des liens
+    au milieu d'un paragraphe, et les souligner en bleu les rendrait moins lisibles.
+  */
+  .ligne {
+    color: inherit;
+  }
+  .ligne:hover {
+    background: var(--color-brand-50);
+  }
+
+  /* Sur le papier, un lien n'est plus qu'un texte. */
+  @media print {
+    .ligne:hover {
+      background: none;
+    }
   }
 
   /* La grille n'existe que sur le papier ; la liste, qu'à l'écran. */

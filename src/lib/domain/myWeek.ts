@@ -11,6 +11,14 @@ export type WeekEntry =
       kind: 'activity'
       start: Date
       end: Date
+      /**
+       * La séance, pour pouvoir l'ouvrir depuis la feuille.
+       *
+       * Les personnes qui ont essayé l'application appuyaient sur les lignes de « Ma
+       * semaine » et il ne se passait rien : une carte qui ressemble à une carte se
+       * touche. C'est cet identifiant qui mène à la fiche.
+       */
+      occurrenceId: string
       title: string
       locationId: string
       categoryId: string
@@ -77,6 +85,7 @@ export function myWeek(
       kind: 'activity',
       start: occurrence.start,
       end: occurrence.end,
+      occurrenceId: occurrence.id,
       title: occurrence.title,
       locationId: occurrence.locationId,
       categoryId: occurrence.categoryId,
