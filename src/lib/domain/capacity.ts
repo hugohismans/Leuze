@@ -78,6 +78,22 @@ export function registrationActionLabel(occurrence: Occurrence): string {
   return occurrence.registrationRequired ? "Je m'inscris" : 'Je note que je viens'
 }
 
+/**
+ * Ce qu'on lit une fois inscrit — le pendant exact de `registrationActionLabel`.
+ *
+ * Les deux se contredisaient : le bouton disait « Je note que je viens », et l'écran
+ * répondait « ✓ Vous êtes inscrit », sur une carte qui portait au même moment « Ouvert à
+ * tous, sans inscription ». Deux phrases opposées mot pour mot, sur la même carte.
+ */
+export function registeredLabel(occurrence: Occurrence): string {
+  return occurrence.registrationRequired ? 'Vous êtes inscrit' : 'Vous avez noté que vous venez'
+}
+
+/** Le geste inverse, dans les mêmes mots. */
+export function unregisterActionLabel(occurrence: Occurrence): string {
+  return occurrence.registrationRequired ? 'Me désinscrire' : 'Je ne viendrai pas'
+}
+
 /** La phrase qui accompagne le bouton, ou `null` quand il se suffit à lui-même. */
 export function registrationInvitation(occurrence: Occurrence): string | null {
   if (occurrence.registrationRequired) return null

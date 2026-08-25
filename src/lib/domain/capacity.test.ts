@@ -3,10 +3,12 @@ import {
   capacityOf,
   likelyStatus,
   patientCapacityLabel,
+  registeredLabel,
   registrationActionLabel,
   registrationBlock,
   registrationInvitation,
   staffCapacityLabel,
+  unregisterActionLabel,
 } from './capacity'
 import { makeOccurrence } from './fixtures'
 import { instantOf } from './time'
@@ -125,5 +127,23 @@ describe('ce qui va se passer si l’on s’inscrit maintenant', () => {
     const complete = makeOccurrence({ capacity: 4, confirmedCount: 4 })
     expect(registrationActionLabel(complete)).toContain("liste d'attente")
     expect(likelyStatus(complete)).toBe('waitlist')
+  })
+})
+
+describe('les mots de l’inscription se répondent', () => {
+  it('emploie « inscrit » quand le bouton dit « Je m’inscris »', () => {
+    const seance = makeOccurrence({ registrationRequired: true, capacity: 8, confirmedCount: 1 })
+    expect(registrationActionLabel(seance)).toContain('m’inscris'.replace('’', "'"))
+    expect(registeredLabel(seance)).toBe('Vous êtes inscrit')
+    expect(unregisterActionLabel(seance)).toBe('Me désinscrire')
+  })
+
+  it('évite le mot quand le bouton dit « Je note que je viens »', () => {
+    // « Ouvert à tous, sans inscription » et « Vous êtes inscrit » se contredisaient
+    // mot pour mot sur la même carte.
+    const libre = makeOccurrence({ registrationRequired: false, capacity: null })
+    expect(registrationActionLabel(libre)).toBe('Je note que je viens')
+    expect(registeredLabel(libre)).not.toContain('inscrit')
+    expect(unregisterActionLabel(libre)).not.toContain('inscri')
   })
 })

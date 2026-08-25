@@ -12,8 +12,21 @@
    */
   const presents = $derived(new Set(store.occurrences.map((o) => o.locationId)))
   const typesPresents = $derived(new Set(store.occurrences.map((o) => o.categoryId)))
-  const lieuxPresents = $derived(store.locations.filter((l) => presents.has(l.id)))
-  const categoriesPresentes = $derived(store.categories.filter((c) => typesPresents.has(c.id)))
+  /*
+    Le choix retenu reste proposé, même quand plus rien de lui n'est affiché.
+
+    Les options se recalculaient sur la seule journée visible : en changeant de jour, le
+    lieu choisi disparaissait de la liste, le champ n'affichait plus rien du tout — et le
+    filtre, lui, continuait de s'appliquer. On lisait un champ vide, un insigne « Filtre
+    actif » et une page sans activités, sans lien apparent entre les trois. Le seul moyen
+    d'en sortir était de deviner « Tout afficher ».
+  */
+  const lieuxPresents = $derived(
+    store.locations.filter((l) => presents.has(l.id) || l.id === store.locationId),
+  )
+  const categoriesPresentes = $derived(
+    store.categories.filter((c) => typesPresents.has(c.id) || c.id === store.categoryId),
+  )
 </script>
 
 <details class="card" bind:open>

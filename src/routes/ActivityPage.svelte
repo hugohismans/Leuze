@@ -1,10 +1,12 @@
 <script lang="ts">
   import { store } from '../lib/appState.svelte'
   import {
+    registeredLabel,
     registrationActionLabel,
     registrationBlock,
     registrationBlockMessage,
     registrationInvitation,
+    unregisterActionLabel,
   } from '../lib/domain/capacity'
   import { formatDuration, formatFullWhen } from '../lib/domain/time'
   import type { Occurrence } from '../lib/domain/types'
@@ -68,6 +70,10 @@
   const location = $derived(occurrence ? store.locationOf(occurrence.locationId) : null)
   const mine = $derived(occurrence ? store.myStatusFor(occurrence.id) : null)
   const block = $derived(occurrence ? registrationBlock(occurrence, new Date()) : null)
+  /** Vrai quand le message du geste répète le motif déjà affiché juste au-dessus. */
+  const dejaDit = $derived(
+    message !== '' && block !== null && message === registrationBlockMessage(block),
+  )
   const invitation = $derived(occurrence ? registrationInvitation(occurrence) : null)
   const complet = $derived(
     occurrence !== null && occurrence.capacity !== null && occurrence.confirmedCount >= occurrence.capacity,
@@ -223,7 +229,9 @@
             : 'background: var(--color-warn-bg); color: var(--color-warn-fg); border-color: var(--color-warn-fg);'}
         >
           {#if mine.status === 'confirmed'}
-            <p><strong>✓ Vous êtes inscrit</strong></p>
+            <!-- Les mêmes mots que le bouton : « Je note que je viens » et « Vous êtes
+                 inscrit » se contredisaient sur la même carte. -->
+            <p><strong>✓ {registeredLabel(occurrence)}</strong></p>
             <p class="mt-1">
               {formatFullWhen(occurrence.localDate, occurrence.start, occurrence.end)}, {location?.name ?? ''}
             </p>
@@ -232,7 +240,11 @@
               yoga » n'est pas « je suis inscrit au yoga de ce mardi ». Une activité qui
               revient chaque semaine demande une inscription à chaque fois.
             -->
-            <p class="mt-1 text-lg">Cette inscription vaut pour cette séance uniquement.</p>
+            <p class="mt-1 text-lg">
+              {occurrence.registrationRequired
+                ? 'Cette inscription vaut pour cette séance uniquement.'
+                : 'Cela vaut pour cette séance uniquement.'}
+            </p>
           {:else}
             <p><strong>Vous êtes sur la liste d'attente</strong></p>
             <p class="mt-1">
@@ -243,7 +255,9 @@
 
         {#if store.may('unregister')}
           <button type="button" class="btn btn-secondary" disabled={busy} onclick={desinscrire}>
-            {mine.status === 'confirmed' ? 'Me désinscrire' : "Me retirer de la liste d'attente"}
+            {mine.status === 'confirmed'
+              ? unregisterActionLabel(occurrence)
+              : "Me retirer de la liste d'attente"}
           </button>
         {:else}
           <!--
@@ -288,11 +302,20 @@
         <p class="text-lg text-ink-soft">Vous vous inscrivez pour cette séance seulement.</p>
       {/if}
 
+      <!--
+        Le message du geste ne répète pas le motif déjà affiché juste au-dessus.
+
+        La séance venait d'être relue et l'écran connaissait désormais l'annulation : on
+        lisait donc deux fois d'affilée « Cette activité est annulée. Un soignant peut vous
+        proposer autre chose. » Le refus était juste ; le doublon donnait l'impression d'un
+        écran cassé. Il reste lu à voix haute pour les lecteurs d'écran, qui n'ont pas vu
+        le premier apparaître.
+      -->
       <p
         aria-live="polite"
         class="text-xl font-semibold"
-        class:sr-only={!messageIsError}
-        style={messageIsError ? 'color: var(--color-stop-fg);' : ''}
+        class:sr-only={!messageIsError || dejaDit}
+        style={messageIsError && !dejaDit ? 'color: var(--color-stop-fg);' : ''}
       >
         {message}
       </p>
