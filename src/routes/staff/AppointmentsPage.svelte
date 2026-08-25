@@ -648,7 +648,7 @@
     </p>
   {:else}
     <ul class="grid gap-4">
-      {#each enAttente as demande (demande.id)}
+      {#each enAttente as demande, rang (rang)}
         {@const jours = waitingDays(demande)}
         {@const personne = demande.patientUid === undefined ? undefined : patient(demande.patientUid)}
         <li class="card p-4">
@@ -855,7 +855,12 @@
     </p>
   {:else}
     <ul class="grid gap-3">
-      {#each aVenir as rendezVous (rendezVous.id)}
+      <!--
+        La clef est le rang : un identifiant en double arrêterait le rendu de la liste,
+        et l'écran resterait figé sur l'affichage précédent sans un mot. La liste est
+        reconstruite en entier à chaque lecture ; le rang suffit.
+      -->
+      {#each aVenir as rendezVous, rang (rang)}
         {@render ligne(rendezVous, true)}
       {/each}
     </ul>
@@ -875,7 +880,7 @@
 
     {#if voirLePasse}
       <ul class="mt-2 grid gap-3">
-        {#each passes as rendezVous (rendezVous.id)}
+        {#each passes as rendezVous, rang (rang)}
           {@render ligne(rendezVous, false)}
         {/each}
       </ul>

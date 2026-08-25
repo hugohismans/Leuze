@@ -82,7 +82,13 @@
 
   <!-- Les activités et rendez-vous, posés par-dessus. -->
   {#each grille.days as jour, colonne (jour.date)}
-    {#each jour.placed as place (place.entry.start.getTime() + place.entry.kind)}
+    <!--
+      La clef est le rang, et non le contenu : deux entrées qui commencent à la même
+      minute — deux ateliers à 10h00, c'est le cas courant — donnent la même clef, et
+      Svelte arrête alors le rendu. L'écran reste figé sur l'affichage précédent, sans
+      un mot. La liste est reconstruite en entier à chaque lecture ; le rang suffit.
+    -->
+    {#each jour.placed as place, rang (rang)}
       {@const largeur = 100 / place.lanes}
       {@const categorie = place.entry.kind === 'activity' ? categorieDe(place.entry.categoryId) : null}
       {@const teinte = categorie?.colorToken ?? 'defaut'}

@@ -446,7 +446,8 @@
                         {/if}
                       </p>
                       <ul class="mt-1 grid gap-1">
-                        {#each chevauchement.conflicts as conflit (conflit.label + conflit.start.toISOString())}
+                        <!-- Même raison : deux occupations identiques se rencontrent. -->
+                        {#each chevauchement.conflicts as conflit, rang (rang)}
                           <li class="text-lg text-ink">
                             <span aria-hidden="true">{conflit.kind === 'appointment' ? '🩺' : '📅'}</span>
                             {conflit.label}, de {formatTime(conflit.start)} à {formatTime(conflit.end)}

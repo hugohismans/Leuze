@@ -28,6 +28,16 @@ describe('les congés', () => {
     mockCatalog.reset()
     world.appointments = []
     world.leaves = {}
+    /*
+      Le programme de démonstration est vidé.
+
+      Sans cela, ces tests dépendaient du jour de la semaine : « demain » tombait un
+      mercredi, jour où le Docteur Lemaire anime un groupe de parole, et la déclaration
+      demandait soudain confirmation. Deux tests verts la veille sont devenus rouges à
+      minuit sans qu'une ligne de code ait bougé. Un test qui change d'avis avec le
+      calendrier ne prouve plus rien.
+    */
+    world.occurrences.clear()
     // Une personne qui reçoit tous les jours : le congé est alors la seule chose qui
     // puisse fermer une journée.
     mockCatalog.savePractitioner({

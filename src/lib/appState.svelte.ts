@@ -521,7 +521,37 @@ class AppStore {
    */
   #dejaAffiche = false
 
+  /**
+   * Quand le programme a été relu pour la dernière fois. Volontairement PAS réactif :
+   * il est lu et écrit depuis un effet, et le rendre réactif ferait boucler cet effet.
+   */
+  #programmeReluA = 0
+
+  /**
+   * Relire en revenant sur un écran.
+   *
+   * Le programme n'était relu qu'en changeant de fenêtre de dates ou de service. Une
+   * séance annulée par un soignant restait donc proposée à l'inscription tant que le
+   * patient ne changeait pas de semaine : le calendrier annonçait « Places libres »,
+   * la fiche proposait « Je m'inscris », et l'inscription échouait. Sur une tablette
+   * laissée sur le calendrier, l'écran mentait indéfiniment.
+   *
+   * L'écran voisin appliquait déjà la bonne règle — les droits des patients sont relus
+   * à chaque changement d'écran, avec ce commentaire : « peut changer pendant qu'une
+   * tablette reste allumée ». Le programme lui-même y échappait ; c'était un oubli.
+   *
+   * Quelques secondes de répit : aller et venir entre le calendrier et une fiche ne doit
+   * pas relancer une requête à chaque geste. C'est un pansement, pas une guérison — la
+   * vraie réponse serait une écoute en temps réel de Firestore, et elle mérite d'être
+   * faite posément.
+   */
+  async refreshOnNavigation(): Promise<void> {
+    if (Date.now() - this.#programmeReluA < 3_000) return
+    await this.refresh()
+  }
+
   async refresh(): Promise<void> {
+    this.#programmeReluA = Date.now()
     const version = (this.#versionProgramme += 1)
     const { from, to } = this.range
     /*

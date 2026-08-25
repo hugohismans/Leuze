@@ -84,6 +84,10 @@ const pourLaFeuille = (code: string): string => code.replace(/(.{3})(?=.)/g, '$1
  */
 const rolesDeDemonstration = new Map<string, 'staff' | 'admin'>()
 
+/** Un numéro qui ne se répète pas, pour fabriquer des identifiants uniques. */
+let compteur = 0
+const prochainNumero = (): number => (compteur += 1)
+
 export function createMockStaffApp(): StaffApp {
   // Les activités vivent ici, les occurrences et les inscriptions dans le monde partagé
   // avec l'adapter patient : ce qui est décidé en réunion se voit côté patient.
@@ -524,7 +528,17 @@ export function createMockStaffApp(): StaffApp {
         world.appointments = [
           ...world.appointments,
           {
-            id: `rdv-${externe === '' ? rendezVous.patientUid : 'externe'}-${start.getTime()}`,
+            /*
+              Un identifiant vraiment unique.
+
+              Il se fabriquait à partir du patient et de l'heure : deux rendez-vous fixés
+              au même moment pour la même personne — geste tout à fait ordinaire quand on
+              se trompe et qu'on recommence — recevaient donc le même identifiant. La
+              liste s'arrêtait alors de se rendre, et l'écran des rendez-vous devenait
+              inatteignable jusqu'au rechargement. Firestore, lui, en attribue toujours un
+              nouveau : la démonstration doit faire pareil.
+            */
+            id: `rdv-${externe === '' ? rendezVous.patientUid : 'externe'}-${start.getTime()}-${prochainNumero()}`,
             // L'un ou l'autre, jamais les deux : comme sur le serveur.
             ...(externe === ''
               ? { patientUid: rendezVous.patientUid ?? '' }

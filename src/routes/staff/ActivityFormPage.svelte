@@ -59,6 +59,22 @@
   let listeAttente = $state(true)
   let auProgramme = $state(true)
   let seriesId = $state<string | undefined>(undefined)
+  /**
+   * Ce que la règle de récurrence porte déjà, et que le formulaire ne montre pas.
+   *
+   * Le formulaire ne demande que les jours, l'heure et la durée. Il réécrivait donc le
+   * reste à neuf : `from` repartait d'aujourd'hui, `until` et `skipDates` étaient perdus.
+   *
+   * Conséquence constatée : enregistrer une activité hebdomadaire **sans rien y changer**
+   * annulait la séance déjà passée de la semaine en cours, avec ses inscrits. La fenêtre
+   * de génération commence au lundi de la semaine ; la règle, elle, repartait du jour
+   * même. La séance du lundi tombait entre les deux et se retrouvait « annulée —
+   * l'activité a été modifiée ». Une date de fin et des jours sautés disparaissaient de
+   * la même façon, sans que rien ne le dise.
+   */
+  let recurrenceDepart = $state<LocalDate | null>(null)
+  let recurrenceFin = $state<LocalDate | null>(null)
+  let recurrenceSautees = $state<LocalDate[]>([])
 
   let chargee = $state(false)
   /** L'activité déjà demandée au serveur : on ne la demande jamais deux fois. */
@@ -168,9 +184,13 @@
       facilitatorId = activity.facilitatorId ?? ''
       animeParUnPatient = activity.ledByPatient === true
       repetition = activity.recurrence === null ? 'une-fois' : 'chaque-semaine'
-      dateUnique = activity.singleStart?.date ?? date ?? todayLocalDate()
+      // « date » peut être un identifiant de séance : on prend alors son jour à elle.
+      dateUnique = activity.singleStart?.date ?? seance?.localDate ?? date ?? todayLocalDate()
       void 0
       jours = activity.recurrence?.byWeekday ?? []
+      recurrenceDepart = activity.recurrence?.from ?? null
+      recurrenceFin = activity.recurrence?.until ?? null
+      recurrenceSautees = activity.recurrence?.skipDates ?? []
       heure = activity.recurrence?.startTime ?? activity.singleStart?.time ?? '14:00'
       duree = activity.recurrence?.durationMin ?? activity.singleStart?.durationMin ?? 60
       pourTous = activity.audience === 'all'
@@ -278,6 +298,25 @@
       return
     }
     /*
+      L'heure vide s'enregistrait, et cassait tout ce qui affiche un programme.
+
+      Un champ « time » se vide d'un geste, et le formulaire ne demandait rien. La séance
+      naissait alors sans instant lisible, et le premier écran qui tentait de la placer
+      dans une semaine levait une erreur — la semaine, aujourd'hui, l'impression, et le
+      calendrier du patient. Une seule saisie suffisait à rendre l'application muette.
+
+      Le format est vérifié, pas seulement la présence : un champ « time » rend « HH:mm »,
+      mais rien n'oblige un navigateur à le faire.
+    */
+    if (!/^\d{2}:\d{2}$/.test(heure)) {
+      erreur = 'Choisissez l’heure de début.'
+      return
+    }
+    if (!(duree > 0)) {
+      erreur = 'Choisissez la durée de l’activité.'
+      return
+    }
+    /*
       Le domaine tranche : pour qui ne choisit pas, l'activité est la sienne.
 
       Sauf quand un patient anime : là, le choix est fait et il est explicite. Laisser le
@@ -337,9 +376,10 @@
                 byWeekday: jours,
                 startTime: heure,
                 durationMin: duree,
-                from: todayLocalDate(),
-                until: null,
-                skipDates: [],
+                // Ce que le formulaire ne montre pas, il le rend intact.
+                from: recurrenceDepart ?? todayLocalDate(),
+                until: recurrenceFin,
+                skipDates: recurrenceSautees,
               },
             }),
         isActive: auProgramme,
@@ -376,7 +416,19 @@
   const seance = $derived(
     date === undefined || nouvelle
       ? null
-      : (staffStore.occurrences.find((o) => o.activityId === activityId && o.localDate === date) ?? null),
+      : /*
+           Par identifiant d'abord, par jour ensuite.
+
+           La semaine passe désormais l'identifiant : il désigne une séance et une seule.
+           Le repli par jour reste pour les adresses écrites à la main et les anciens
+           signets — mais il ne peut pas trancher entre deux séances du même jour, et
+           c'est exactement ce qui arrivait après un changement d'heure : on cliquait la
+           nouvelle séance, on ouvrait l'ancienne, barrée, et « Supprimer cette séance »
+           effaçait celle qu'on n'avait pas choisie, avec ses inscrits.
+        */
+        (staffStore.occurrences.find((o) => o.id === date) ??
+        staffStore.occurrences.find((o) => o.activityId === activityId && o.localDate === date) ??
+        null),
   )
 
   /**

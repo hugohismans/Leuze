@@ -98,7 +98,14 @@
               <p class="text-lg text-ink-soft">Rien de prévu</p>
             {:else}
               <ul class="mt-2 grid gap-2">
-                {#each jour.entries as entree (entree.start.getTime() + entree.kind)}
+                <!--
+                  La clef est le rang, et non le contenu : deux entrées qui commencent à
+                  la même minute — deux ateliers à 10h00, c'est le cas courant — donnent
+                  la même clef, et Svelte arrête alors le rendu. L'écran reste figé sur
+                  l'affichage précédent, sans un mot, ni à l'écran ni en console. La liste
+                  est reconstruite en entier à chaque lecture ; le rang suffit.
+                -->
+                {#each jour.entries as entree, rang (rang)}
                   <li class="entree rounded-xl border-2 border-line p-3">
                     {#if entree.kind === 'activity'}
                       {@const categorie = store.categoryOf(entree.categoryId)}

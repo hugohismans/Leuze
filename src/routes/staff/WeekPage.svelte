@@ -140,10 +140,16 @@
       </p>
     {/if}
 
+    <!--
+      « onOuvrir » passe l'identifiant de la séance, et non son jour : après un
+      changement d'heure, deux séances de la même activité peuvent tomber le même jour —
+      l'ancienne, barrée, et la nouvelle. Le jour seul ne les distingue pas, et l'on
+      ouvrait alors l'autre.
+    -->
     <WeekProgramme
       {programme}
       onAjouter={(date) => navigate(`/soignant/activite/nouvelle/${date}`)}
-      onOuvrir={(occurrence) => navigate(`/soignant/activite/${occurrence.activityId}/${occurrence.localDate}`)}
+      onOuvrir={(occurrence) => navigate(`/soignant/activite/${occurrence.activityId}/${occurrence.id}`)}
     />
 
     {#if annulees.length > 0}

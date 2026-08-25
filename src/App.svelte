@@ -55,6 +55,22 @@
     if (!router.path.startsWith('/soignant')) void store.loadPatientPermissions()
   })
 
+  /*
+    Et le programme lui-même, pour la même raison.
+
+    Il n'était relu qu'en changeant de fenêtre de dates ou de service : une séance
+    annulée par un soignant restait proposée à l'inscription tant que le patient ne
+    changeait pas de semaine. Deux écrans se contredisaient, et le calendrier proposait
+    une séance qui n'aurait pas lieu.
+
+    `refreshOnNavigation` se tait quelques secondes après une relecture : aller et venir
+    entre le calendrier et une fiche ne relance donc pas une requête à chaque geste.
+  */
+  $effect(() => {
+    void router.path
+    if (!router.path.startsWith('/soignant')) void store.refreshOnNavigation()
+  })
+
   /** Vrai quand « Un instant… » s'éternise : voir le bouton de secours plus bas. */
   let attenteLongue = $state(false)
   $effect(() => {

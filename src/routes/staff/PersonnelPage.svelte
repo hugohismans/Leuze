@@ -67,6 +67,18 @@
   /** Ce que le congé bousculerait, quand le serveur a demandé confirmation. */
   let aConfirmer = $state<LeaveOutcome | null>(null)
   /**
+   * Les dates pour lesquelles cette confirmation a été calculée.
+   *
+   * L'encadré nommait une séance et n'était jamais recalculé : on changeait les dates
+   * sans le fermer, on appuyait sur « Déclarer le congé », et c'était une **autre**
+   * séance — jamais affichée — qui était annulée. On lisait « mercredi 2 septembre » et
+   * l'on annulait le mercredi 9. Une confirmation qui ne décrit plus ce qu'on valide est
+   * pire que pas de confirmation du tout.
+   */
+  let confirmePour = $state('')
+  const confirmationAJour = $derived(aConfirmer !== null && confirmePour === `${congeDu}|${congeAu}`)
+  const datesOntChange = $derived(aConfirmer !== null && !confirmationAJour)
+  /**
    * Annuler aussi les séances animées pendant le congé.
    *
    * Coché d'emblée, parce que c'est le cas courant : on s'absente, personne ne les
@@ -93,17 +105,30 @@
     congeAu = todayLocalDate()
     congeErreur = null
     aConfirmer = null
+    confirmePour = ''
     annulerLesSeances = true
   }
 
   function fermerLesConges(): void {
     congesOuverts = null
     aConfirmer = null
+    confirmePour = ''
     congeErreur = null
   }
 
   async function declarerLeConge(practitionerId: string, force = false): Promise<void> {
     const conge = { from: congeDu, to: congeAu }
+    /*
+      On ne valide que ce qui est écrit à l'écran.
+
+      Le garde-fou est ici et non seulement dans le gabarit : le bouton disparaît quand
+      les dates changent, mais un appui déjà parti ne doit pas aboutir sur des dates que
+      personne n'a relues.
+    */
+    if (force && confirmePour !== `${conge.from}|${conge.to}`) {
+      aConfirmer = null
+      return
+    }
     const refus = leaveRefusal(conge)
     if (refus !== null) {
       congeErreur = refus
@@ -118,6 +143,7 @@
       if (resultat.needsConfirmation === true) {
         // On ne ferme rien : l'écran nomme ce qui va bouger, et l'on tranche en le lisant.
         aConfirmer = resultat
+        confirmePour = `${conge.from}|${conge.to}`
         return
       }
       if (!resultat.ok) {
@@ -701,7 +727,20 @@
             10 h » se pèse. Et il dit ce qui va leur arriver — retourner dans la file, non
             disparaître — avant qu'on appuie, jamais après.
           -->
-          {#if aConfirmer !== null}
+          {#if datesOntChange}
+            <!--
+              Les dates ont bougé depuis le dernier examen : l'encadré ne décrirait plus
+              ce qu'on validerait. On le retire et l'on redemande, plutôt que de laisser
+              lire une liste devenue fausse.
+            -->
+            <p role="status" class="mt-3 rounded-xl border-2 border-line bg-surface-soft p-4 text-lg text-ink">
+              <span aria-hidden="true">🔄</span>
+              Les dates ont changé. Appuyez de nouveau sur « Enregistrer ce congé » pour
+              voir ce que ce congé touche.
+            </p>
+          {/if}
+
+          {#if confirmationAJour && aConfirmer !== null}
             <div role="status" class="mt-3 rounded-xl border-2 border-amber-500 bg-amber-50 p-4">
               <p class="text-lg font-bold text-ink">
                 <span aria-hidden="true">⚠️</span> {aConfirmer.message}
