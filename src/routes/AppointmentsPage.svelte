@@ -92,7 +92,7 @@
     bien maintenant, adressez-vous à un soignant, dans le service.
   </p>
 
-  {#if store.appointments.length > 0}
+  {#if store.appointments.some((a) => a.status !== 'cancelled') || store.cancelledAppointments.length > 0}
     <h2 class="mb-2 text-2xl font-bold text-ink">Vos rendez-vous</h2>
     <ul class="mb-6 grid gap-3">
       {#each store.appointments.filter((a) => a.status !== 'cancelled') as rendezVous (rendezVous.id)}
@@ -112,6 +112,18 @@
               Retirer ma demande
             </button>
           {/if}
+        </li>
+      {/each}
+      <!--
+        Un rendez-vous annulé par un soignant reste visible, avec son motif : une ligne
+        qui s'efface sans un mot fait venir la personne pour rien.
+      -->
+      {#each store.cancelledAppointments as annule (annule.id)}
+        <li class="card p-4">
+          <p class="text-lg text-ink">
+            <span aria-hidden="true">✕</span>
+            {patientStatusLabel(annule, store.appointmentKinds)}
+          </p>
         </li>
       {/each}
     </ul>

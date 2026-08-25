@@ -31,7 +31,7 @@
     avec un professionnel est plus lourd de conséquences que manquer un atelier.
     Ils ne figurent que sur cet écran, jamais dans le calendrier commun.
   -->
-  {#if store.upcomingAppointments.length > 0 || store.pendingAppointments.length > 0}
+  {#if store.upcomingAppointments.length > 0 || store.pendingAppointments.length > 0 || store.cancelledAppointments.length > 0}
     <section>
       <h2 class="mb-2 text-2xl font-bold">Mes rendez-vous</h2>
       <ul class="grid grid-cols-1 gap-4">
@@ -55,6 +55,19 @@
             <p class="text-lg">
               <span aria-hidden="true">⏳</span>
               {patientStatusLabel(demande, store.appointmentKinds)}
+            </p>
+          </li>
+        {/each}
+        <!--
+          Un rendez-vous annulé par un soignant se lit ici aussi : c'est l'écran où l'on
+          vient vérifier ce qu'on a de prévu, donc l'endroit où l'on doit apprendre qu'un
+          rendez-vous n'aura pas lieu.
+        -->
+        {#each store.cancelledAppointments as annule (annule.id)}
+          <li class="card p-5">
+            <p class="text-lg">
+              <span aria-hidden="true">✕</span>
+              {patientStatusLabel(annule, store.appointmentKinds)}
             </p>
           </li>
         {/each}

@@ -162,3 +162,41 @@ export function nextScheduled<T extends { status: string; start?: Date }>(
       .sort((a, b) => (a.start?.getTime() ?? 0) - (b.start?.getTime() ?? 0))[0] ?? null
   )
 }
+
+/**
+ * Les rendez-vous annulés qu'il faut encore montrer au patient.
+ *
+ * Une ligne qui disparaît sans un mot passe pour une panne : la personne se souvient
+ * d'avoir eu un rendez-vous mardi, l'écran n'en dit plus rien, et elle vient quand même.
+ * Un rendez-vous annulé par un soignant reste donc lisible, avec son motif.
+ *
+ * Deux annulations n'ont pas le même sens :
+ * - le patient a retiré sa demande lui-même — il le sait, la ligne s'en va ;
+ * - un soignant a annulé — il faut le dire, et dire pourquoi.
+ * Le motif d'annulation est ce qui distingue les deux : seul le soignant en écrit un.
+ *
+ * On ne les garde pas indéfiniment. Un rendez-vous daté s'efface le lendemain de sa
+ * date ; une demande annulée avant d'avoir eu une date s'efface au bout de deux semaines,
+ * le temps que la personne l'ait lu.
+ */
+export const CANCELLED_VISIBLE_DAYS = 14
+
+export function cancelledToShow<
+  T extends {
+    status: string
+    localDate?: string
+    start?: Date
+    createdAt: Date
+    cancellationReason?: string
+  },
+>(appointments: T[], today: string, now: Date = new Date()): T[] {
+  const limite = now.getTime() - CANCELLED_VISIBLE_DAYS * 86_400_000
+  return appointments
+    .filter((a) => a.status === 'cancelled')
+    .filter((a) => (a.cancellationReason ?? '').trim() !== '')
+    .filter((a) => (a.localDate !== undefined ? a.localDate >= today : a.createdAt.getTime() >= limite))
+    .sort((a, b) => {
+      const quand = (x: T): number => x.start?.getTime() ?? x.createdAt.getTime()
+      return quand(b) - quand(a)
+    })
+}

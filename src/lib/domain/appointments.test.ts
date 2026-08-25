@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   PREFERENCE_LABELS,
+  cancelledToShow,
   kindName,
   nextScheduled,
   upcomingScheduled,
@@ -187,5 +188,115 @@ describe('un rendez-vous rouvert par un congé', () => {
     expect(patientStatusLabel({ ...base, status: 'requested' }, kinds)).toBe(
       'Demande envoyée pour voir le psychiatre. Un soignant vous dira quand.',
     )
+  })
+})
+
+describe('les rendez-vous annulés que le patient doit encore lire', () => {
+  const maintenant = new Date('2026-08-25T14:00:00Z')
+
+  it("montre l'annulation d'un soignant, avec son motif", () => {
+    const liste = cancelledToShow(
+      [
+        demande({
+          status: 'cancelled',
+          localDate: '2026-08-27',
+          start: new Date('2026-08-27T09:00:00Z'),
+          cancellationReason: 'Le rendez-vous a été déplacé',
+        }),
+      ],
+      '2026-08-25',
+      maintenant,
+    )
+    expect(liste).toHaveLength(1)
+    // La longueur vient d'être vérifiée juste au-dessus : la case existe.
+    expect(patientStatusLabel(liste[0]!, kinds)).toContain('Le rendez-vous a été déplacé')
+  })
+
+  it("ne remet pas sous les yeux ce que le patient a retiré lui-même", () => {
+    // Un retrait par le patient n'écrit aucun motif : il sait ce qu'il a fait.
+    const liste = cancelledToShow([demande({ status: 'cancelled' })], '2026-08-25', maintenant)
+    expect(liste).toEqual([])
+  })
+
+  it('oublie un rendez-vous annulé dont la date est passée', () => {
+    const liste = cancelledToShow(
+      [
+        demande({
+          status: 'cancelled',
+          localDate: '2026-08-24',
+          start: new Date('2026-08-24T09:00:00Z'),
+          cancellationReason: 'Le rendez-vous a été déplacé',
+        }),
+      ],
+      '2026-08-25',
+      maintenant,
+    )
+    expect(liste).toEqual([])
+  })
+
+  it("garde le jour même : le rendez-vous annulé de cet après-midi doit se lire", () => {
+    const liste = cancelledToShow(
+      [
+        demande({
+          status: 'cancelled',
+          localDate: '2026-08-25',
+          start: new Date('2026-08-25T16:00:00Z'),
+          cancellationReason: 'Le rendez-vous a été déplacé',
+        }),
+      ],
+      '2026-08-25',
+      maintenant,
+    )
+    expect(liste).toHaveLength(1)
+  })
+
+  it('montre une demande retirée de la file par un soignant, puis finit par l’oublier', () => {
+    const recente = demande({
+      id: 'recente',
+      status: 'cancelled',
+      createdAt: new Date('2026-08-20T09:00:00Z'),
+      cancellationReason: 'Un soignant en a parlé avec la personne',
+    })
+    const ancienne = demande({
+      id: 'ancienne',
+      status: 'cancelled',
+      createdAt: new Date('2026-07-01T09:00:00Z'),
+      cancellationReason: 'Un soignant en a parlé avec la personne',
+    })
+    const liste = cancelledToShow([recente, ancienne], '2026-08-25', maintenant)
+    expect(liste.map((a) => a.id)).toEqual(['recente'])
+  })
+
+  it('met le plus récent en tête', () => {
+    const liste = cancelledToShow(
+      [
+        demande({
+          id: 'apres',
+          status: 'cancelled',
+          localDate: '2026-08-28',
+          start: new Date('2026-08-28T09:00:00Z'),
+          cancellationReason: 'Le rendez-vous a été déplacé',
+        }),
+        demande({
+          id: 'avant',
+          status: 'cancelled',
+          localDate: '2026-08-26',
+          start: new Date('2026-08-26T09:00:00Z'),
+          cancellationReason: 'Le rendez-vous a été déplacé',
+        }),
+      ],
+      '2026-08-25',
+      maintenant,
+    )
+    expect(liste.map((a) => a.id)).toEqual(['apres', 'avant'])
+  })
+
+  it('laisse tranquille ce qui est encore fixé ou en attente', () => {
+    const liste = cancelledToShow(
+      [demande(), demande({ status: 'scheduled', localDate: '2026-08-27' })],
+      '2026-08-25',
+      maintenant,
+    )
+    expect(liste).toEqual([])
   })
 })

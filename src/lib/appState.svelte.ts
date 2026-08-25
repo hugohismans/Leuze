@@ -2,7 +2,7 @@
  * État de l'interface. Ne connaît que les ports (`AppRepository`),
  * jamais Firebase : brancher l'adapter Firestore au lot L1 ne touchera pas ce fichier.
  */
-import { upcomingScheduled } from './domain/appointments'
+import { cancelledToShow, upcomingScheduled } from './domain/appointments'
 import { requestablePractitioners as requestableFor } from './domain/practitioners'
 import { capacityOf, likelyStatus } from './domain/capacity'
 import {
@@ -403,6 +403,15 @@ class AppStore {
   readonly upcomingAppointments = $derived(upcomingScheduled(this.appointments))
 
   readonly pendingAppointments = $derived(this.appointments.filter((a) => a.status === 'requested'))
+
+  /**
+   * Les rendez-vous qu'un soignant a annulés, tant qu'ils valent d'être lus.
+   *
+   * Ils disparaissaient de l'écran sans un mot. La personne se souvenait d'un rendez-vous
+   * mardi, l'application n'en disait plus rien, et elle venait quand même. Le motif est
+   * déjà écrit dans le domaine ; il ne manquait qu'un endroit pour l'afficher.
+   */
+  readonly cancelledAppointments = $derived(cancelledToShow(this.appointments, todayLocalDate()))
 
   /**
    * Les motifs de rendez-vous seuls, sans les demandes.
