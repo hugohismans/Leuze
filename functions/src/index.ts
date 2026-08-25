@@ -1489,20 +1489,22 @@ async function supprimerParPaquets(references: FirebaseFirestore.DocumentReferen
  * Une activité ponctuelle n'a pas de récurrence à laquelle accrocher l'exception : on la
  * retire du programme, ce qui revient au même — elle n'avait qu'une séance.
  */
-async function oublierCeJour(activityId: string, localDate: string): Promise<void> {
-  if (activityId === '' || localDate === '') return
+async function oublierCeJour(activityId: string, localDate: string): Promise<boolean> {
+  if (activityId === '' || localDate === '') return false
   const reference = db().collection(COLLECTIONS.activities).doc(activityId)
   const snapshot = await reference.get()
-  if (!snapshot.exists) return
+  if (!snapshot.exists) return false
   const donnees = snapshot.data() ?? {}
   const recurrence = donnees['recurrence'] as { skipDates?: string[] } | null | undefined
   if (recurrence === null || recurrence === undefined) {
     await reference.update({ isActive: false })
-    return
+    // Vrai : l'activité entière quitte le programme, et l'écran doit le dire.
+    return true
   }
   const sautees = recurrence.skipDates ?? []
-  if (sautees.includes(localDate)) return
+  if (sautees.includes(localDate)) return false
   await reference.update({ recurrence: { ...recurrence, skipDates: [...sautees, localDate].sort() } })
+  return false
 }
 
 /**
@@ -1538,7 +1540,7 @@ export const deleteOccurrence = onCall(async (request: CallableRequest) => {
 
   await supprimerParPaquets(inscriptions.docs.map((d) => d.ref))
   await reference.delete()
-  await oublierCeJour(
+  const activiteRetiree = await oublierCeJour(
     (donnees['activityId'] as string | undefined) ?? '',
     (donnees['localDate'] as string | undefined) ?? '',
   )
@@ -1558,7 +1560,16 @@ export const deleteOccurrence = onCall(async (request: CallableRequest) => {
       : presences === 1
         ? ' Une présence notée disparaît avec elle.'
         : ` ${presences} présences notées disparaissent avec elle.`
-  return { ok: true, message: `La séance de « ${titre} » est supprimée. ${combien}${notees}` }
+  /*
+    Une activité ponctuelle n'a qu'une séance : la supprimer la retire du programme.
+
+    Cela se faisait en silence — et c'est le cas par défaut du formulaire, donc la grande
+    majorité des activités.
+  */
+  const retiree = activiteRetiree
+    ? ' Cette activité n’avait que cette séance : elle est retirée du programme. Vous pouvez la remettre depuis « Les activités ».'
+    : ''
+  return { ok: true, message: `La séance de « ${titre} » est supprimée. ${combien}${notees}${retiree}` }
 })
 
 // ---------------------------------------------------------------------------

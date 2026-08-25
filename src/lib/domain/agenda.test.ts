@@ -10,6 +10,7 @@ import {
   suggestionMessage,
 } from './agenda'
 import { instantOf } from './time'
+import { formatLocalTime } from './availability'
 import type { AvailabilityWindow } from './types'
 import type { BusyEntry } from './conflicts'
 
@@ -359,5 +360,54 @@ describe('un agenda vide, et pourquoi', () => {
     expect(avis).toContain('Docteur Lemaire')
     expect(avis).toContain('en congé')
     expect(avis).toContain('Vous pouvez tout de même fixer')
+  })
+})
+
+/**
+ * La garde du soir, du réglage jusqu'au créneau proposé.
+ *
+ * « 22h00 → 00h00 » avait été rendue enregistrable et affichable, et le test le
+ * certifiait — mais il s'arrêtait là. L'agenda, lui, lisait encore la borne de fin comme
+ * zéro minute : la fiche annonçait « Reçoit de 22h00 à 00h00 » et l'écran répondait
+ * « Plus rien de libre ce jour-là », l'un sous l'autre. Une correction à moitié faite
+ * est pire qu'une absente : elle a l'air finie.
+ *
+ * Ce test part de la plage et va jusqu'au créneau. C'est le seul endroit d'où l'on voit
+ * que la chaîne entière tient.
+ */
+describe('une plage qui finit à minuit, jusqu’au bout', () => {
+  // 2026-08-28 est un vendredi.
+  const VENDREDI = '2026-08-28'
+  const gardeDuSoir: AvailabilityWindow[] = [{ weekday: 5, from: '22:00', to: '00:00' }]
+
+  it('produit de vrais trous libres, et non « plus rien de libre »', () => {
+    const libres = freeSlotsOn(gardeDuSoir, [], VENDREDI, 30)
+    expect(libres).not.toEqual([])
+    expect(libres[0]?.from).toBe('22:00')
+    // La borne de fin vaut la fin du jour. « 24:00 » est l'écriture interne ; l'écran,
+    // lui, lit « minuit ».
+    expect(libres[0]?.to).toBe('24:00')
+    expect(formatLocalTime(libres[0]!.to)).toBe('minuit')
+  })
+
+  it('propose un créneau qui tient dans la soirée', () => {
+    const propose = suggestSlot({
+      windows: gardeDuSoir,
+      practitionerBusy: [],
+      patientBusy: [],
+      preference: 'peu-importe',
+      from: VENDREDI,
+      horizonDays: 1,
+      durationMin: 30,
+    })
+    expect(propose).not.toBeNull()
+    expect(propose!.localDate).toBe(VENDREDI)
+    expect(propose!.time >= '22:00').toBe(true)
+  })
+
+  it('n’annonce pas « aucune plage déclarée » pour quelqu’un qui en a une', () => {
+    const semaine = agendaWeek([VENDREDI], gardeDuSoir, [], 30)
+    expect(noAvailabilityDeclared(semaine)).toBe(false)
+    expect(semaine[0]?.free).not.toEqual([])
   })
 })

@@ -143,14 +143,15 @@ export function createMockStaffApp(): StaffApp {
    * Une activité ponctuelle n'a pas de récurrence à laquelle accrocher l'exception : on
    * la retire du programme, ce qui revient au même — elle n'avait qu'une séance.
    */
-  function oublierCeJour(activityId: string, localDate: LocalDate): void {
+  function oublierCeJour(activityId: string, localDate: LocalDate): boolean {
     const activite = activities.get(activityId)
-    if (activite === undefined) return
+    if (activite === undefined) return false
     if (activite.recurrence === null) {
       activities.set(activityId, { ...activite, isActive: false })
-      return
+      // Vrai : l'activité entière quitte le programme, et l'écran doit le dire.
+      return true
     }
-    if (activite.recurrence.skipDates.includes(localDate)) return
+    if (activite.recurrence.skipDates.includes(localDate)) return false
     activities.set(activityId, {
       ...activite,
       recurrence: {
@@ -158,6 +159,7 @@ export function createMockStaffApp(): StaffApp {
         skipDates: [...activite.recurrence.skipDates, localDate].sort(),
       },
     })
+    return false
   }
 
   // Comme une vraie session Firebase, celle de la démonstration survit au rechargement.
@@ -332,7 +334,7 @@ export function createMockStaffApp(): StaffApp {
         world.registrations = world.registrations.filter((r) => r.occurrenceId !== occurrenceId)
         for (const r of inscriptions) world.attendance.delete(`${occurrenceId}|${r.patientUid}`)
         world.occurrences.delete(occurrenceId)
-        oublierCeJour(seance.activityId, seance.localDate)
+        const activiteRetiree = oublierCeJour(seance.activityId, seance.localDate)
         const combien =
           inscriptions.length === 0
             ? "Personne n'y était inscrit."
@@ -345,9 +347,19 @@ export function createMockStaffApp(): StaffApp {
             : presences === 1
               ? ' Une présence notée disparaît avec elle.'
               : ` ${presences} présences notées disparaissent avec elle.`
+        /*
+          Une activité ponctuelle n'a qu'une séance : la supprimer la retire du programme.
+
+          Cela se faisait en silence. On lisait « La séance de « X » est supprimée » et
+          l'activité disparaissait de la liste, sans un mot — c'est le cas par défaut du
+          formulaire, donc la grande majorité des activités.
+        */
+        const retiree = activiteRetiree
+          ? ' Cette activité n’avait que cette séance : elle est retirée du programme. Vous pouvez la remettre depuis « Les activités ».'
+          : ''
         return {
           ok: true,
-          message: `La séance de « ${seance.title} » est supprimée. ${combien}${notees}`,
+          message: `La séance de « ${seance.title} » est supprimée. ${combien}${notees}${retiree}`,
         }
       },
 
