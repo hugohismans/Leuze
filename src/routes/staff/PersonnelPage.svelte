@@ -68,6 +68,8 @@
   let congeErreur = $state<string | null>(null)
   /** Ce que le congé bousculerait, quand le serveur a demandé confirmation. */
   let aConfirmer = $state<LeaveOutcome | null>(null)
+  /** L'accord suit le nombre de séances concernées : « cette séance » ou « ces séances ». */
+  const uneSeuleSeance = $derived((aConfirmer?.sessions ?? []).length === 1)
   /**
    * Les dates pour lesquelles cette confirmation a été calculée.
    *
@@ -830,15 +832,15 @@
                   <input type="checkbox" class="mt-1 h-6 w-6" bind:checked={annulerLesSeances} />
                   <span>
                     <span class="block text-lg font-semibold text-ink">
-                      Annuler aussi ces séances
+                      {uneSeuleSeance ? 'Annuler aussi cette séance' : 'Annuler aussi ces séances'}
                     </span>
                     <span class="block text-base text-ink-soft">
                       {#if annulerLesSeances}
-                        Elles seront barrées au programme, avec le motif
+                        {uneSeuleSeance ? 'Elle sera barrée' : 'Elles seront barrées'} au programme, avec le motif
                         « L'animateur est absent ». Les personnes inscrites le liront.
                       {:else}
-                        Elles resteront au programme. Ne décochez que si quelqu'un d'autre
-                        les assure : l'application n'a aucun moyen de le savoir.
+                        {uneSeuleSeance ? 'Elle restera' : 'Elles resteront'} au programme. Ne décochez que si quelqu'un d'autre
+                        {uneSeuleSeance ? "l'assure" : 'les assure'} : l'application n'a aucun moyen de le savoir.
                       {/if}
                     </span>
                   </span>

@@ -64,7 +64,12 @@ describe('le compte de l’appel', () => {
   it('se lit en toutes lettres', () => {
     expect(attendanceLabel({ present: 6, absent: 2, unmarked: 1 })).toBe('6 présents, 2 absents, 1 sans réponse')
     expect(attendanceLabel({ present: 1, absent: 0, unmarked: 0 })).toBe('1 présent')
-    expect(attendanceLabel({ present: 0, absent: 0, unmarked: 0 })).toBe('Personne d’inscrit')
+    /*
+      Rien à compter : rien à écrire. « Personne d'inscrit » s'empilait au-dessus de
+      « Personne n'est inscrit à cette activité. », qui dit la même chose en français
+      simple ; l'écran laisse maintenant la place à cette seule phrase.
+    */
+    expect(attendanceLabel({ present: 0, absent: 0, unmarked: 0 })).toBe('')
   })
 })
 

@@ -121,7 +121,7 @@
         {attendanceRefusal(occurrence)}
         Vous voyez la liste des inscrits, sans les présences.
       </p>
-    {:else}
+    {:else if attendanceLabel(compte) !== ''}
       <p class="card mb-4 p-4 text-lg font-semibold text-ink">
         {attendanceLabel(compte)}
       </p>

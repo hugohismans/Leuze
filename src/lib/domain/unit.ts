@@ -82,6 +82,7 @@ export function appointmentsOfUnit<T extends { patientUid?: string }>(
  */
 export function unitFilterNotice(name: string | null, hidden: number): string | null {
   if (name === null || hidden <= 0) return null
-  if (hidden === 1) return `Une autre unité que ${name} a une ligne ici. Elle n'est pas affichée.`
-  return `D'autres unités que ${name} ont ${hidden} lignes ici. Elles ne sont pas affichées.`
+  // « lignes » est un mot de tableur : on compte des choses, pas des lignes.
+  if (hidden === 1) return `Une autre unité que ${name} en a une, qui n'est pas affichée.`
+  return `D'autres unités que ${name} en ont ${hidden}, qui ne sont pas affichées.`
 }

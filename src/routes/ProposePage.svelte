@@ -195,8 +195,11 @@
           rows="4"
           class={champ}
           maxlength={DESCRIPTION_MAX}
+          aria-describedby="aide-idee"
           placeholder="On jouerait aux échecs. Je peux apprendre les règles à ceux qui ne savent pas."
         ></textarea>
+        <!-- « aria-describedby » plus haut : l'identifiant existait, le lien n'avait
+             jamais été posé, et la phrase n'était annoncée à personne. -->
         <p id="aide-idee" class="mt-2 text-base text-ink-soft">{PROPOSAL_GUIDANCE}</p>
         <!--
           Le champ s'arrête à trois cents caractères. Il le faisait en silence : un texte

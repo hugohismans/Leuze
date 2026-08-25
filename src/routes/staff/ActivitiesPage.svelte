@@ -254,7 +254,15 @@
             </div>
           {/if}
 
-          {#if aSupprimer === activity.id}
+          <!--
+            Une seule question à la fois.
+
+            Les deux panneaux s'empilaient : « Oui, tout effacer » — définitif, seize
+            séances et quarante inscriptions — puis, juste en dessous, « Oui, supprimer »,
+            qui ne fait que retirer du programme. Deux boutons d'apparence proche et de
+            conséquences très différentes, l'un sous l'autre.
+          -->
+          {#if aSupprimer === activity.id && aEffacer?.id !== activity.id}
             <div class="mt-3 rounded-xl border-2 border-line p-4">
               <p class="text-lg text-ink">
                 Supprimer « {activity.title} » et toutes ses séances ? Si quelqu'un s'y est
@@ -266,7 +274,7 @@
                   {busy ? 'Un instant…' : 'Oui, supprimer'}
                 </button>
                 <button type="button" class="btn btn-secondary" onclick={() => (aSupprimer = null)}>
-                  Annuler
+                  Non, garder l'activité
                 </button>
               </div>
             </div>

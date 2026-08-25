@@ -159,16 +159,34 @@ export function availabilityWarning(
   weekday: IsoWeekday,
   time: LocalTime,
   durationMin: number,
+  /*
+    Qui reçoit : « vous » quand c'est soi-même, un prénom sinon.
+
+    Le message restait à la troisième personne — « cette personne reçoit de 13h30 à
+    17h30 » — même sur son propre agenda, à côté d'un résumé qui écrivait « Claire
+    reçoit » alors qu'on est Claire. Sur un seul écran, on lisait « votre nom »,
+    « cette personne » et un prénom pour désigner le même être.
+  */
+  who: { name?: string; isSelf?: boolean } = {},
 ): string | null {
   if (normalizeAvailability(windows).length === 0) return null
   if (coversAppointment(windows, weekday, time, durationMin)) return null
 
+  const jour = JOURS[weekday].toLowerCase()
+  const sujet = who.isSelf === true ? 'vous' : who.name !== undefined && who.name !== '' ? who.name : 'cette personne'
+  const verbe = who.isSelf === true ? 'ne recevez pas' : 'ne reçoit pas'
+  const recoit = who.isSelf === true ? 'recevez' : 'reçoit'
+
   const duJour = windowsOn(windows, weekday)
   if (duJour.length === 0) {
-    return `Cette personne ne reçoit pas le ${JOURS[weekday].toLowerCase()}. Vous pouvez tout de même fixer le rendez-vous.`
+    return `${capitaliser(sujet)} ${verbe} le ${jour}. Vous pouvez tout de même fixer le rendez-vous.`
   }
   const quand = duJour.map((f) => `${formatLocalTime(f.from)} → ${formatLocalTime(f.to)}`).join(' et ')
-  return `Ce ${JOURS[weekday].toLowerCase()}, cette personne reçoit de ${quand}. Vous pouvez tout de même fixer le rendez-vous.`
+  return `Ce ${jour}, ${sujet} ${recoit} de ${quand}. Vous pouvez tout de même fixer le rendez-vous.`
+}
+
+function capitaliser(mot: string): string {
+  return mot.charAt(0).toLocaleUpperCase('fr') + mot.slice(1)
 }
 
 /** « Mardi de 09h00 à 12h00 · Jeudi de 14h00 à 17h00 ». Vide quand rien n'est renseigné. */

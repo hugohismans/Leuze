@@ -155,5 +155,12 @@ export function attendanceLabel(compte: AttendanceCount): string {
   if (compte.unmarked > 0) {
     morceaux.push(`${compte.unmarked} ${compte.unmarked > 1 ? 'sans réponse' : 'sans réponse'}`)
   }
-  return morceaux.length === 0 ? 'Personne d’inscrit' : morceaux.join(', ')
+  /*
+    Rien à compter : on ne le dit pas deux fois.
+
+    « Personne d'inscrit » — tournure elliptique — s'empilait au-dessus de « Personne
+    n'est inscrit à cette activité. », qui dit la même chose en français simple. Une
+    chaîne vide laisse la place à cette seule phrase.
+  */
+  return morceaux.join(', ')
 }

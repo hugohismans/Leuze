@@ -132,10 +132,13 @@ export function deletionConsequences(usage: DeletionUsage): string[] {
   }
 
   if (usage.registrations > 0) {
-    lignes.push(
-      `${compte(usage.registrations, 'inscription', 'inscriptions')}. ` +
-        'Les personnes concernées ne verront plus rien dans leur calendrier, et sans motif.',
-    )
+    // L'accord suivait le nombre d'un côté et restait au pluriel de l'autre, dans la
+    // phrase qu'on lit juste avant un geste sans retour.
+    const qui =
+      usage.registrations === 1
+        ? 'La personne concernée ne verra plus rien dans son calendrier, et sans motif.'
+        : 'Les personnes concernées ne verront plus rien dans leur calendrier, et sans motif.'
+    lignes.push(`${compte(usage.registrations, 'inscription', 'inscriptions')}. ${qui}`)
   }
 
   if (usage.attendances > 0) {

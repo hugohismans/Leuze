@@ -84,9 +84,12 @@ describe('ce que l’écran dit du filtre', () => {
     expect(unitFilterNotice(null, 4)).toBeNull()
   })
 
-  it('compte ce qui est écarté', () => {
-    expect(unitFilterNotice('La Couturelle', 1)).toContain('une ligne')
-    expect(unitFilterNotice('La Couturelle', 3)).toContain('3 lignes')
+  it('compte ce qui est écarté, sans parler de « lignes »', () => {
+    // « lignes » est un mot de tableur : on compte des personnes, des rendez-vous,
+    // des activités — jamais des lignes.
+    expect(unitFilterNotice('La Couturelle', 1)).toContain('en a une')
+    expect(unitFilterNotice('La Couturelle', 3)).toContain('en ont 3')
     expect(unitFilterNotice('La Couturelle', 3)).toContain('La Couturelle')
+    expect(unitFilterNotice('La Couturelle', 3)).not.toContain('ligne')
   })
 })

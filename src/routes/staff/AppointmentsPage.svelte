@@ -308,7 +308,10 @@
   const plagesDe = $derived(intervenantChoisi?.availability ?? [])
   const resumeDesPlages = $derived(availabilityLabel(plagesDe))
   const alerteDirecte = $derived(
-    availabilityWarning(plagesDe, isoWeekdayOf(dateDirecte), heureDirecte, dureeDirecte),
+    availabilityWarning(plagesDe, isoWeekdayOf(dateDirecte), heureDirecte, dureeDirecte, {
+      ...(intervenantChoisi?.name === undefined ? {} : { name: intervenantChoisi.name }),
+      isSelf: intervenantDirect !== '' && intervenantDirect === staffStore.identity.practitionerId,
+    }),
   )
   /*
     Le congé passe avant la plage.
@@ -356,12 +359,10 @@
   /** Même question, pour une demande de la file qu'on est en train de fixer. */
   const intervenantDeLaFile = $derived(store.practitionerOf(intervenantFile))
   const alerteFile = $derived(
-    availabilityWarning(
-      intervenantDeLaFile?.availability ?? [],
-      isoWeekdayOf(date),
-      heure,
-      duree,
-    ),
+    availabilityWarning(intervenantDeLaFile?.availability ?? [], isoWeekdayOf(date), heure, duree, {
+      ...(intervenantDeLaFile?.name === undefined ? {} : { name: intervenantDeLaFile.name }),
+      isSelf: intervenantFile !== '' && intervenantFile === staffStore.identity.practitionerId,
+    }),
   )
   const congeDeLaFile = $derived(
     leaveWarning(

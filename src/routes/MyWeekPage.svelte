@@ -93,9 +93,17 @@
     </div>
 
     {#if total === 0}
+      <!--
+        Une semaine écoulée ne s'invite pas au futur : le même texte servait aux deux, et
+        conseillait de s'inscrire à une semaine vieille d'un mois.
+      -->
       <p class="liste-ecran text-lg text-ink">
-        Vous n'avez rien de prévu cette semaine. Vous pouvez choisir une activité dans le
-        calendrier, ou en parler à un soignant.
+        {#if jours[6]! < todayLocalDate()}
+          Vous n'aviez rien de prévu cette semaine-là.
+        {:else}
+          Vous n'avez rien de prévu cette semaine. Vous pouvez choisir une activité dans le
+          calendrier, ou en parler à un soignant.
+        {/if}
       </p>
     {:else}
       <ul class="liste-ecran grid gap-4">

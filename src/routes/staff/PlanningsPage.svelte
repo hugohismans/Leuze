@@ -169,7 +169,7 @@
       <p class="card p-5 text-lg" aria-live="polite">Lecture des inscriptions…</p>
     {:else if plannings.length === 0}
       <p class="card p-5 text-lg text-ink-soft">
-        Aucune personne enregistrée dans ce service. Créez-les depuis « Les patients ».
+        Aucune personne enregistrée dans ce service. Vous pouvez en ajouter depuis « Les patients ».
       </p>
     {:else}
       <!--

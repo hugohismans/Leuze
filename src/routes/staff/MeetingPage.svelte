@@ -344,13 +344,13 @@
         Cette semaine est encore trop loin : les séances sont préparées {HORIZON_SEMAINES}
         semaines à l'avance. Revenez plus près de la date.
       {:else if passees > 0}
-        Toutes les activités à inscription de cette semaine ont déjà eu lieu.
+        Toutes les activités de cette semaine ont déjà eu lieu.
         Passez à la semaine suivante pour préparer le programme.
       {:else if serviceId !== null}
-        Aucune activité à inscription cette semaine pour ce service. Choisissez un autre
+        Aucune activité cette semaine pour ce service. Choisissez un autre
         service, ou posez le programme dans « La semaine ».
       {:else}
-        Aucune activité à inscription cette semaine. Posez d'abord le programme dans « La semaine ».
+        Aucune activité cette semaine. Posez d'abord le programme dans « La semaine ».
       {/if}
     </p>
   {:else}

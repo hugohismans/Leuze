@@ -588,7 +588,11 @@ export function createMockStaffApp(): StaffApp {
         return {
           ok: true,
           status: outcome.status,
-          message: outcome.status === 'confirmed' ? 'Inscrit' : "Sur la liste d'attente",
+          // Une phrase, comme « Retiré de la liste. » qui lui répond dans le même bandeau.
+          message:
+            outcome.status === 'confirmed'
+              ? 'Inscrit à cette séance.'
+              : "Placé sur la liste d'attente.",
         }
       },
 
@@ -1000,7 +1004,15 @@ export function createMockStaffApp(): StaffApp {
         if (serviceId === null || serviceId === '') delete suivants[uid]
         else suivants[uid] = serviceId
         world.staffUnits = suivants
-        return { ok: true, message: 'Votre unité est enregistrée.' }
+        // Les mêmes mots que le serveur : « Votre unité est enregistrée » contredisait
+        // le geste quand on venait précisément de n'en choisir aucune.
+        return {
+          ok: true,
+          message:
+            serviceId === null || serviceId === ''
+              ? "Votre compte n'est plus rattaché à une unité : vous voyez tout l'hôpital."
+              : 'Votre unité est enregistrée.',
+        }
       },
 
       async readPatientPermissions(): Promise<PatientPermissions> {
