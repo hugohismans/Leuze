@@ -128,23 +128,47 @@ export function dedupeBusy(entries: BusyEntry[]): BusyEntry[] {
 
     Un rendez-vous, lui, arrivait deux fois sous deux noms : « Rendez-vous » depuis
     l'agenda de l'intervenant, « Rendez-vous avec Docteur Lemaire » depuis celui du
-    patient. Un seul événement, à la minute près, compté deux fois. Les deux agendas
-    croisés ici sont ceux de deux personnes qui se voient : un rendez-vous commun aux
-    deux, aux mêmes bornes, est nécessairement le même. On garde le nom le plus explicite,
-    c'est celui qui apprend quelque chose.
+    patient. Un seul événement, à la minute près, compté deux fois.
+
+    Le libellé n'a d'abord plus compté du tout pour les rendez-vous, et c'était trop
+    large : deux rendez-vous réellement distincts aux mêmes bornes — un double emploi
+    dans l'agenda de l'un ou de l'autre — se fondaient alors en un seul. Or c'est
+    exactement ce que cet écran existe pour montrer. On ne fond donc que ce qui se
+    ressemble : un libellé qui prolonge l'autre, « Rendez-vous » et « Rendez-vous avec
+    Docteur Lemaire ». « Rendez-vous avec Claire » et « Rendez-vous avec Docteur
+    Lemaire » restent deux lignes, et le double emploi se voit.
   */
-  const parClef = new Map<string, BusyEntry>()
+  const gardes: BusyEntry[] = []
   for (const entry of entries) {
-    const clef =
-      entry.kind === 'appointment'
-        ? `${entry.start.getTime()}|${entry.end.getTime()}|rendez-vous`
-        : `${entry.start.getTime()}|${entry.end.getTime()}|${entry.kind}|${entry.label}`
-    const vue = parClef.get(clef)
-    if (vue === undefined || entry.label.length > vue.label.length) parClef.set(clef, entry)
+    const jumeau = gardes.findIndex((garde) => leMemeEvenement(garde, entry))
+    if (jumeau === -1) {
+      gardes.push(entry)
+      continue
+    }
+    // On garde le nom le plus explicite : c'est celui qui apprend quelque chose.
+    if (entry.label.length > gardes[jumeau]!.label.length) gardes[jumeau] = entry
   }
   // L'ordre d'arrivée est conservé : c'est celui de la journée.
-  const gardes = new Set(parClef.values())
-  return entries.filter((entry) => gardes.has(entry))
+  const retenus = new Set(gardes)
+  return entries.filter((entry) => retenus.has(entry))
+}
+
+/**
+ * Deux entrées désignent-elles le même événement ?
+ *
+ * Mêmes bornes et même nature, d'abord. Ensuite le libellé : identique pour tout le
+ * monde, ou — pour un rendez-vous seulement — l'un qui prolonge l'autre, « Rendez-vous »
+ * et « Rendez-vous avec Docteur Lemaire ». La souplesse s'arrête là : deux ateliers dont
+ * l'un s'appelle « Atelier » et l'autre « Atelier cuisine » sont deux ateliers.
+ */
+function leMemeEvenement(a: BusyEntry, b: BusyEntry): boolean {
+  if (a.start.getTime() !== b.start.getTime()) return false
+  if (a.end.getTime() !== b.end.getTime()) return false
+  if (a.kind !== b.kind) return false
+  if (a.label === b.label) return true
+  if (a.kind !== 'appointment') return false
+  const [court, long] = a.label.length <= b.label.length ? [a.label, b.label] : [b.label, a.label]
+  return long.startsWith(`${court} `)
 }
 
 export function agendaWeek(
