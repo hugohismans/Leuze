@@ -387,7 +387,9 @@ export async function registerTx(
         reason: outcome.reason,
         message:
           outcome.reason === 'already-registered'
-            ? 'Vous êtes déjà inscrit à cette activité.'
+            ? options.by === 'staff'
+              ? 'Cette personne est déjà inscrite.'
+              : 'Vous êtes déjà inscrit à cette activité.'
             : registrationBlockMessage(outcome.reason),
       }
     }
@@ -404,14 +406,31 @@ export async function registerTx(
 
 export async function unregisterTx(
   database: Firestore,
-  options: { occurrenceId: string; patientUid: string },
+  /*
+    `by` dit à qui la réponse s'adresse.
+
+    Le serveur répondait au soignant avec des phrases écrites pour le patient : « Vous
+    n'êtes plus inscrit. » affiché à quelqu'un qui vient de retirer le prénom d'un autre.
+    La démonstration disait « Retiré de la liste. » — l'écran montré la veille et l'écran
+    du jour ne diraient donc pas la même chose. La transaction est partagée ; les phrases
+    ne le sont plus.
+  */
+  options: { occurrenceId: string; patientUid: string; by?: 'patient' | 'staff' },
 ): Promise<UnregisterOutput> {
+  const pourLeSoignant = options.by === 'staff'
   return database.runTransaction(async (transaction) => {
     const board = await readBoard(database, transaction, options.occurrenceId)
     if (board === null) return { ok: false, message: "Cette activité n'a pas été trouvée." }
 
     const outcome = domainUnregister(board, options.patientUid)
-    if (!outcome.ok) return { ok: false, message: "Vous n'êtes pas inscrit à cette activité." }
+    if (!outcome.ok) {
+      return {
+        ok: false,
+        message: pourLeSoignant
+          ? "Cette personne n'était pas inscrite."
+          : "Vous n'êtes pas inscrit à cette activité.",
+      }
+    }
 
     /*
       On annule le document que le domaine a désigné, et pas « une ligne annulée au nom de
@@ -434,7 +453,7 @@ export async function unregisterTx(
       })
     }
     writeCounters(database, transaction, outcome.board.occurrence)
-    return { ok: true, message: 'Vous n’êtes plus inscrit.' }
+    return { ok: true, message: pourLeSoignant ? 'Retiré de la liste.' : 'Vous n’êtes plus inscrit.' }
   })
 }
 

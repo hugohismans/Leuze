@@ -55,6 +55,7 @@ import {
   addMinutes,
   formatFullWhen,
   instantOf,
+  localDateOf,
   localTimeOf,
   todayLocalDate,
 } from './domain/time'
@@ -343,7 +344,7 @@ export const staffUnregister = onCall(async (request: CallableRequest) => {
   requireStaff(request)
   const occurrenceId = requireString(request.data?.occurrenceId, 'occurrenceId')
   const patientUid = requireString(request.data?.patientUid, 'patientUid')
-  return unregisterTx(db(), { occurrenceId, patientUid })
+  return unregisterTx(db(), { occurrenceId, patientUid, by: 'staff' })
 })
 
 export const staffPromote = onCall(async (request: CallableRequest) => {
@@ -695,7 +696,7 @@ async function libereLesPlacesAVenir(patientUid: string): Promise<number> {
 
   let rendues = 0
   for (const occurrenceId of new Set(aVenir)) {
-    const resultat = await unregisterTx(db(), { occurrenceId, patientUid }).catch(() => ({ ok: false }))
+    const resultat = await unregisterTx(db(), { occurrenceId, patientUid, by: 'staff' }).catch(() => ({ ok: false }))
     if (resultat.ok) rendues += 1
   }
   return rendues
@@ -914,7 +915,7 @@ export const requestAppointment = onCall(async (request: CallableRequest) => {
       .where('patientUid', '==', patient.uid)
       .where('kindId', '==', kindId)
       .get(),
-    premierePlaceLibre(kindId, preference, patient.serviceId, practitionerId),
+    premierePlaceLibre(kindId, preference, patient.serviceId, practitionerId, patient.uid),
     practitionerId === null
       ? Promise.resolve(null)
       : db().collection(COLLECTIONS.practitioners).doc(practitionerId).get(),
@@ -1033,6 +1034,7 @@ async function premierePlaceLibre(
   preference: 'matin' | 'apres-midi' | 'peu-importe',
   serviceId: string,
   practitionerId: string | null,
+  patientUid: string,
 ): Promise<{ practitionerId: string; name: string; slot: NonNullable<ReturnType<typeof findFirstSlot>> } | null> {
   // Le catalogue des intervenants tient en quelques dizaines de lignes : on le lit en
   // entier plutôt que de demander un index pour trois égalités.
@@ -1082,6 +1084,22 @@ async function premierePlaceLibre(
   // ne doit pas retenir de place, même quand la plage du jour est libre.
   const congesDesCandidats = await Promise.all(candidats.map((candidat) => congesDe(candidat.id)))
 
+  /*
+    Ce que le patient a déjà.
+
+    L'acceptation automatique posait tranquillement un rendez-vous par-dessus l'atelier
+    auquel la personne était inscrite : « Ma semaine » affichait les deux au même moment,
+    sans un mot, et c'est elle qui devait choisir. Un soignant qui fixe à la main recevait
+    déjà cet agenda ; la machine n'a aucune raison d'être moins prudente.
+  */
+  const occupePatient: BusySlot[] = (await busyBetween(db(), patientUid, depart, jusque)).map(
+    (entree) => ({
+      localDate: localDateOf(entree.start),
+      from: localTimeOf(entree.start),
+      to: localTimeOf(entree.end),
+    }),
+  )
+
   const agendas = await Promise.all(
     candidats.map((candidat) =>
       db()
@@ -1107,6 +1125,7 @@ async function premierePlaceLibre(
     const slot = findFirstSlot({
       windows: candidat.availability ?? [],
       busy: occupes,
+      patientBusy: occupePatient,
       preference,
       from: depart,
       horizonDays: AUTO_HORIZON_DAYS,

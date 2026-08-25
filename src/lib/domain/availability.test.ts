@@ -178,3 +178,34 @@ describe('une plage qui ne tient pas debout', () => {
     expect(firstWindowRefusal([{ weekday: 2, from: '09:00', to: '12:00' }])).toBeNull()
   })
 })
+
+describe('une plage qui se termine à minuit', () => {
+  it('est acceptée : « 22:00 → 00:00 » est la garde du soir, pas une plage négative', () => {
+    expect(windowRefusal({ weekday: 5, from: '22:00', to: '00:00' })).toBeNull()
+    expect(normalizeAvailability([{ weekday: 5, from: '22:00', to: '00:00' }])).toHaveLength(1)
+  })
+
+  it('couvre bien un rendez-vous de fin de soirée', () => {
+    const plages: AvailabilityWindow[] = [{ weekday: 5, from: '22:00', to: '00:00' }]
+    expect(coversAppointment(plages, 5, '23:00', 30)).toBe(true)
+    expect(coversAppointment(plages, 5, '21:30', 30)).toBe(false)
+  })
+
+  it('refuse toujours une plage à cheval sur minuit, en le disant', () => {
+    // « 22:00 → 02:00 » ne décrit pas une journée : deux plages valent mieux qu'une
+    // qu'il faudrait deviner. Ce qui compte, c'est que ce ne soit plus silencieux.
+    expect(windowRefusal({ weekday: 5, from: '22:00', to: '02:00' })).not.toBeNull()
+  })
+
+  it('lit « 00:00 → 00:00 » comme la journée entière, et non comme une plage vide', () => {
+    /*
+      Minuit en fin de plage veut dire minuit au bout du jour — c'est ce qui donne son
+      sens à « 22:00 → 00:00 ». La même lecture appliquée aux deux bornes décrit une
+      journée entière, ce qui se conçoit pour quelqu'un qui reçoit toute la journée. Rien
+      n'est perdu en silence : c'est là ce qui comptait.
+    */
+    expect(windowRefusal({ weekday: 5, from: '00:00', to: '00:00' })).toBeNull()
+    const journee: AvailabilityWindow[] = [{ weekday: 5, from: '00:00', to: '00:00' }]
+    expect(coversAppointment(journee, 5, '13:00', 60)).toBe(true)
+  })
+})

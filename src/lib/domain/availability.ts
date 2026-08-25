@@ -48,9 +48,24 @@ export function formatLocalTime(time: LocalTime): string {
   return time.replace(':', 'h')
 }
 
+/**
+ * L'heure de fin d'une plage, en minutes. « 00:00 » y vaut minuit **de la fin du jour**.
+ *
+ * « 22:00 → 00:00 » est une plage parfaitement ordinaire — la garde du soir, jusqu'à
+ * minuit. Comparée bêtement, elle se lisait comme une plage de moins vingt-deux heures :
+ * elle était jetée à l'enregistrement, sans un mot, et la personne se retrouvait parfois
+ * sans aucune disponibilité. Le reste du module ne connaît que des minutes ; il suffit
+ * que cette fonction-ci sache lire minuit.
+ */
+export function endMinutesOf(time: LocalTime): number | null {
+  const minutes = minutesOf(time)
+  if (minutes === null) return null
+  return minutes === 0 ? 24 * 60 : minutes
+}
+
 function valide(fenetre: AvailabilityWindow): boolean {
   const debut = minutesOf(fenetre.from)
-  const fin = minutesOf(fenetre.to)
+  const fin = endMinutesOf(fenetre.to)
   return debut !== null && fin !== null && debut < fin
 }
 
@@ -65,7 +80,7 @@ function valide(fenetre: AvailabilityWindow): boolean {
  */
 export function windowRefusal(window: AvailabilityWindow): string | null {
   const debut = minutesOf(window.from)
-  const fin = minutesOf(window.to)
+  const fin = endMinutesOf(window.to)
   if (debut === null || fin === null) return 'Indiquez une heure de début et une heure de fin.'
   if (debut === fin) return "L'heure de fin est la même que l'heure de début : la plage ne dure rien."
   if (fin < debut) return "L'heure de fin est avant l'heure de début. Vérifiez les deux heures."
@@ -100,9 +115,9 @@ export function normalizeAvailability(windows: AvailabilityWindow[]): Availabili
     if (
       derniere !== undefined &&
       derniere.weekday === fenetre.weekday &&
-      minutesOf(fenetre.from)! <= minutesOf(derniere.to)!
+      minutesOf(fenetre.from)! <= endMinutesOf(derniere.to)!
     ) {
-      if (minutesOf(fenetre.to)! > minutesOf(derniere.to)!) derniere.to = fenetre.to
+      if (endMinutesOf(fenetre.to)! > endMinutesOf(derniere.to)!) derniere.to = fenetre.to
       continue
     }
     fondues.push({ ...fenetre })
@@ -130,7 +145,7 @@ export function coversAppointment(
   if (debut === null) return false
   const fin = debut + durationMin
   return windowsOn(windows, weekday).some(
-    (fenetre) => minutesOf(fenetre.from)! <= debut && fin <= minutesOf(fenetre.to)!,
+    (fenetre) => minutesOf(fenetre.from)! <= debut && fin <= endMinutesOf(fenetre.to)!,
   )
 }
 

@@ -685,6 +685,17 @@ export function createMockStaffApp(): StaffApp {
         const depart = query.from ?? firstBookableDay(todayLocalDate())
         const jusque = addLocalDays(depart, PLANNING_HORIZON_DAYS)
 
+        /*
+          Ce que l'agenda croisé dit, et à qui.
+
+          La démonstration recopiait les libellés tels quels : Claire y lisait
+          « Rendez-vous avec Docteur Lemaire » et le titre de toutes les activités de
+          Camille. Elle apprenait donc que Camille voit le psychiatre jeudi à 11h —
+          exactement ce que le projet s'interdit de laisser circuler. Le serveur, lui,
+          masquait déjà. Les deux disent maintenant la même chose : on montre **quand**
+          quelqu'un est pris, pas à quoi.
+        */
+        const sien = identity.role === 'admin' || identity.practitionerId === query.practitionerId
         const occupeIntervenant: BusyEntry[] = []
         for (const rendezVous of world.appointments) {
           if (rendezVous.practitionerId !== query.practitionerId || rendezVous.status !== 'scheduled') continue
@@ -692,7 +703,8 @@ export function createMockStaffApp(): StaffApp {
           occupeIntervenant.push({
             start: rendezVous.start,
             end: rendezVous.end,
-            label: 'Rendez-vous',
+            // Le motif d'un rendez-vous ne regarde que l'intéressé et l'administrateur.
+            label: sien ? 'Rendez-vous' : 'Occupé',
             kind: 'appointment',
           })
         }
@@ -702,7 +714,7 @@ export function createMockStaffApp(): StaffApp {
           occupeIntervenant.push({
             start: occurrence.start,
             end: occurrence.end,
-            label: occurrence.title,
+            label: sien ? occurrence.title : 'Occupé',
             kind: 'activity',
           })
         }
@@ -710,7 +722,13 @@ export function createMockStaffApp(): StaffApp {
         const occupePatient: BusyEntry[] = []
         if (query.patientUid !== undefined) {
           for (let i = 0; i <= PLANNING_HORIZON_DAYS; i += 1) {
-            occupePatient.push(...busyOn(query.patientUid, addLocalDays(depart, i)))
+            // Ce que fait un patient de sa journée ne regarde pas tout le personnel.
+            occupePatient.push(
+              ...busyOn(query.patientUid, addLocalDays(depart, i)).map((entree) => ({
+                ...entree,
+                label: identity.role === 'admin' ? entree.label : 'Occupé',
+              })),
+            )
           }
         }
 
@@ -1177,12 +1195,17 @@ export function createMockStaffApp(): StaffApp {
             role: rolesDeDemonstration.get(i.id) ?? ('staff' as const),
             practitionerId: i.id,
           }))
-        const patients: Account[] = world.patients.map((p) => ({
-          uid: p.uid,
-          label: p.firstName,
-          detail: mockCatalog.services().find((s) => s.id === p.serviceId)?.name ?? p.serviceId,
-          kind: 'patient' as const,
-        }))
+        // Un séjour clos ne se propose plus : le serveur l'écarte déjà, et la
+        // démonstration doit montrer ce que le site réel fera.
+        const maintenant = Date.now()
+        const patients: Account[] = world.patients
+          .filter((p) => p.expiresAt === undefined || p.expiresAt.getTime() > maintenant)
+          .map((p) => ({
+            uid: p.uid,
+            label: p.firstName,
+            detail: mockCatalog.services().find((s) => s.id === p.serviceId)?.name ?? p.serviceId,
+            kind: 'patient' as const,
+          }))
         return [...personnel, ...patients]
       },
 

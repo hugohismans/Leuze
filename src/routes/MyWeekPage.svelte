@@ -43,18 +43,27 @@
 </script>
 
 <section class="mx-auto max-w-2xl px-4 py-5">
+  <!--
+    « Cette semaine » vient après « Semaine suivante », et jamais entre les deux.
+
+    Placé au milieu, il apparaissait dès qu'on quittait la semaine en cours et poussait
+    « Semaine suivante » sous le doigt qui venait d'appuyer : deux appuis au même endroit
+    ramenaient à la semaine de départ, et l'on oscillait indéfiniment entre deux semaines
+    sans jamais atteindre la troisième. Le calendrier place déjà le sien après « Jour
+    suivant », et ne souffre pas du défaut.
+  -->
   <div class="no-print mb-4 flex flex-wrap gap-2">
     <button type="button" class="btn btn-secondary" onclick={() => deplacer(-1)}>
       <span aria-hidden="true">←</span> Semaine passée
+    </button>
+    <button type="button" class="btn btn-secondary" onclick={() => deplacer(1)}>
+      Semaine suivante <span aria-hidden="true">→</span>
     </button>
     {#if debut !== startOfIsoWeek(aujourdhui)}
       <button type="button" class="btn btn-secondary" onclick={() => (debut = startOfIsoWeek(aujourdhui))}>
         Cette semaine
       </button>
     {/if}
-    <button type="button" class="btn btn-secondary" onclick={() => deplacer(1)}>
-      Semaine suivante <span aria-hidden="true">→</span>
-    </button>
   </div>
 
   <article class="feuille feuille-semaine ma-semaine card p-5">
@@ -131,12 +140,25 @@
                     {:else}
                       <p class="text-lg font-bold text-ink">
                         <span aria-hidden="true">{kindIcon(store.appointmentKinds, entree.kindId)}</span>
-                        Rendez-vous avec {entree.withWhom ?? kindName(store.appointmentKinds, entree.kindId).toLowerCase()}
+                        <span class:line-through={entree.cancelled === true}>
+                          Rendez-vous avec {entree.withWhom ?? kindName(store.appointmentKinds, entree.kindId).toLowerCase()}
+                        </span>
                       </p>
                       <p class="text-lg text-ink">
                         {formatTimeRange(entree.start, entree.end)}
                         {#if entree.locationId}· {store.locationOf(entree.locationId)?.name}{/if}
                       </p>
+                      <!--
+                        Un rendez-vous annulé reste sur la feuille, barré et suivi de son
+                        motif. « Rien de prévu » à sa place se lit comme une panne, et fait
+                        venir la personne pour rien.
+                      -->
+                      {#if entree.cancelled === true}
+                        <p class="text-lg font-semibold text-ink">
+                          <span aria-hidden="true">✕</span>
+                          Annulé{entree.cancellationReason ? ` — ${entree.cancellationReason}` : ''}
+                        </p>
+                      {/if}
                     {/if}
                   </li>
                 {/each}

@@ -411,10 +411,21 @@ class AppStore {
    */
   readonly upcomingMine = $derived(this.mine.filter((r) => r.occurrence.end.getTime() >= Date.now()))
 
-  /** Les rendez-vous fixés, passés compris : la semaine les affiche tous, à leur jour. */
+  /**
+   * Les rendez-vous fixés, passés compris : la semaine les affiche tous, à leur jour.
+   *
+   * Ceux qu'un soignant a annulés y figurent aussi, barrés. La feuille disait « Rien de
+   * prévu » là où la personne se souvenait d'un rendez-vous : cela se lit comme une
+   * panne, et cela la fait venir pour rien.
+   */
   readonly scheduledAppointments = $derived(
     this.appointments
-      .filter((a) => a.status === 'scheduled' && a.start !== undefined)
+      .filter((a) => a.start !== undefined)
+      .filter(
+        (a) =>
+          a.status === 'scheduled' ||
+          (a.status === 'cancelled' && (a.cancellationReason ?? '').trim() !== ''),
+      )
       .sort((a, b) => (a.start?.getTime() ?? 0) - (b.start?.getTime() ?? 0)),
   )
 

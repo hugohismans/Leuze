@@ -143,3 +143,47 @@ describe('ce que porte une feuille, en toutes lettres', () => {
     expect(weekSummary([])).toBe('Rien de prévu — feuille vierge')
   })
 })
+
+describe('un rendez-vous annulé sur la feuille de la semaine', () => {
+  it('reste à son jour, barré, avec son motif', () => {
+    const jours = ['2026-08-27']
+    const semaine = myWeek(jours, [], [
+      {
+        id: 'rdv-1',
+        patientUid: 'p_1',
+        kindId: 'psychiatre',
+        preference: 'peu-importe',
+        status: 'cancelled',
+        createdAt: new Date('2026-08-20T09:00:00Z'),
+        localDate: '2026-08-27',
+        start: new Date('2026-08-27T09:00:00Z'),
+        end: new Date('2026-08-27T09:30:00Z'),
+        withWhom: 'Docteur Lemaire',
+        cancellationReason: "Le rendez-vous n'aura pas lieu",
+      },
+    ])
+    const entree = semaine[0]?.entries[0]
+    expect(entree?.kind).toBe('appointment')
+    // « Rien de prévu » à sa place se lit comme une panne, et fait venir pour rien.
+    expect(entree?.kind === 'appointment' && entree.cancelled).toBe(true)
+    expect(entree?.kind === 'appointment' && entree.cancellationReason).toContain('n’aura pas lieu'.replace('’', "'"))
+  })
+
+  it('laisse un rendez-vous fixé sans marque d’annulation', () => {
+    const semaine = myWeek(['2026-08-27'], [], [
+      {
+        id: 'rdv-2',
+        patientUid: 'p_1',
+        kindId: 'psychiatre',
+        preference: 'peu-importe',
+        status: 'scheduled',
+        createdAt: new Date('2026-08-20T09:00:00Z'),
+        localDate: '2026-08-27',
+        start: new Date('2026-08-27T09:00:00Z'),
+        end: new Date('2026-08-27T09:30:00Z'),
+      },
+    ])
+    const entree = semaine[0]?.entries[0]
+    expect(entree?.kind === 'appointment' && entree.cancelled).toBeUndefined()
+  })
+})

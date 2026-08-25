@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createMockRepository, createMockStaffApp } from './index'
 import { mockCatalog } from './catalog'
-import { resetWorld, world, DEMO_PATIENT_UID } from './state'
+import { busyOn, resetWorld, world, DEMO_PATIENT_UID } from './state'
 import { AUTO_DURATION_MIN } from '../../domain/autoAccept'
 import { addLocalDays, isoWeekdayOf, todayLocalDate } from '../../domain/time'
+import { firstBookableDay } from '../../domain/agenda'
 
 /**
  * L'acceptation automatique, jouée de bout en bout sur la démonstration.
@@ -139,5 +140,38 @@ describe('demander deux fois la même chose', () => {
     expect(
       world.appointments.filter((a) => a.patientUid === DEMO_PATIENT_UID && a.kindId === 'psychiatre'),
     ).toHaveLength(1)
+  })
+})
+
+describe('l’acceptation automatique et l’agenda du patient', () => {
+  beforeEach(() => {
+    resetWorld()
+    mockCatalog.reset()
+    world.appointments = []
+  })
+
+  it('ne pose pas un rendez-vous par-dessus une activité à laquelle la personne est inscrite', async () => {
+    const repo = createMockRepository()
+
+    // Ce que la personne a déjà, dans les trois semaines qui viennent.
+    const depart = firstBookableDay(todayLocalDate())
+    const occupeAvant: { debut: number; fin: number }[] = []
+    for (let i = 0; i <= 21; i += 1) {
+      for (const entree of busyOn(DEMO_PATIENT_UID, addLocalDays(depart, i))) {
+        occupeAvant.push({ debut: entree.start.getTime(), fin: entree.end.getTime() })
+      }
+    }
+
+    const resultat = await repo.appointments.request('psychiatre', 'peu-importe')
+    expect(resultat.ok).toBe(true)
+
+    const pose = world.appointments.find((a) => a.status === 'scheduled')
+    if (pose === undefined || pose.start === undefined || pose.end === undefined) return
+
+    // Aucun chevauchement avec ce qu'elle avait déjà.
+    const chevauche = occupeAvant.some(
+      (pris) => pose.start!.getTime() < pris.fin && pris.debut < pose.end!.getTime(),
+    )
+    expect(chevauche).toBe(false)
   })
 })

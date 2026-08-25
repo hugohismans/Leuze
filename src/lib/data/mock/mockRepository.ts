@@ -65,6 +65,7 @@ import {
   DEMO_SERVICE_ID,
   applyBoard,
   boardOf,
+  busyOn,
   conflictsFor,
   droitsDe,
   resetWorld,
@@ -83,6 +84,7 @@ function premierePlaceLibre(
   maintenant: Date,
   serviceId: string | null,
   practitionerId: string | null,
+  patientUid: string,
 ): { practitionerId: string; name: string; slot: NonNullable<ReturnType<typeof findFirstSlot>> } | null {
   const candidats = mockCatalog
     .practitioners()
@@ -96,6 +98,22 @@ function premierePlaceLibre(
 
   // Jamais aujourd'hui : voir `firstBookableDay`.
   const depart = firstBookableDay(todayLocalDate(maintenant))
+
+  /*
+    Ce que le patient a déjà.
+
+    L'acceptation automatique posait tranquillement un rendez-vous par-dessus l'atelier
+    auquel la personne était inscrite : « Ma semaine » affichait les deux au même moment,
+    sans un mot, et c'est elle qui devait choisir. Un soignant qui fixe à la main recevait
+    déjà cet agenda ; la machine n'a aucune raison d'être moins prudente.
+  */
+  const occupePatient: BusySlot[] = []
+  for (let i = 0; i <= AUTO_HORIZON_DAYS; i += 1) {
+    const jour = addLocalDays(depart, i)
+    for (const entree of busyOn(patientUid, jour)) {
+      occupePatient.push({ localDate: jour, from: localTimeOf(entree.start), to: localTimeOf(entree.end) })
+    }
+  }
 
   for (const candidat of candidats) {
     const plages = candidat.availability ?? []
@@ -114,6 +132,7 @@ function premierePlaceLibre(
       // Un jour d'absence ne retient aucune place, même quand la plage du jour est libre.
       leaves: world.leaves[candidat.id] ?? [],
       busy: occupes,
+      patientBusy: occupePatient,
       preference,
       from: depart,
       horizonDays: AUTO_HORIZON_DAYS,
@@ -395,7 +414,7 @@ export function createMockRepository(options: { now?: () => Date } = {}): MockRe
           L'acceptation automatique, jouée exactement comme sur le serveur : la
           démonstration doit montrer ce qui se passera vraiment, sinon elle ment.
         */
-        const place = premierePlaceLibre(kindId, preference, clock(), service, demande)
+        const place = premierePlaceLibre(kindId, preference, clock(), service, demande, uid)
         if (place === null) {
           world.appointments = [...world.appointments, { ...commun, status: 'requested' }]
           return { ok: true, scheduled: false, message: 'Votre demande est envoyée. Un soignant vous dira quand.' }
