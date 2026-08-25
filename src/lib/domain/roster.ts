@@ -18,10 +18,12 @@
  * n'écrit : ce sont des tableaux et des entiers.
  */
 
+import type { RegistrationStatus } from './types'
+
 /** Le minimum dont ce module a besoin. L'écran en met davantage ; cela ne le regarde pas. */
 export type RosterEntry = {
   patientUid: string
-  status: 'confirmed' | 'waitlist'
+  status: Exclude<RegistrationStatus, 'cancelled'>
 }
 
 /**
@@ -72,10 +74,20 @@ export function undoToggle<T extends RosterEntry>(
   return [...sansElle.slice(0, place), before, ...sansElle.slice(place)]
 }
 
-/** Le nombre d'inscrits et celui de la liste d'attente, comptés sur la liste affichée. */
-export function countsOf(lines: RosterEntry[]): { confirmedCount: number; waitlistCount: number } {
+/**
+ * Les trois nombres, comptés sur la liste affichée.
+ *
+ * Les spectateurs à part : ils ne prennent aucune place, et les ajouter aux inscrits
+ * ferait afficher « 9 / 8 » sur une séance qui n'a jamais dépassé.
+ */
+export function countsOf(lines: RosterEntry[]): {
+  confirmedCount: number
+  waitlistCount: number
+  spectatorCount: number
+} {
   return {
     confirmedCount: lines.filter((ligne) => ligne.status === 'confirmed').length,
     waitlistCount: lines.filter((ligne) => ligne.status === 'waitlist').length,
+    spectatorCount: lines.filter((ligne) => ligne.status === 'spectator').length,
   }
 }

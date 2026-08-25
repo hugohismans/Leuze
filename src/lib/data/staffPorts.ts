@@ -22,7 +22,7 @@ export type PatientPlanning = {
   patientUid: string
   firstName: string
   serviceId: string
-  lines: Array<{ occurrenceId: string; status: 'confirmed' | 'waitlist' }>
+  lines: Array<{ occurrenceId: string; status: Exclude<RegistrationStatus, 'cancelled'> }>
 }
 
 export type StaffRole = 'staff' | 'admin'
@@ -337,7 +337,7 @@ export interface StaffRepository {
     options?: { overCapacity?: boolean; overrideConflict?: boolean },
   ): Promise<{
     ok: boolean
-    status?: 'confirmed' | 'waitlist'
+    status?: Exclude<RegistrationStatus, 'cancelled'>
     message: string
     /** Renseigné quand l'inscription est refusée faute de confirmation du chevauchement. */
     conflicts?: TimeConflict[]

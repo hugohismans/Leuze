@@ -135,16 +135,21 @@
       -->
       {#if etape.id === 'programme'}
         <div class="dessin" aria-hidden="true">
+          <!--
+            « Semaine » est le bouton allumé, et les flèches portent son nom : c'est ce que
+            la personne a sous les yeux en ouvrant l'application. Un dessin qui montre un
+            autre écran que le vrai fait douter de tout le petit tour.
+          -->
           <div class="entoure">
             <div class="rangee">
-              <span class="faux-btn faux-choisi">Jour</span>
-              <span class="faux-btn">Semaine</span>
+              <span class="faux-btn">Jour</span>
+              <span class="faux-btn faux-choisi">Semaine</span>
               <span class="faux-btn">Mois</span>
             </div>
           </div>
           <div class="rangee sous-dessin">
-            <span class="faux-btn faux-clair">← Jour précédent</span>
-            <span class="faux-btn faux-clair">Jour suivant →</span>
+            <span class="faux-btn faux-clair">← Semaine précédente</span>
+            <span class="faux-btn faux-clair">Semaine suivante →</span>
           </div>
         </div>
       {:else if etape.id === 'activite'}
@@ -161,9 +166,16 @@
           </div>
         </div>
       {:else if etape.id === 'ma-semaine'}
+        <!--
+          Les deux boutons, l'un au-dessus de l'autre, comme sur le calendrier. C'est leur
+          voisinage qui se retient : « et moi, dans tout ça ? » se demande à deux endroits.
+        -->
         <div class="dessin" aria-hidden="true">
           <div class="entoure">
             <span class="faux-btn faux-fort">🗓️ Voir ma semaine</span>
+          </div>
+          <div class="entoure">
+            <span class="faux-btn">📅 Demander un rendez-vous</span>
           </div>
         </div>
       {:else if etape.id === 'mes-inscriptions'}

@@ -198,6 +198,7 @@
                     {#if entree.kind === 'activity'}
                       <span class:line-through={entree.cancelled}>{entree.title}</span>
                       {#if entree.waiting}<span class="text-base text-ink-soft">· en liste d'attente</span>{/if}
+                      {#if entree.watching}<span class="text-base text-ink-soft">· vient regarder</span>{/if}
                       {#if entree.cancelled}<span class="text-base text-ink-soft">· annulée</span>{/if}
                     {:else}
                       <span aria-hidden="true">🩺</span>

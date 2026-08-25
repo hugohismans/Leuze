@@ -73,8 +73,8 @@ export function tutorialSteps(serviceName: string | null): TutorialStep[] {
       emoji: '📅',
       title: 'Ce qui est prévu',
       lines: [
-        'Voici le premier écran : les activités proposées.',
-        '« Jour » montre une journée. « Semaine » montre toute la semaine.',
+        'Voici le premier écran : les activités de la semaine, jour par jour.',
+        '« Semaine » est déjà choisi. « Jour » n’en montre qu’une, « Mois » montre le mois entier.',
         'Les deux flèches vous font avancer dans le temps.',
       ],
     },
@@ -91,10 +91,23 @@ export function tutorialSteps(serviceName: string | null): TutorialStep[] {
     {
       id: 'ma-semaine',
       emoji: '🗓️',
+      /*
+        Deux boutons, une seule idée : « et moi, dans tout ça ? ».
+
+        Ils sont voisins à l'écran, et c'est ce voisinage qui se retient. Leur donner deux
+        écrans séparés reviendrait à faire lire une phrase de plus pour la même chose ; et
+        laisser le second sans mention le laissait introuvable — personne n'a eu l'idée
+        d'aller chercher un rendez-vous dans « Mes inscriptions ».
+
+        Le titre reste court, et il n'énumère pas : « Votre semaine, vos rendez-vous »
+        tenait sur trois lignes et coupait le mot en « rendez- / vous ». Ce sont les deux
+        phrases et le dessin qui nomment les boutons ; un titre est un repère, pas un
+        résumé.
+      */
       title: 'Votre semaine à vous',
       lines: [
         'Le bouton « Voir ma semaine » montre tout ce qui est prévu pour vous.',
-        'Vos activités et vos rendez-vous, sur une seule page.',
+        'Juste en dessous, « Demander un rendez-vous » prévient un professionnel que vous voulez le voir.',
       ],
     },
     {
@@ -106,7 +119,7 @@ export function tutorialSteps(serviceName: string | null): TutorialStep[] {
       lines: [
         'Tout en haut, le bouton « Mes inscriptions » rassemble ce à quoi vous êtes inscrit.',
         'Vous pouvez y retirer une inscription.',
-        'C’est aussi là que vous demandez un rendez-vous avec un professionnel.',
+        'Vous y retrouvez aussi vos rendez-vous, et où ils en sont.',
       ],
     },
     {

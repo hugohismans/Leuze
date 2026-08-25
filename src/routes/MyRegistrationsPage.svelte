@@ -85,7 +85,9 @@
     -->
     {#if store.may('requestAppointment')}
       <button type="button" class="btn btn-secondary" onclick={() => navigate('/rendez-vous')}>
-        <span aria-hidden="true">📅</span> Demander un rendez-vous
+        <!-- « rendez-vous » ne se coupe pas au trait d'union : voir le calendrier. -->
+        <span aria-hidden="true">📅</span>
+        <span>Demander un <span class="whitespace-nowrap">rendez-vous</span></span>
       </button>
     {/if}
   </div>
@@ -123,6 +125,18 @@
                 <span class="badge" style="background: var(--color-ok-bg); color: var(--color-ok-fg);">
                   <span aria-hidden="true">✓</span>
                   <span>Vous êtes inscrit</span>
+                </span>
+              {:else if registration.status === 'spectator'}
+                <!--
+                  Ni inscrit, ni en attente : la personne vient regarder. L'écrire évite
+                  qu'elle se croie engagée à participer — et qu'elle renonce à venir.
+                -->
+                <span
+                  class="badge"
+                  style="background: var(--color-brand-100); color: var(--color-brand-900);"
+                >
+                  <span aria-hidden="true">👀</span>
+                  <span>Vous venez regarder</span>
                 </span>
               {:else}
                 <span class="badge" style="background: var(--color-warn-bg); color: var(--color-warn-fg);">

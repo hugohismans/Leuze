@@ -4,7 +4,7 @@
  */
 import { cancelledToShow, upcomingScheduled } from './domain/appointments'
 import { requestablePractitioners as requestableFor } from './domain/practitioners'
-import { capacityOf, likelyStatus } from './domain/capacity'
+import { capacityOf, likelyStatus, type RegistrationKind } from './domain/capacity'
 import {
   OPEN_TO_PATIENTS,
   isAllowed,
@@ -30,11 +30,25 @@ import type { AppRepository, MyRegistration, RegisterResult } from './data/ports
 
 export type CalendarView = 'day' | 'week' | 'month'
 
-/** Sur borne et mobile la vue par défaut est « jour », sur ordinateur « semaine ». */
-function defaultView(): CalendarView {
-  if (typeof window === 'undefined') return 'day'
-  return window.matchMedia('(min-width: 1024px)').matches ? 'week' : 'day'
-}
+/**
+ * La vue par défaut : la semaine, sur tout appareil.
+ *
+ * Elle dépendait de la largeur de l'écran — « jour » sur une borne ou un téléphone,
+ * « semaine » sur un ordinateur. L'intention était bonne : moins de choses à l'écran là
+ * où il est petit. À l'usage, c'était le contraire de ce qu'il fallait.
+ *
+ * On n'ouvre pas le programme pour savoir ce qui se passe dans l'heure, mais pour se
+ * faire une idée de sa semaine et choisir. Ouvrir sur une seule journée oblige à
+ * comprendre qu'il existe d'autres jours, puis à trouver « Jour suivant » et à appuyer
+ * six fois — six gestes avant la première information utile. Et le mardi soir, la
+ * journée affichée est déjà finie : l'écran d'accueil est alors vide, ce qui se lit
+ * comme « il n'y a rien ».
+ *
+ * La vue « semaine » tient sur un téléphone : elle n'y devient pas une grille, mais la
+ * liste des jours les uns sous les autres. Rien ne déborde, et il n'y a rien à
+ * découvrir pour voir jeudi.
+ */
+const VUE_PAR_DEFAUT: CalendarView = 'week'
 
 function rangeOf(view: CalendarView, date: LocalDate): { from: LocalDate; to: LocalDate } {
   if (view === 'day') return { from: date, to: date }
@@ -67,7 +81,7 @@ class AppStore {
     return this.repository
   }
 
-  view = $state<CalendarView>(defaultView())
+  view = $state<CalendarView>(VUE_PAR_DEFAUT)
   date = $state<LocalDate>(todayLocalDate())
   categoryId = $state<string | null>(null)
   locationId = $state<string | null>(null)
@@ -278,15 +292,30 @@ class AppStore {
    */
   async registerTo(
     occurrenceId: string,
-    options: { replacing?: string[] } = {},
+    options: { replacing?: string[]; as?: RegistrationKind } = {},
   ): Promise<RegisterResult> {
     const service = (await this.repo()).registrations
     const occurrence = this.occurrences.find((o) => o.id === occurrenceId) ?? null
-    const dejaInscrit = this.mine.some((r) => r.occurrence.id === occurrenceId)
+    const avant = this.mine.find((r) => r.occurrence.id === occurrenceId) ?? null
 
-    if (occurrence !== null && !dejaInscrit) {
+    /*
+      Ce que l'écran affiche pendant que la réponse voyage.
+
+      Venir regarder n'a pas d'état intermédiaire : c'est toujours accepté quand la séance
+      a lieu. Participer, en revanche, peut finir en liste d'attente — `likelyStatus` fait
+      la même prévision que le bouton, pour que les deux ne se contredisent jamais.
+    */
+    if (occurrence !== null) {
+      const attendu =
+        options.as === 'spectator' ? ('spectator' as const) : likelyStatus(occurrence)
       this.#versionMine += 1
-      this.mine = [...this.mine, { occurrence, status: likelyStatus(occurrence), position: null }]
+      this.mine =
+        avant === null
+          ? [...this.mine, { occurrence, status: attendu, position: null }]
+          : // Changer d'avis ne crée pas une seconde ligne : celle-ci change de nature.
+            this.mine.map((r) =>
+              r.occurrence.id === occurrenceId ? { ...r, status: attendu, position: null } : r,
+            )
     }
 
     this.#ecrituresInscription += 1
@@ -299,8 +328,16 @@ class AppStore {
 
     this.#versionMine += 1
     if (!resultat.ok) {
-      // Refusé : on défait cette inscription-là, et rien d'autre.
-      if (!dejaInscrit) this.mine = this.mine.filter((r) => r.occurrence.id !== occurrenceId)
+      /*
+        Refusé : on défait ce geste-là, et rien d'autre.
+
+        Quelqu'un qui essayait de changer d'avis reprend l'état qu'il avait — refuser un
+        changement ne doit jamais lui coûter la place qu'il tenait déjà.
+      */
+      this.mine =
+        avant === null
+          ? this.mine.filter((r) => r.occurrence.id !== occurrenceId)
+          : this.mine.map((r) => (r.occurrence.id === occurrenceId ? avant : r))
     } else if (occurrence !== null) {
       // Le serveur a tranché : on aligne le statut et la position sur ce qu'il dit.
       this.mine = this.mine.map((r) =>

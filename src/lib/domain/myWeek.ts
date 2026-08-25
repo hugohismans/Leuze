@@ -11,6 +11,14 @@ export type WeekEntry =
       kind: 'activity'
       start: Date
       end: Date
+      /**
+       * La séance, pour pouvoir l'ouvrir depuis la feuille.
+       *
+       * Les personnes qui ont essayé l'application appuyaient sur les lignes de « Ma
+       * semaine » et il ne se passait rien : une carte qui ressemble à une carte se
+       * touche. C'est cet identifiant qui mène à la fiche.
+       */
+      occurrenceId: string
       title: string
       locationId: string
       categoryId: string
@@ -18,6 +26,15 @@ export type WeekEntry =
       cancellationReason?: string
       /** Vrai quand la personne est sur la liste d'attente et non encore inscrite. */
       waiting: boolean
+      /**
+       * Vrai quand la personne vient seulement regarder.
+       *
+       * La ligne est la même — c'est bien à cette heure-là qu'elle sera là — mais elle ne
+       * doit pas se lire comme une inscription : on n'attend pas d'elle qu'elle
+       * participe, et lui laisser croire le contraire est la meilleure façon de la faire
+       * renoncer à venir.
+       */
+      watching: boolean
     }
   | {
       kind: 'appointment'
@@ -56,7 +73,7 @@ export type WeekDay = {
 
 type Registration = {
   occurrence: Occurrence
-  status: 'confirmed' | 'waitlist'
+  status: 'confirmed' | 'waitlist' | 'spectator'
 }
 
 /**
@@ -77,6 +94,7 @@ export function myWeek(
       kind: 'activity',
       start: occurrence.start,
       end: occurrence.end,
+      occurrenceId: occurrence.id,
       title: occurrence.title,
       locationId: occurrence.locationId,
       categoryId: occurrence.categoryId,
@@ -85,6 +103,7 @@ export function myWeek(
         ? { cancellationReason: occurrence.cancellationReason }
         : {}),
       waiting: status === 'waitlist',
+      watching: status === 'spectator',
     })
   }
 

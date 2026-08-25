@@ -5,6 +5,7 @@
   import AppHeader from './lib/ui/AppHeader.svelte'
   import ImpersonationBanner from './lib/ui/ImpersonationBanner.svelte'
   import BackLink from './lib/ui/BackLink.svelte'
+  import { backTarget } from './lib/domain/retour'
   import ActivityPage from './routes/ActivityPage.svelte'
   import CalendarPage from './routes/CalendarPage.svelte'
   import CodePage from './routes/CodePage.svelte'
@@ -154,7 +155,8 @@
   on lisait « Retour au programme » au-dessus d'un champ qui demandait un code.
 -->
 {#if !espaceSoignant && store.signedIn && (occurrenceId !== null || router.path === '/mes-inscriptions' || router.path === '/rendez-vous' || router.path === '/ma-semaine' || router.path === '/proposer')}
-  <BackLink />
+  {@const retour = backTarget(router.previous)}
+  <BackLink to={retour.to} label={retour.label} />
 {/if}
 
 <main id="contenu">

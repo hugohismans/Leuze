@@ -65,10 +65,38 @@
     Même libellé qu'ailleurs : une chose, un nom.
   -->
   {#if store.isDemo || store.signedIn}
-    <button type="button" class="btn btn-primary" onclick={() => navigate('/ma-semaine')}>
-      <span aria-hidden="true">🗓️</span>
-      <span>Voir ma semaine</span>
-    </button>
+    <div class="grid gap-3 sm:grid-cols-2">
+      <button type="button" class="btn btn-primary" onclick={() => navigate('/ma-semaine')}>
+        <span aria-hidden="true">🗓️</span>
+        <span>Voir ma semaine</span>
+      </button>
+
+      <!--
+        Demander un rendez-vous, depuis la première page.
+
+        Il ne vivait que dans « Mes inscriptions ». Mis à l'essai auprès de plusieurs
+        personnes, aucune n'a eu l'idée d'aller le chercher là : « mes inscriptions »
+        veut dire « ce à quoi je suis inscrit », et personne ne s'attend à y trouver un
+        geste qui ne concerne aucune activité. Le voici sur le chemin, sous celui de sa
+        propre semaine — les deux disent la même chose : « et moi, dans tout ça ? ».
+
+        Toujours le même libellé qu'ailleurs, et toujours le même réglage : fermé, le
+        bouton disparaît des deux écrans à la fois plutôt que de mener à un refus.
+      -->
+      {#if store.may('requestAppointment')}
+        <button type="button" class="btn btn-secondary" onclick={() => navigate('/rendez-vous')}>
+          <span aria-hidden="true">📅</span>
+          <!--
+            « rendez-vous » ne se coupe pas au trait d'union.
+
+            Sur un téléphone étroit le libellé tient sur deux lignes, et il se coupait en
+            « rendez- / vous » — un mot brisé en deux, ce qui est précisément ce qu'on ne
+            demande pas de déchiffrer à quelqu'un pour qui lire coûte un effort.
+          -->
+          <span>Demander un <span class="whitespace-nowrap">rendez-vous</span></span>
+        </button>
+      {/if}
+    </div>
   {/if}
 
   <!-- En vue jour, le titre visible est celui de la liste juste en dessous :

@@ -3,6 +3,7 @@
  * Deux adapters les implémentent — `mock/` (écran de démonstration, tests)
  * et, au lot L1, `firestore/`. Aucun composant n'importe `firebase/*`.
  */
+import type { RegistrationKind } from '../domain/capacity'
 import type { PatientPermissions } from '../domain/permissions'
 import type { ActivityProposal, ProposalDraft } from '../domain/proposals'
 import type {
@@ -15,6 +16,7 @@ import type {
   Occurrence,
   Practitioner,
   Registration,
+  RegistrationStatus,
   Service,
 } from '../domain/types'
 
@@ -40,7 +42,11 @@ export interface OccurrenceRepository {
 
 export type MyRegistration = {
   occurrence: Occurrence
-  status: 'confirmed' | 'waitlist'
+  /**
+   * `spectator` : la personne vient regarder, sans prendre de place. Voir
+   * `RegistrationStatus` dans le domaine.
+   */
+  status: Exclude<RegistrationStatus, 'cancelled'>
   /** Position dans la liste d'attente, à partir de 1. */
   position: number | null
 }
@@ -48,7 +54,7 @@ export type MyRegistration = {
 export type RegisterResult =
   | {
       ok: true
-      status: 'confirmed' | 'waitlist'
+      status: Exclude<RegistrationStatus, 'cancelled'>
       position: number | null
       /**
        * Les séances quittées pour prendre celle-ci, et la phrase qui le dit.
@@ -82,7 +88,23 @@ export interface RegistrationService {
    * `replacing` : les séances que la personne accepte de quitter pour prendre celle-ci.
    * Sans elles, une inscription qui en chevauche une autre est refusée.
    */
-  register(occurrenceId: string, options?: { replacing?: string[] }): Promise<RegisterResult>
+  register(
+    occurrenceId: string,
+    options?: {
+      replacing?: string[]
+      /**
+       * `'spectator'` : venir regarder, sans prendre de place à personne.
+       *
+       * Une séance complète reste ouverte à ce geste-là, et le nombre de spectateurs
+       * n'est pas limité. Le chevauchement, lui, s'applique pareillement : on ne regarde
+       * pas deux activités à la fois, ni pendant un rendez-vous.
+       *
+       * Demandé par quelqu'un qui est déjà inscrit autrement, ce n'est pas une seconde
+       * inscription : c'est un changement d'avis, et la ligne existante change de nature.
+       */
+      as?: RegistrationKind
+    },
+  ): Promise<RegisterResult>
   unregister(occurrenceId: string): Promise<{ ok: boolean; message: string }>
 
   /**

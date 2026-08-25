@@ -1,13 +1,19 @@
 <script lang="ts">
   import { store } from '../lib/appState.svelte'
   import {
+    becomeParticipantLabel,
+    becomeSpectatorLabel,
     registeredLabel,
     wasRegisteredLabel,
     registrationActionLabel,
     registrationBlock,
     registrationBlockMessage,
     registrationInvitation,
+    fullButWatchableMessage,
+    spectatorActionLabel,
+    spectatorLabel,
     unregisterActionLabel,
+    type RegistrationKind,
   } from '../lib/domain/capacity'
   import { myBusyAt, patientRegistrationDecision } from '../lib/domain/conflicts'
   import { kindName } from '../lib/domain/appointments'
@@ -81,6 +87,16 @@
   const location = $derived(occurrence ? store.locationOf(occurrence.locationId) : null)
   const mine = $derived(occurrence ? store.myStatusFor(occurrence.id) : null)
   const block = $derived(occurrence ? registrationBlock(occurrence, new Date()) : null)
+  /*
+    Ce qui empêche de venir regarder — et le nombre de places n'en fait pas partie.
+
+    C'est toute la raison d'être du geste : un spectateur ne prend la place de personne,
+    donc une séance complète lui reste ouverte. Ne restent que les refus qui valent pour
+    tout le monde : une séance annulée, une séance déjà commencée.
+  */
+  const blockRegard = $derived(
+    occurrence ? registrationBlock(occurrence, new Date(), 'spectator') : null,
+  )
   /** Vrai quand le message du geste répète le motif déjà affiché juste au-dessus. */
   const dejaDit = $derived(
     message !== '' && block !== null && message === registrationBlockMessage(block),
@@ -113,6 +129,18 @@
   const decision = $derived(
     mine === null ? patientRegistrationDecision(dejaPris) : ({ kind: 'libre' } as const),
   )
+  /*
+    La même question, posée pour l'autre geste.
+
+    Venir regarder occupe autant qu'une inscription — on ne regarde pas deux activités à
+    la fois, ni quoi que ce soit pendant un rendez-vous. Seule la phrase change : « … pour
+    venir ici » plutôt que « … pour m'inscrire ici ».
+  */
+  const decisionRegard = $derived(
+    mine === null
+      ? patientRegistrationDecision(dejaPris, 'spectator')
+      : ({ kind: 'libre' } as const),
+  )
 
   /*
     La question posée avant d'échanger.
@@ -123,6 +151,10 @@
     « Non », qui ne disent pas à quoi l'on répond.
   */
   let echangeDemande = $state(false)
+  /** De quel geste parle le panneau d'échange : s'inscrire, ou venir regarder. */
+  let echangePour = $state<RegistrationKind>('participant')
+  /** La décision dont parle le panneau ouvert — celle du bouton sur lequel on a appuyé. */
+  const decisionCourante = $derived(echangePour === 'spectator' ? decisionRegard : decision)
 
   const invitation = $derived(occurrence ? registrationInvitation(occurrence) : null)
   const complet = $derived(
@@ -141,12 +173,15 @@
     en cas de refus ; l'écran ne fait plus que dire ce qui s'est passé. La relecture du
     nombre de places part derrière, sans que personne ne l'attende.
   */
-  async function inscrire(replacing: string[] = []): Promise<void> {
+  async function inscrire(
+    replacing: string[] = [],
+    as: RegistrationKind = 'participant',
+  ): Promise<void> {
     if (!occurrence || busy) return
     echangeDemande = false
     busy = true
     try {
-      const result = await store.registerTo(occurrence.id, { replacing })
+      const result = await store.registerTo(occurrence.id, { replacing, as })
       messageIsError = !result.ok
       if (result.ok) {
         /*
@@ -159,9 +194,11 @@
           justement personne ne pouvait la relever.
         */
         const pris =
-          result.status === 'confirmed'
-            ? `${registeredLabel(occurrence)}.`
-            : `Vous êtes sur la liste d'attente, en position ${result.position}.`
+          result.status === 'spectator'
+            ? `${spectatorLabel()}.`
+            : result.status === 'confirmed'
+              ? `${registeredLabel(occurrence)}.`
+              : `Vous êtes sur la liste d'attente, en position ${result.position}.`
         /*
           L'échange se dit, il ne se devine pas.
 
@@ -178,6 +215,20 @@
     } finally {
       busy = false
     }
+  }
+
+  /**
+   * Un seul chemin pour les deux gestes : soit on demande d'abord ce qu'on quitte, soit
+   * on agit. Sans cela, chaque bouton refaisait le raisonnement à sa façon.
+   */
+  function demander(as: RegistrationKind): void {
+    const quoi = as === 'spectator' ? decisionRegard : decision
+    if (quoi.kind === 'activites') {
+      echangePour = as
+      echangeDemande = true
+      return
+    }
+    void inscrire([], as)
   }
 
   async function desinscrire(): Promise<void> {
@@ -298,11 +349,14 @@
           {/if}
         </div>
       {:else if mine}
+        {@const spectateur = mine.status === 'spectator'}
         <div
           class="card p-5 text-xl"
           style={mine.status === 'confirmed'
             ? 'background: var(--color-ok-bg); color: var(--color-ok-fg); border-color: var(--color-ok-fg);'
-            : 'background: var(--color-warn-bg); color: var(--color-warn-fg); border-color: var(--color-warn-fg);'}
+            : spectateur
+              ? 'background: var(--color-brand-100); color: var(--color-brand-900); border-color: var(--color-brand-700);'
+              : 'background: var(--color-warn-bg); color: var(--color-warn-fg); border-color: var(--color-warn-fg);'}
         >
           {#if mine.status === 'confirmed'}
             <!-- Les mêmes mots que le bouton : « Je note que je viens » et « Vous êtes
@@ -321,6 +375,21 @@
                 ? 'Cette inscription vaut pour cette séance uniquement.'
                 : 'Cela vaut pour cette séance uniquement.'}
             </p>
+          {:else if spectateur}
+            <!--
+              Ni « inscrit », ni « en attente » : la personne vient regarder, et c'est un
+              état à part entière. Le dire dans ses propres mots évite qu'elle croie
+              n'avoir qu'à moitié réussi quelque chose.
+            -->
+            <p><strong><span aria-hidden="true">👀</span> {spectatorLabel()}</strong></p>
+            <p class="mt-1">
+              {formatFullWhen(occurrence.localDate, occurrence.start, occurrence.end)}, {location?.name ?? ''}
+            </p>
+            <p class="mt-1 text-lg">
+              Vous ne prenez la place de personne. Venez, installez-vous, et repartez quand
+              vous voulez.
+            </p>
+            <p class="mt-1 text-lg">Cela vaut pour cette séance uniquement.</p>
           {:else}
             <p><strong>Vous êtes sur la liste d'attente</strong></p>
             <p class="mt-1">
@@ -329,11 +398,44 @@
           {/if}
         </div>
 
+        <!--
+          Changer d'avis, dans les deux sens.
+
+          Ce n'est pas une seconde inscription : la ligne existante change de nature, en
+          un seul geste, côté serveur. Se désinscrire d'abord pour se réinscrire ensuite
+          ferait perdre sa place à qui voulait seulement passer devant, et rien ne la lui
+          rendrait si quelqu'un la prenait entre-temps.
+        -->
+        {#if store.may('register')}
+          {#if spectateur && block === null}
+            <button
+              type="button"
+              class="btn btn-secondary"
+              disabled={busy}
+              onclick={() => demander('participant')}
+            >
+              {becomeParticipantLabel(occurrence)}
+            </button>
+          {:else if !spectateur && blockRegard === null}
+            <button
+              type="button"
+              class="btn btn-secondary"
+              disabled={busy}
+              onclick={() => demander('spectator')}
+            >
+              <span aria-hidden="true">👀</span>
+              {becomeSpectatorLabel(mine.status)}
+            </button>
+          {/if}
+        {/if}
+
         {#if store.may('unregister')}
           <button type="button" class="btn btn-secondary" disabled={busy} onclick={desinscrire}>
             {mine.status === 'confirmed'
               ? unregisterActionLabel(occurrence)
-              : "Me retirer de la liste d'attente"}
+              : spectateur
+                ? unregisterActionLabel(occurrence, 'spectator')
+                : "Me retirer de la liste d'attente"}
           </button>
         {:else}
           <!--
@@ -345,13 +447,16 @@
             {store.refusal('unregister')}
           </p>
         {/if}
-      {:else if block !== null}
+      {:else if block !== null && blockRegard !== null}
         <!--
           Le motif qui compte l'emporte sur la phrase de refus.
 
           « Les inscriptions se prennent avec un soignant » passait avant tout : pour une
           séance d'hier ou une séance annulée, on envoyait quelqu'un parler d'une activité
           qui n'aurait pas lieu — et lui faire perdre son temps, au soignant comme à lui.
+
+          Complet, en revanche, n'est plus un cul-de-sac : venir regarder reste possible,
+          et ce cas passe donc à la branche du dessous.
         -->
         <p class="rounded-xl bg-surface-soft p-4 text-lg text-ink">
           {registrationBlockMessage(block)}
@@ -365,7 +470,8 @@
           Un patient ne décommande pas un rendez-vous tout seul : quelqu'un a bloqué du
           temps pour lui, et cela se parle. On ne montre donc pas de bouton d'inscription
           — proposer un geste qui sera refusé ne sert personne — et l'on dit à qui
-          s'adresser.
+          s'adresser. Venir regarder ne change rien : on ne regarde pas non plus une
+          activité pendant un rendez-vous.
         -->
         <p
           role="status"
@@ -375,7 +481,7 @@
           <span aria-hidden="true">📅</span>
           {decision.message}
         </p>
-      {:else}
+      {:else if echangeDemande && decisionCourante.kind === 'activites'}
         <!--
           Deux activités à la même heure : on ne peut pas être aux deux.
 
@@ -383,15 +489,50 @@
           l'application le fait en un seul geste. La question est posée avant, dans un
           panneau qui nomme ce qui va être quitté : personne ne doit découvrir trois
           jours plus tard qu'il n'est plus inscrit ailleurs.
+
+          Le panneau parle du geste demandé, et de lui seul : `decisionCourante` suit le
+          bouton sur lequel on vient d'appuyer, et les phrases changent avec lui.
         -->
+        <div
+          role="group"
+          aria-label="Vous êtes déjà pris à ce moment-là"
+          class="rounded-xl border-4 p-4"
+          style="background: var(--color-warn-bg); border-color: var(--color-warn-fg);"
+        >
+          <p class="text-lg font-semibold" style="color: var(--color-warn-fg);">
+            <span aria-hidden="true">⚠️</span>
+            {decisionCourante.message}
+          </p>
+          <p class="mt-2 text-lg" style="color: var(--color-warn-fg);">Que voulez-vous faire ?</p>
+          <div class="mt-3 grid gap-2">
+            <button
+              type="button"
+              class="btn btn-primary"
+              disabled={busy}
+              onclick={() =>
+                inscrire(
+                  decisionCourante.kind === 'activites'
+                    ? decisionCourante.aQuitter.map((e) => e.occurrenceId ?? '')
+                    : [],
+                  echangePour,
+                )}
+            >
+              {busy ? 'Un instant…' : decisionCourante.actionLabel}
+            </button>
+            <button type="button" class="btn btn-secondary" onclick={() => (echangeDemande = false)}>
+              Ne rien changer
+            </button>
+          </div>
+        </div>
+      {:else}
         <!--
           Une seule fois la même phrase.
 
           L'avertissement et le panneau la portaient tous les deux, l'un sous l'autre : le
           refus était juste, le doublon donnait l'impression d'un écran cassé. Le panneau
-          prend le relais quand il s'ouvre.
+          prend le relais quand il s'ouvre — il occupe désormais sa propre branche.
         -->
-        {#if decision.kind === 'activites' && !echangeDemande}
+        {#if decision.kind === 'activites'}
           <p
             class="rounded-xl p-4 text-lg font-semibold"
             style="background: var(--color-warn-bg); color: var(--color-warn-fg);"
@@ -401,47 +542,54 @@
           </p>
         {/if}
 
-        {#if decision.kind === 'activites' && echangeDemande}
-          <div
-            role="group"
-            aria-label="Vous êtes déjà pris à ce moment-là"
-            class="rounded-xl border-4 p-4"
-            style="background: var(--color-warn-bg); border-color: var(--color-warn-fg);"
-          >
-            <p class="text-lg font-semibold" style="color: var(--color-warn-fg);">
-              <span aria-hidden="true">⚠️</span>
-              {decision.message}
-            </p>
-            <p class="mt-2 text-lg" style="color: var(--color-warn-fg);">Que voulez-vous faire ?</p>
-            <div class="mt-3 grid gap-2">
-              <button
-                type="button"
-                class="btn btn-primary"
-                disabled={busy}
-                onclick={() => inscrire(decision.aQuitter.map((e) => e.occurrenceId ?? ''))}
-              >
-                {busy ? 'Un instant…' : decision.actionLabel}
-              </button>
-              <button type="button" class="btn btn-secondary" onclick={() => (echangeDemande = false)}>
-                Ne rien changer
-              </button>
-            </div>
-          </div>
-        {:else}
+        {#if block === null}
           <button
             type="button"
             class="btn btn-primary btn-huge"
             disabled={busy}
-            onclick={() => (decision.kind === 'activites' ? (echangeDemande = true) : inscrire())}
+            onclick={() => demander('participant')}
           >
             {registrationActionLabel(occurrence)}
           </button>
+        {:else}
+          <!--
+            Complet, et la liste d'attente est fermée : on le dit, puis on propose la seule
+            chose qui reste possible. La phrase de refus habituelle finit par « Adressez-
+            vous à un soignant » — un mauvais conseil depuis qu'il y a, juste en dessous,
+            un bouton que la personne peut appuyer elle-même.
+          -->
+          <p class="rounded-xl bg-surface-soft p-4 text-lg text-ink">
+            {blockRegard === null ? fullButWatchableMessage() : registrationBlockMessage(block)}
+          </p>
+        {/if}
+
+        <!--
+          Venir sans prendre de place.
+
+          Second bouton, jamais le premier : la plupart des gens viennent pour faire, et
+          l'écran doit d'abord proposer cela. Mais il est là pour tout le monde, y compris
+          sur une activité complète — c'est justement là qu'il sert le plus.
+        -->
+        {#if blockRegard === null}
+          <button
+            type="button"
+            class="btn btn-secondary"
+            disabled={busy}
+            onclick={() => demander('spectator')}
+          >
+            <span aria-hidden="true">👀</span>
+            {spectatorActionLabel()}
+          </button>
+          <p class="text-lg text-ink-soft">
+            Vous venez, vous vous installez, et vous regardez. Vous ne prenez la place de
+            personne.
+          </p>
         {/if}
 
         {#if invitation !== null}
           <p class="text-lg text-ink-soft">{invitation}</p>
         {/if}
-        {#if complet}
+        {#if complet && block === null}
           <p class="text-lg text-ink-soft">
             Cette activité est complète. En vous inscrivant, vous êtes placé sur la liste d'attente.
           </p>
@@ -451,7 +599,7 @@
           pour la séance affichée. Le dire évite qu'une personne croie être inscrite
           pour toutes les fois suivantes et ne revienne pas.
         -->
-        <p class="text-lg text-ink-soft">Vous vous inscrivez pour cette séance seulement.</p>
+        <p class="text-lg text-ink-soft">Cela vaut pour cette séance seulement.</p>
       {/if}
 
       <!--

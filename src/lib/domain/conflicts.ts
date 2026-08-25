@@ -20,6 +20,7 @@
  * Ce module ne connaît que des intervalles et des libellés. Il ne lit rien, il ne décide
  * d'aucun droit, et il ignore tout de la raison d'un rendez-vous.
  */
+import type { RegistrationKind } from './capacity'
 import { formatTime } from './time'
 import type { LocalDate } from './types'
 
@@ -38,6 +39,15 @@ export type BusyEntry = {
    * contre rien.
    */
   occurrenceId?: string
+  /**
+   * La personne venait seulement regarder cette séance-là.
+   *
+   * Le chevauchement est le même — on ne peut pas être à deux endroits — mais la phrase
+   * ne l'est pas : dire « Vous êtes déjà inscrit à Jonglerie » à quelqu'un qui avait
+   * seulement dit qu'il passerait regarder est faux, et c'est le genre de petite fausseté
+   * qui fait douter du reste de l'écran.
+   */
+  spectator?: boolean
 }
 
 export type TimeSpan = { start: Date; end: Date }
@@ -105,7 +115,17 @@ export type RegistrationDecision =
       actionLabel: string
     }
 
-export function patientRegistrationDecision(conflicts: BusyEntry[]): RegistrationDecision {
+export function patientRegistrationDecision(
+  conflicts: BusyEntry[],
+  /**
+   * Ce que la personne demande ici : participer, ou seulement regarder.
+   *
+   * Cela ne change rien au refus — venir regarder occupe autant qu'une inscription — mais
+   * cela change la phrase du bouton : « … pour venir ici » plutôt que « … pour m'inscrire
+   * ici », qui serait faux.
+   */
+  as: RegistrationKind = 'participant',
+): RegistrationDecision {
   if (conflicts.length === 0) return { kind: 'libre' }
 
   const rendezVous = blockingConflict(conflicts)
@@ -134,16 +154,59 @@ export function patientRegistrationDecision(conflicts: BusyEntry[]): Registratio
   }
 
   const premier = quittables[0]!
+  /*
+    Regarder n'est pas s'inscrire, et la phrase doit le dire des deux côtés.
+
+    Ce qu'on quitte : « Me désinscrire de … » ou « Ne plus venir regarder … ». Ce qu'on
+    prend : « … pour m'inscrire ici » ou « … pour venir ici ». Dire « vous êtes déjà
+    inscrit » à quelqu'un qui avait seulement annoncé qu'il passerait regarder est faux,
+    et une petite fausseté sur cet écran-là fait douter de tout le reste.
+  */
+  const seulRegard = premier.spectator === true
+  const aussiRegard = quittables.some((entry) => entry.spectator === true)
+  const pour = as === 'spectator' ? 'pour venir ici' : 'pour m’inscrire ici'
+
   const message =
     quittables.length === 1
-      ? `Vous êtes déjà inscrit à « ${premier.label} », de ${formatTime(premier.start)} à ${formatTime(premier.end)}. Vous ne pouvez pas être aux deux.`
-      : `Vous êtes déjà inscrit à ${quittables.length} activités à ce moment-là. Vous ne pouvez pas être partout.`
+      ? seulRegard
+        ? `Vous venez déjà regarder « ${premier.label} », de ${formatTime(premier.start)} à ${formatTime(premier.end)}. Vous ne pouvez pas être aux deux.`
+        : `Vous êtes déjà inscrit à « ${premier.label} », de ${formatTime(premier.start)} à ${formatTime(premier.end)}. Vous ne pouvez pas être aux deux.`
+      : aussiRegard
+        ? `Vous êtes déjà pris à ce moment-là, par ${quittables.length} activités. Vous ne pouvez pas être partout.`
+        : `Vous êtes déjà inscrit à ${quittables.length} activités à ce moment-là. Vous ne pouvez pas être partout.`
+
   const actionLabel =
     quittables.length === 1
-      ? `Me désinscrire de « ${premier.label} » pour m’inscrire ici`
-      : `Me désinscrire des ${quittables.length} autres pour m’inscrire ici`
+      ? seulRegard
+        ? `Ne plus venir regarder « ${premier.label} » ${pour}`
+        : `Me désinscrire de « ${premier.label} » ${pour}`
+      : aussiRegard
+        ? `Me retirer des ${quittables.length} autres ${pour}`
+        : `Me désinscrire des ${quittables.length} autres ${pour}`
 
   return { kind: 'activites', aQuitter: quittables, message, actionLabel }
+}
+
+/**
+ * Ce qu'on dit une fois l'échange fait : ce qui vient d'être quitté, nommé.
+ *
+ * La phrase vivait en double — dans la fonction appelable et dans l'adapter de
+ * démonstration — et les deux allaient finir par ne plus dire la même chose. Elle vit
+ * ici, à côté de celle qui pose la question, et elle sait qu'on ne quitte pas de la même
+ * façon une inscription et une simple envie de regarder.
+ *
+ * Ne reçoit que ce qui a **réellement** été quitté : annoncer un départ qui n'a pas eu
+ * lieu serait pire que de se taire.
+ */
+export function swapMessage(left: BusyEntry[]): string {
+  if (left.length === 0) return ''
+  if (left.length === 1) {
+    const seul = left[0]!
+    return seul.spectator === true
+      ? `Vous ne venez plus regarder « ${seul.label} ».`
+      : `Vous n’êtes plus inscrit à « ${seul.label} ».`
+  }
+  return `Vous vous êtes retiré de ${left.length} autres activités.`
 }
 
 /**
@@ -179,6 +242,7 @@ export function myBusyAt(
   candidate: TimeSpan & { id: string },
   registrations: {
     occurrence: { id: string; start: Date; end: Date; title: string; status: string }
+    status?: string
   }[],
   appointments: {
     start?: Date
@@ -190,7 +254,7 @@ export function myBusyAt(
 ): BusyEntry[] {
   const occupe: BusyEntry[] = []
 
-  for (const { occurrence } of registrations) {
+  for (const { occurrence, status } of registrations) {
     if (occurrence.id === candidate.id) continue
     // Une séance annulée n'occupe plus personne.
     if (occurrence.status === 'cancelled') continue
@@ -201,6 +265,8 @@ export function myBusyAt(
       kind: 'activity',
       // C'est par lui qu'on proposera d'en sortir.
       occurrenceId: occurrence.id,
+      // Venir regarder occupe autant qu'une inscription — mais ne se dit pas pareil.
+      ...(status === 'spectator' ? { spectator: true } : {}),
     })
   }
 

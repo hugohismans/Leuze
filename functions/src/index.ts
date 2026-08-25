@@ -21,8 +21,9 @@ import {
   rosterFor,
   unregisterTx,
 } from './lib/registration'
-import { patientRegistrationDecision, type BusyEntry } from './domain/conflicts'
+import { patientRegistrationDecision, swapMessage, type BusyEntry } from './domain/conflicts'
 import { alreadyAskedMessage } from './domain/appointments'
+import type { RegistrationKind } from './domain/capacity'
 import {
   effectivePermissions,
   isAllowed,
@@ -239,6 +240,21 @@ export const register = onCall(async (request: CallableRequest) => {
   const occurrenceId = requireString(request.data?.occurrenceId, 'occurrenceId')
 
   /*
+    Participer, ou seulement regarder.
+
+    Certains viennent s'asseoir à côté de l'atelier sans y prendre part : c'est le groupe
+    qu'ils cherchent, pas l'activité. Un spectateur ne prend aucune place — il n'entre pas
+    dans le compte des inscrits, jamais dans la liste d'attente, et une séance complète
+    lui reste ouverte. Il est en revanche **quelque part**, et le contrôle de chevauchement
+    ci-dessous le traite exactement comme une inscription : on ne regarde pas deux
+    activités à la fois, ni pendant un rendez-vous.
+
+    Toute autre valeur vaut « participant » : un client qui enverrait n'importe quoi
+    obtient le geste ordinaire, jamais un passe-droit.
+  */
+  const genre: RegistrationKind = request.data?.as === 'spectator' ? 'spectator' : 'participant'
+
+  /*
     On ne peut pas être à deux endroits à la fois, et c'est ici que cela se décide.
 
     Décision de l'hôpital, prise après un essai en service : un patient s'était inscrit à
@@ -263,7 +279,7 @@ export const register = onCall(async (request: CallableRequest) => {
   ])
   if (!ouvert.ok) return { ok: false, reason: 'closed', message: ouvert.message }
 
-  const decision = patientRegistrationDecision(conflits)
+  const decision = patientRegistrationDecision(conflits, genre)
   if (decision.kind === 'rendez-vous') {
     return { ok: false, reason: 'conflict', message: decision.message }
   }
@@ -317,6 +333,7 @@ export const register = onCall(async (request: CallableRequest) => {
     patientUid: patient.uid,
     by: 'patient',
     serviceId: patient.serviceId,
+    as: genre,
   })
   if (!resultat.ok) return resultat
 
@@ -328,15 +345,13 @@ export const register = onCall(async (request: CallableRequest) => {
     if (sortie.ok) quittees.push(id)
   }
   if (quittees.length === 0) return resultat
-  const noms = decision.kind === 'activites' ? decision.aQuitter.map((e) => e.label) : []
-  return {
-    ...resultat,
-    left: quittees,
-    swapMessage:
-      noms.length === 1
-        ? `Vous n’êtes plus inscrit à « ${noms[0]} ».`
-        : `Vous n’êtes plus inscrit à ${noms.length} autres activités.`,
-  }
+  // Ne se dit que ce qui a réellement été quitté : annoncer un départ qui n'a pas eu lieu
+  // serait pire que de se taire. La phrase vit dans le domaine, avec celle qui l'annonce.
+  const parties =
+    decision.kind === 'activites'
+      ? decision.aQuitter.filter((e) => quittees.includes(e.occurrenceId ?? ''))
+      : []
+  return { ...resultat, left: quittees, swapMessage: swapMessage(parties) }
 })
 
 export const unregister = onCall(async (request: CallableRequest) => {
@@ -480,7 +495,10 @@ export const staffWeekPlannings = onCall(async (request: CallableRequest) => {
   // `in` accepte trente valeurs : on interroge par paquets — tous en même temps. Les
   // paquets s'attendaient les uns les autres, ce qui faisait dix allers-retours pour une
   // semaine chargée là où un seul suffit.
-  const parPatient = new Map<string, Array<{ occurrenceId: string; status: 'confirmed' | 'waitlist' }>>()
+  const parPatient = new Map<
+    string,
+    Array<{ occurrenceId: string; status: 'confirmed' | 'waitlist' | 'spectator' }>
+  >()
   const identifiants = occurrences.docs.map((d) => d.id)
   const paquets: string[][] = []
   for (let i = 0; i < identifiants.length; i += 30) paquets.push(identifiants.slice(i, i + 30))
@@ -492,7 +510,11 @@ export const staffWeekPlannings = onCall(async (request: CallableRequest) => {
   for (const trouvees of lots) {
     for (const document of trouvees.docs) {
       const data = document.data() as { patientUid?: string; occurrenceId?: string; status?: string }
-      if (data.status !== 'confirmed' && data.status !== 'waitlist') continue
+      // Le spectateur aussi : il est quelque part, et le planning doit le dire — sans
+      // quoi un soignant le croirait libre et lui proposerait un rendez-vous à cette heure.
+      if (data.status !== 'confirmed' && data.status !== 'waitlist' && data.status !== 'spectator') {
+        continue
+      }
       if (typeof data.patientUid !== 'string' || typeof data.occurrenceId !== 'string') continue
       const lignes = parPatient.get(data.patientUid) ?? []
       lignes.push({ occurrenceId: data.occurrenceId, status: data.status })
@@ -769,7 +791,12 @@ async function libereLesPlacesAVenir(patientUid: string): Promise<number> {
     .get()
   const aVenir = inscriptions.docs
     .map((document) => document.data() as { occurrenceId?: string; status?: string })
-    .filter((ligne) => ligne.status === 'confirmed' || ligne.status === 'waitlist')
+    // Le spectateur part avec les autres : laisser sa ligne, c'est laisser un nom sur la
+    // feuille de quelqu'un qui a quitté l'hôpital.
+    .filter(
+      (ligne) =>
+        ligne.status === 'confirmed' || ligne.status === 'waitlist' || ligne.status === 'spectator',
+    )
     .map((ligne) => ligne.occurrenceId)
     .filter((occurrenceId): occurrenceId is string => typeof occurrenceId === 'string')
     .filter((occurrenceId) => {

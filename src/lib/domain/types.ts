@@ -218,9 +218,35 @@ export type Occurrence = {
   cancelledByLeave?: boolean
   confirmedCount: number
   waitlistCount: number
+  /**
+   * Les spectateurs, comptés à part.
+   *
+   * Absent vaut zéro : les séances écrites avant que ce champ existe ne portent pas le
+   * champ, et rien ne justifie de réécrire toute la base pour un compteur d'affichage.
+   * Le domaine passe donc partout par `spectatorsOf`.
+   */
+  spectatorCount?: number
 }
 
-export type RegistrationStatus = 'confirmed' | 'waitlist' | 'cancelled'
+/**
+ * `spectator` : la personne vient, mais elle ne participe pas.
+ *
+ * Certains viennent s'asseoir à côté de l'atelier terre sans toucher la terre. Ils
+ * regardent, ils écoutent, ils sont avec les autres — et c'est cela qu'ils viennent
+ * chercher. Jusqu'ici il n'y avait pas de mot pour le dire : ou bien ils s'inscrivaient
+ * et prenaient la place de quelqu'un qui, lui, voulait faire ; ou bien ils venaient sans
+ * rien dire, et l'animateur découvrait sur le pas de la porte qu'ils étaient là.
+ *
+ * Un spectateur ne prend donc **aucune place** : il ne compte pas dans le nombre
+ * d'inscrits, il n'entre jamais dans la liste d'attente, et une activité complète reste
+ * ouverte à lui. Le nombre de spectateurs n'est pas limité — c'est la seule chose qui
+ * rende cette inscription-là inoffensive pour les autres.
+ *
+ * Il est en revanche **quelque part** : on ne regarde pas deux activités à la fois, et
+ * l'on ne regarde pas une activité pendant un rendez-vous. Les chevauchements le
+ * traitent exactement comme une inscription ordinaire.
+ */
+export type RegistrationStatus = 'confirmed' | 'waitlist' | 'spectator' | 'cancelled'
 
 export type Registration = {
   id: string

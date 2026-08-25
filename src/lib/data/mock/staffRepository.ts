@@ -411,7 +411,11 @@ export function createMockStaffApp(): StaffApp {
                   r.status !== 'cancelled' &&
                   dansLaSemaine.has(r.occurrenceId),
               )
-              .map((r) => ({ occurrenceId: r.occurrenceId, status: r.status as 'confirmed' | 'waitlist' })),
+              // Le spectateur y figure : il est quelque part, et le planning doit le dire.
+              .map((r) => ({
+                occurrenceId: r.occurrenceId,
+                status: r.status as 'confirmed' | 'waitlist' | 'spectator',
+              })),
           }))
       },
 
@@ -434,10 +438,14 @@ export function createMockStaffApp(): StaffApp {
         const board = boardOf(occurrenceId)
         if (board === null) return { lines: [], canMarkAttendance: false }
         const peut = canMarkAttendance(identity, board.occurrence)
-        const { confirmed, waitlist } = rosterOf(board)
+        const { confirmed, waitlist, spectators } = rosterOf(board)
         const prenom = (uid: string) => world.patients.find((p) => p.uid === uid)
         const presence = (uid: string) => world.attendance.get(`${occurrenceId}|${uid}`)
-        const ligne = (uid: string, status: 'confirmed' | 'waitlist', position: number | null): RosterLine => ({
+        const ligne = (
+          uid: string,
+          status: 'confirmed' | 'waitlist' | 'spectator',
+          position: number | null,
+        ): RosterLine => ({
           patientUid: uid,
           firstName: prenom(uid)?.firstName ?? 'Prénom inconnu',
           serviceId: prenom(uid)?.serviceId ?? null,
@@ -450,6 +458,8 @@ export function createMockStaffApp(): StaffApp {
           lines: [
             ...confirmed.map((r) => ligne(r.patientUid, 'confirmed', null)),
             ...waitlist.map((r) => ligne(r.patientUid, 'waitlist', waitlistPosition(board, r.patientUid))),
+            // En dernier, et sans position : ils ne font la queue pour rien.
+            ...spectators.map((r) => ligne(r.patientUid, 'spectator', null)),
           ],
           canMarkAttendance: peut,
         }

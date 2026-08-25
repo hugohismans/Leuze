@@ -6,6 +6,7 @@ import type { WeekDay, WeekEntry } from './myWeek'
 /** Heures données en heure locale de Bruxelles (été : UTC+2). */
 const activite = (heure: string, fin: string): WeekEntry => ({
   kind: 'activity',
+  occurrenceId: 'seance-essai',
   start: new Date(`2026-09-01T${heure}:00+02:00`),
   end: new Date(`2026-09-01T${fin}:00+02:00`),
   title: 'Yoga',
@@ -13,6 +14,7 @@ const activite = (heure: string, fin: string): WeekEntry => ({
   categoryId: 'relaxation',
   cancelled: false,
   waiting: false,
+  watching: false,
 })
 
 const jour = (entries: WeekEntry[]): WeekDay => ({ date: '2026-09-01', entries })
@@ -82,11 +84,13 @@ describe('une activité qui se termine à minuit', () => {
             kind: 'activity' as const,
             start: instantOf('2026-08-24', '22:00'),
             end: instantOf('2026-08-25', '00:00'),
+            occurrenceId: 'veillee-essai',
             title: 'Veillée',
             locationId: 'le-salon',
             categoryId: 'detente',
             cancelled: false,
             waiting: false,
+            watching: false,
           },
         ],
       },

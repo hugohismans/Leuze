@@ -11,7 +11,7 @@
 import { firstBookableDay } from '../../domain/agenda'
 import { isVisibleToService } from '../../domain/audience'
 import { servesService } from '../../domain/practitioners'
-import { patientRegistrationDecision } from '../../domain/conflicts'
+import { patientRegistrationDecision, swapMessage } from '../../domain/conflicts'
 import {
   effectivePermissions,
   isAllowed,
@@ -32,7 +32,12 @@ import {
   findFirstSlot,
   type BusySlot,
 } from '../../domain/autoAccept'
-import { registrationBlockMessage, type RegistrationBlock } from '../../domain/capacity'
+import {
+  registrationBlockMessage,
+  unregisteredMessage,
+  type RegistrationBlock,
+  type RegistrationKind,
+} from '../../domain/capacity'
 import { alreadyAskedMessage } from '../../domain/appointments'
 import type {
   Appointment,
@@ -241,8 +246,9 @@ export function createMockRepository(options: { now?: () => Date } = {}): MockRe
 
       async register(
         occurrenceId: string,
-        options: { replacing?: string[] } = {},
+        options: { replacing?: string[]; as?: RegistrationKind } = {},
       ): Promise<RegisterResult> {
+        const genre: RegistrationKind = options.as ?? 'participant'
         const board = boardOf(occurrenceId)
         const uid = world.session.patientUid
         if (!board || uid === null || !isVisibleToService(board.occurrence, world.session.serviceId)) {
@@ -257,7 +263,7 @@ export function createMockRepository(options: { now?: () => Date } = {}): MockRe
           On ne peut pas être à deux endroits à la fois. Même décision que le serveur, au
           mot près : un rendez-vous ferme la porte, une activité s'échange.
         */
-        const decision = patientRegistrationDecision(conflictsFor(uid, occurrenceId))
+        const decision = patientRegistrationDecision(conflictsFor(uid, occurrenceId), genre)
         if (decision.kind === 'rendez-vous') {
           return { ok: false, reason: 'conflict', message: decision.message }
         }
@@ -284,6 +290,7 @@ export function createMockRepository(options: { now?: () => Date } = {}): MockRe
           now: clock(),
           registrationId: `${occurrenceId}--${uid}--${clock().getTime()}`,
           by: 'patient',
+          as: genre,
         })
         if (!outcome.ok) return { ok: false, reason: outcome.reason, message: REFUS[outcome.reason] }
         applyBoard(outcome.board)
@@ -297,20 +304,18 @@ export function createMockRepository(options: { now?: () => Date } = {}): MockRe
           applyBoard(sortie.board)
           quittees.push(id)
         }
-        const noms = decision.kind === 'activites' ? decision.aQuitter.map((e) => e.label) : []
+        // Ne se dit que ce qui a réellement été quitté, et dans les mots de ce que c'était.
+        const parties =
+          decision.kind === 'activites'
+            ? decision.aQuitter.filter((e) => quittees.includes(e.occurrenceId ?? ''))
+            : []
         return {
           ok: true,
           status: outcome.status,
           position: outcome.position,
           ...(quittees.length === 0
             ? {}
-            : {
-                left: quittees,
-                swapMessage:
-                  noms.length === 1
-                    ? `Vous n’êtes plus inscrit à « ${noms[0]} ».`
-                    : `Vous n’êtes plus inscrit à ${noms.length} autres activités.`,
-              }),
+            : { left: quittees, swapMessage: swapMessage(parties) }),
         }
       },
 
@@ -325,8 +330,9 @@ export function createMockRepository(options: { now?: () => Date } = {}): MockRe
         if (!outcome.ok) return { ok: false, message: "Vous n'étiez pas inscrit à cette activité." }
         applyBoard(outcome.board)
         // Les mêmes mots que le serveur : deux phrases pour un seul geste, c'est deux
-        // écrans qui ne se ressemblent pas.
-        return { ok: true, message: 'Vous n’êtes plus inscrit.' }
+        // écrans qui ne se ressemblent pas. Et « plus inscrit » ne se dit pas à quelqu'un
+        // qui venait seulement regarder.
+        return { ok: true, message: unregisteredMessage(outcome.was) }
       },
 
       async warmRegistration(): Promise<void> {

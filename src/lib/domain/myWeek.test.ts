@@ -106,6 +106,7 @@ describe('ce que porte une feuille, en toutes lettres', () => {
   const jour = (entries: WeekEntry[]): WeekDay[] => [{ date: '2026-08-24', entries }]
   const activite = (cancelled = false): WeekEntry => ({
     kind: 'activity',
+    occurrenceId: 'seance-essai',
     start: new Date('2026-08-24T08:00:00Z'),
     end: new Date('2026-08-24T09:00:00Z'),
     title: 'Atelier',
@@ -113,6 +114,7 @@ describe('ce que porte une feuille, en toutes lettres', () => {
     categoryId: 'creatif',
     cancelled,
     waiting: false,
+    watching: false,
   })
   const rendezVous = (): WeekEntry => ({
     kind: 'appointment',
@@ -212,6 +214,7 @@ describe('deux choses en même temps dans la semaine', () => {
     annulee = false,
   ): WeekEntry => ({
     kind: 'activity',
+    occurrenceId: 'seance-essai',
     start: new Date(`2026-08-26T${debut}:00.000Z`),
     end: new Date(`2026-08-26T${fin}:00.000Z`),
     title: titre,
@@ -219,6 +222,7 @@ describe('deux choses en même temps dans la semaine', () => {
     categoryId: 'sport',
     cancelled: annulee,
     waiting: false,
+    watching: false,
   })
   const rendezVous = (debut: string, fin: string, withWhom?: string): WeekEntry => ({
     kind: 'appointment',
