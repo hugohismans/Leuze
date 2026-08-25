@@ -185,6 +185,11 @@ class AppStore {
     this.syncSession()
     this.occurrences = []
     this.mine = []
+    this.proposals = []
+    this.appointments = []
+    // Sur une tablette de salle commune, la personne suivante ne doit rien lire de la
+    // précédente — un brouillon d'idée compris.
+    this.clearProposalDraft()
     // Plus rien à garder à l'écran : la prochaine lecture repart d'une page vide.
     this.#dejaAffiche = false
   }
@@ -368,6 +373,27 @@ class AppStore {
    * la question se pose sur elle seule, sans avoir à comparer d'identifiant.
    */
   readonly hasWaitingProposal = $derived(this.proposals.some((p) => p.status === 'proposed'))
+
+  /**
+   * Le brouillon d'une idée, gardé le temps de la session.
+   *
+   * Il vivait dans l'écran, et l'écran se démonte : trois cents caractères tapés sur une
+   * tablette disparaissaient sans un mot au premier appui sur « Retour » — ou sur le
+   * bouton « précédent » du navigateur. Sur un écran destiné à quelqu'un qui hésite déjà
+   * à demander, cela décourage définitivement.
+   *
+   * Il ne quitte pas la mémoire du navigateur : rien n'est enregistré nulle part tant que
+   * l'idée n'est pas envoyée, et fermer son accès l'efface avec le reste.
+   */
+  proposalDraft = $state<{ title: string; description: string; wantsToLead: boolean }>({
+    title: '',
+    description: '',
+    wantsToLead: false,
+  })
+
+  clearProposalDraft(): void {
+    this.proposalDraft = { title: '', description: '', wantsToLead: false }
+  }
 
   /** Réveille la fonction d'inscription, sans rien inscrire. Voir le port. */
   async warmRegistration(): Promise<void> {

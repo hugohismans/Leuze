@@ -114,7 +114,15 @@ export function patientProposalLabel(proposal: ActivityProposal): string {
     case 'proposed':
       return 'Votre idée est envoyée. Un soignant va la lire.';
     case 'accepted':
-      return 'Votre idée est acceptée. L’activité est au programme.'
+      /*
+        « Retenue », et non « au programme ».
+
+        Retenir une idée ouvre le formulaire de création ; l'activité n'existe pas encore,
+        et le soignant peut être appelé ailleurs avant de l'avoir enregistrée — ou la créer
+        sans la mettre au programme tout de suite. Le patient lisait « l'activité est au
+        programme » et allait la chercher dans un calendrier où elle ne figurait pas.
+      */
+      return 'Votre idée est retenue. Un soignant prépare l’activité.'
     case 'declined':
       return proposal.declineReason
         ? `Votre idée n’a pas été retenue — ${proposal.declineReason}`

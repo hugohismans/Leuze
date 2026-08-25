@@ -9,7 +9,6 @@
     patientProposalLabel,
     validateProposal,
   } from '../lib/domain/proposals'
-  import { navigate } from '../lib/router.svelte'
 
   /**
    * Proposer une activité.
@@ -31,9 +30,14 @@
    * **Une réponse viendra, et l'attente se voit.** Une idée déposée puis oubliée
    * décourage plus sûrement qu'un refus.
    */
-  let titre = $state('')
-  let description = $state('')
-  let animer = $state(false)
+  /*
+    Le brouillon vit dans le magasin, pas dans l'écran.
+
+    L'écran se démonte au premier appui sur « Retour » — ou sur le bouton « précédent » du
+    navigateur — et trois cents caractères tapés sur une tablette disparaissaient sans un
+    mot. Il ne quitte pas la mémoire du navigateur : rien n'est enregistré nulle part tant
+    que l'idée n'est pas envoyée, et fermer son accès l'efface.
+  */
   let idees = $state(false)
   let envoi = $state(false)
   let message = $state<string | null>(null)
@@ -50,9 +54,16 @@
     void store.warmProposal()
   })
 
-  const brouillon = $derived({ title: titre, description, wantsToLead: animer })
+  const brouillon = $derived({
+    title: store.proposalDraft.title,
+    description: store.proposalDraft.description,
+    wantsToLead: store.proposalDraft.wantsToLead,
+  })
   /** Le même contrôle que le serveur, avec les mêmes phrases : voir `domain/proposals`. */
   const controle = $derived(validateProposal(cleanProposal(brouillon)))
+
+  const restantTitre = $derived(TITLE_MAX - store.proposalDraft.title.length)
+  const restantDescription = $derived(DESCRIPTION_MAX - store.proposalDraft.description.length)
 
   async function envoyer(event: SubmitEvent): Promise<void> {
     event.preventDefault()
@@ -68,11 +79,7 @@
       const resultat = await store.proposeActivity(cleanProposal(brouillon))
       refus = !resultat.ok
       message = resultat.message
-      if (resultat.ok) {
-        titre = ''
-        description = ''
-        animer = false
-      }
+      if (resultat.ok) store.clearProposalDraft()
     } finally {
       envoi = false
     }
@@ -85,44 +92,53 @@
 <div class="mx-auto grid grid-cols-1 max-w-3xl gap-5 px-4 py-5">
   <h1 class="text-3xl font-bold text-ink">Proposer une activité</h1>
 
-  <p class="text-lg text-ink">
-    Vous avez une idée d'activité ? Proposez-la. Un soignant la lira, et vous dira si
-    elle est retenue. Si vous voulez l'animer vous-même, dites-le : c'est possible.
-  </p>
-
   <!--
-    Les exemples ne s'imposent pas : ils s'ouvrent. Un vrai bouton, pas une division
-    cliquable, et l'état est annoncé au lecteur d'écran.
-  -->
-  <div class="card p-4">
-    <button
-      type="button"
-      class="btn btn-secondary"
-      aria-expanded={idees}
-      aria-controls="exemples-idees"
-      onclick={() => (idees = !idees)}
-    >
-      <span aria-hidden="true">💡</span>
-      {idees ? 'Masquer les exemples' : 'Des idées ? Voir des exemples'}
-    </button>
+    L'introduction et les exemples ne s'affichent que lorsqu'on peut réellement proposer.
 
-    {#if idees}
-      <div id="exemples-idees" class="mt-3">
-        <p class="mb-2 text-lg text-ink">
-          Une activité, c'est une séance d'une heure ou deux, avec quelques personnes.
-          Par exemple :
-        </p>
-        <ul class="grid gap-2">
-          {#each PROPOSAL_IDEAS as idee (idee)}
-            <li class="text-lg text-ink">
-              <span aria-hidden="true">•</span>
-              {idee}
-            </li>
-          {/each}
-        </ul>
-      </div>
-    {/if}
-  </div>
+    L'écran demandait « Proposez-la », donnait des exemples pour le faire, puis annonçait
+    deux paragraphes plus bas que le geste était fermé. On demandait à quelqu'un de faire
+    quelque chose avant de lui dire que ce n'était pas possible.
+  -->
+  {#if store.may('proposeActivity')}
+    <p class="text-lg text-ink">
+      Vous avez une idée d'activité ? Proposez-la. Un soignant la lira, et vous dira si
+      elle est retenue. Si vous voulez l'animer vous-même, dites-le : c'est possible.
+    </p>
+
+    <!--
+      Les exemples ne s'imposent pas : ils s'ouvrent. Un vrai bouton, pas une division
+      cliquable, et l'état est annoncé au lecteur d'écran.
+    -->
+    <div class="card p-4">
+      <button
+        type="button"
+        class="btn btn-secondary"
+        aria-expanded={idees}
+        aria-controls="exemples-idees"
+        onclick={() => (idees = !idees)}
+      >
+        <span aria-hidden="true">💡</span>
+        {idees ? 'Masquer les exemples' : 'Des idées ? Voir des exemples'}
+      </button>
+
+      {#if idees}
+        <div id="exemples-idees" class="mt-3">
+          <p class="mb-2 text-lg text-ink">
+            Une activité, c'est une séance d'une heure ou deux, avec quelques personnes.
+            Par exemple :
+          </p>
+          <ul class="grid gap-2">
+            {#each PROPOSAL_IDEAS as idee (idee)}
+              <li class="text-lg text-ink">
+                <span aria-hidden="true">•</span>
+                {idee}
+              </li>
+            {/each}
+          </ul>
+        </div>
+      {/if}
+    </div>
+  {/if}
 
   {#if !store.may('proposeActivity')}
     <!--
@@ -142,8 +158,8 @@
     -->
     <p role="status" class="card p-5 text-lg text-ink">
       <span aria-hidden="true">⏳</span>
-      Votre idée est envoyée, un soignant va la lire. Vous pourrez en proposer une autre
-      quand vous aurez la réponse.
+      Vous pourrez proposer une autre idée quand vous aurez la réponse à celle-ci, plus
+      bas.
     </p>
   {:else}
     <form onsubmit={envoyer} class="card grid gap-4 p-5">
@@ -153,13 +169,20 @@
         </label>
         <input
           id="titre-idee"
-          bind:value={titre}
+          bind:value={store.proposalDraft.title}
           class={champ}
           style="min-height: 56px;"
           maxlength={TITLE_MAX}
           placeholder="Tournoi d'échecs"
           autocomplete="off"
         />
+        {#if restantTitre <= 20}
+          <p role="status" class="mt-1 text-base text-ink-soft">
+            {restantTitre === 0
+              ? 'Vous avez atteint la longueur maximale du nom.'
+              : `Il vous reste ${restantTitre} caractères.`}
+          </p>
+        {/if}
       </div>
 
       <div>
@@ -168,13 +191,23 @@
         </label>
         <textarea
           id="texte-idee"
-          bind:value={description}
+          bind:value={store.proposalDraft.description}
           rows="4"
           class={champ}
           maxlength={DESCRIPTION_MAX}
           placeholder="On jouerait aux échecs. Je peux apprendre les règles à ceux qui ne savent pas."
         ></textarea>
         <p id="aide-idee" class="mt-2 text-base text-ink-soft">{PROPOSAL_GUIDANCE}</p>
+        <!--
+          Le champ s'arrête à trois cents caractères. Il le faisait en silence : un texte
+          collé perdait les trois quarts sans un mot, et la coupe tombait au milieu d'un
+          mot. Le compte restant se lit avant d'écrire, et se met à jour en écrivant.
+        -->
+        <p role="status" class="mt-1 text-base text-ink-soft">
+          {restantDescription === 0
+            ? 'Vous avez atteint la longueur maximale. Le texte ne s’allongera plus.'
+            : `Il vous reste ${restantDescription} caractères.`}
+        </p>
       </div>
 
       <!--
@@ -182,7 +215,8 @@
         pas un engagement : l'équipe reste seule à en décider, et la phrase le dit.
       -->
       <label class="flex items-start gap-3 rounded-xl border-2 border-line p-3" style="min-height: 56px;">
-        <input type="checkbox" bind:checked={animer} class="mt-1 h-6 w-6" />
+        <!-- « shrink-0 » : sans lui, la case s'écrase à treize pixels sur un téléphone. -->
+        <input type="checkbox" bind:checked={store.proposalDraft.wantsToLead} class="mt-1 h-6 w-6 shrink-0" />
         <span class="text-lg text-ink">
           Je veux bien l'animer moi-même.
           <span class="block text-base text-ink-soft">
@@ -196,16 +230,25 @@
       </button>
 
       <!--
-        Tant que le formulaire n'est pas complet, on dit ce qui manque plutôt que de
-        laisser un bouton gris sans explication.
+        Tant que le formulaire n'est pas complet, on dit ce qui manque — dès l'arrivée, et
+        non seulement après avoir tapé quelque chose. Un bouton gris sans explication au
+        premier coup d'œil est ce qui fait quitter l'écran.
       -->
-      {#if !controle.ok && (titre !== '' || description !== '')}
+      {#if !controle.ok}
         <p class="text-base text-ink-soft">{controle.message}</p>
       {/if}
     </form>
   {/if}
 
-  {#if message !== null}
+  <!--
+    Le message ne se répète pas.
+
+    Après un envoi réussi, il disait la même chose que le panneau « Votre idée est
+    envoyée » juste au-dessus et que la carte de « Mes idées » juste en dessous : trois
+    fois la même phrase sur un seul écran de téléphone. Il ne reste que lorsqu'il apprend
+    quelque chose — un refus.
+  -->
+  {#if message !== null && (refus || !store.hasWaitingProposal)}
     <p
       role={refus ? 'alert' : 'status'}
       class="rounded-xl p-4 text-lg font-semibold"
@@ -223,9 +266,26 @@
       <h2 class="mb-2 text-2xl font-bold text-ink">Mes idées</h2>
       <ul class="grid gap-4">
         {#each store.proposals as idee (idee.id)}
-          <li class="card p-5">
-            <p class="text-xl font-bold text-ink">{idee.title}</p>
+          <!--
+            « min-w-0 » avec « break-words » : ni l'un ni l'autre ne suffit seul.
+
+            Un élément de grille a « min-width: auto » — il refuse de rétrécir sous la
+            largeur de son plus long mot tant qu'on ne le lui permet pas. Une adresse
+            internet collée comme nom d'activité étirait donc la carte au-delà de l'écran,
+            et emportait toute la page avec elle : entête et pied de page compris.
+          -->
+          <li class="card min-w-0 p-5">
+            <p class="text-xl font-bold text-ink break-words">{idee.title}</p>
             <p class="mt-1 text-lg text-ink">{patientProposalLabel(idee)}</p>
+            <!--
+              Le texte envoyé se relit. Le patient ne pouvait plus en lire une ligne, et
+              n'apprenait donc jamais qu'il avait été raccourci.
+            -->
+            {#if idee.description !== ''}
+              <p class="mt-2 text-base text-ink-soft break-words whitespace-pre-line">
+                {idee.description}
+              </p>
+            {/if}
             {#if idee.wantsToLead}
               <p class="mt-1 text-base text-ink-soft">Vous avez proposé de l'animer.</p>
             {/if}
@@ -235,7 +295,4 @@
     </section>
   {/if}
 
-  <button type="button" class="btn btn-secondary" onclick={() => navigate('/')}>
-    <span aria-hidden="true">←</span> Retour au calendrier
-  </button>
 </div>

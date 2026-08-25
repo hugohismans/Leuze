@@ -76,8 +76,15 @@ describe('ce que le patient lit', () => {
     expect(patientProposalLabel(idee())).toContain('Un soignant va la lire')
   })
 
-  it('dit qu’elle est acceptée', () => {
-    expect(patientProposalLabel(idee({ status: 'accepted' }))).toContain('acceptée')
+  it('dit qu’elle est retenue — sans promettre un programme qui n’existe pas encore', () => {
+    const texte = patientProposalLabel(idee({ status: 'accepted' }))
+    expect(texte).toContain('retenue')
+    /*
+      Retenir une idée ouvre le formulaire de création : l'activité n'existe pas encore, et
+      le soignant peut être appelé ailleurs avant de l'avoir enregistrée. Envoyer le patient
+      la chercher dans le calendrier, c'est lui faire constater une panne.
+    */
+    expect(texte).not.toContain('au programme')
   })
 
   it('donne le motif d’un refus quand il y en a un, et invite à réessayer sinon', () => {
