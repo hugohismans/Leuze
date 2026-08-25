@@ -117,8 +117,8 @@ export function sameNameWarning<P extends { serviceId: string; firstName: string
   ).length
   if (combien === 0) return null
   return combien === 1
-    ? `Une personne s'appelle déjà ${nom} dans ${serviceName}. Sans nom de famille, les deux se ressembleront à l'écran. Appuyez de nouveau pour créer quand même.`
-    : `${combien} personnes s'appellent déjà ${nom} dans ${serviceName}. Sans nom de famille, elles se ressembleront à l'écran. Appuyez de nouveau pour créer quand même.`
+    ? `Une personne s'appelle déjà ${nom} dans ${serviceName}. Sans nom de famille, les deux se ressembleront à l'écran.`
+    : `${combien} personnes s'appellent déjà ${nom} dans ${serviceName}. Sans nom de famille, elles se ressembleront à l'écran.`
 }
 
 /**

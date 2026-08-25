@@ -104,9 +104,17 @@
         place.entry.locationId === undefined
           ? ''
           : (store.locationOf(place.entry.locationId)?.name ?? '')}
+      <!--
+        « annulé » vaut pour les deux natures.
+
+        La règle ne regardait que les activités : un rendez-vous annulé s'imprimait comme
+        s'il avait lieu, sur la feuille que le patient emporte — celle qui survit à
+        l'écran, capture d'écran comprise. C'est le tort même que la correction voulait
+        réparer, laissé intact sur le seul support qui reste.
+      -->
       <div
         class="bloc"
-        class:annule={place.entry.kind === 'activity' && place.entry.cancelled}
+        class:annule={place.entry.cancelled === true}
         class:rendez-vous={place.entry.kind === 'appointment'}
         style={`grid-column: ${2 + colonne}; grid-row: ${2 + place.fromSlot} / ${2 + place.toSlot};
                 width: ${largeur}%; margin-left: ${largeur * place.lane}%;
@@ -131,8 +139,13 @@
           <p class="detail">
             {formatTime(place.entry.start)}{lieu ? ` · ${lieu}` : ''}
           </p>
-          {#if place.entry.kind === 'activity' && place.entry.cancelled}
-            <p class="detail">Annulée</p>
+          {#if place.entry.cancelled === true}
+            <p class="detail">
+              {place.entry.kind === 'appointment' ? 'Annulé' : 'Annulée'}{place.entry
+                .cancellationReason
+                ? ` — ${place.entry.cancellationReason}`
+                : ''}
+            </p>
           {/if}
         {/if}
       </div>

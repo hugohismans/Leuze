@@ -2080,6 +2080,12 @@ export const removeLeave = onCall(async (request: CallableRequest) => {
   }
 })
 
+/** Vrai quand cette activité figure toujours au programme. */
+async function activiteAuProgramme(activityId: string): Promise<boolean> {
+  const fiche = await db().collection(COLLECTIONS.activities).doc(activityId).get()
+  return fiche.exists && (fiche.data() ?? {})['isActive'] !== false
+}
+
 /** Rétablit les séances à venir que ce congé avait barrées, et rend leur nombre. */
 async function retablirLesSeancesDuConge(practitionerId: string, leave: Leave): Promise<number> {
   const aujourdHui = todayLocalDate()
@@ -2100,8 +2106,18 @@ async function retablirLesSeancesDuConge(practitionerId: string, leave: Leave): 
       cancellationReason?: string
       facilitatorId?: string
       cancelledByLeave?: boolean
+      activityId?: string
     }
     if (data.status !== 'cancelled') continue
+    /*
+      L'activité doit toujours être au programme.
+
+      Congé posé sur une séance, activité retirée du programme pendant l'absence, puis
+      congé retiré : la séance réapparaissait dans le calendrier des patients, pour une
+      activité que l'équipe avait décidé d'arrêter.
+    */
+    const activityId = (data.activityId as string | undefined) ?? ''
+    if (activityId !== '' && !(await activiteAuProgramme(activityId))) continue
     // La marque, et non le texte du motif : « L'animateur est absent » est aussi l'un
     // des motifs que le bouton « Annuler cette séance » propose.
     if (data.cancelledByLeave !== true) continue

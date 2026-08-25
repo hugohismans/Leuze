@@ -20,6 +20,7 @@
   } from '../../lib/domain/activityAccess'
   import { deletionConsequences } from '../../lib/domain/catalog'
   import { leaveClashes } from '../../lib/domain/leave'
+  import { findOccurrence } from '../../lib/domain/recurrence'
   import { isoWeekdayOf } from '../../lib/domain/time'
   import { navigate } from '../../lib/router.svelte'
 
@@ -515,9 +516,7 @@
            nouvelle séance, on ouvrait l'ancienne, barrée, et « Supprimer cette séance »
            effaçait celle qu'on n'avait pas choisie, avec ses inscrits.
         */
-        (staffStore.occurrences.find((o) => o.id === date) ??
-        staffStore.occurrences.find((o) => o.activityId === activityId && o.localDate === date) ??
-        null),
+        findOccurrence(staffStore.occurrences, activityId, date),
   )
 
   /**

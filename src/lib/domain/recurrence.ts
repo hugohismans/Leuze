@@ -72,6 +72,46 @@ export function expand(activity: Activity, from: LocalDate, to: LocalDate): Occu
     .map((date) => draftFrom(activity, date, rule.startTime, rule.durationMin))
 }
 
+/**
+ * La séance désignée par une adresse : par identifiant d'abord, par jour ensuite.
+ *
+ * Le repli par jour existe pour les adresses écrites à la main et les anciens signets,
+ * mais il ne peut pas trancher entre deux séances du même jour — et c'est exactement ce
+ * qui arrive après un changement d'heure : l'ancienne reste, barrée, la nouvelle
+ * apparaît, on clique la nouvelle et l'on ouvre l'ancienne. « Supprimer cette séance »
+ * effaçait alors celle qu'on n'avait pas choisie, avec ses inscrits.
+ *
+ * Vit dans le domaine pour être vraiment éprouvée : la même recherche écrite dans un
+ * test ne prouve rien de ce que fait l'écran.
+ */
+export function findOccurrence<T extends { id: string; activityId: string; localDate: LocalDate }>(
+  occurrences: T[],
+  activityId: string,
+  reference: string,
+): T | null {
+  return (
+    occurrences.find((o) => o.id === reference) ??
+    occurrences.find((o) => o.activityId === activityId && o.localDate === reference) ??
+    null
+  )
+}
+
+/**
+ * L'adresse de la fiche d'une séance, telle que les écrans doivent la construire.
+ *
+ * C'est ici que vivait le défaut, et non dans la recherche : l'écran de la semaine
+ * passait un **jour**, et deux séances de la même activité le même jour — le cas d'après
+ * un changement d'heure — ne se distinguent pas par leur jour. On cliquait la nouvelle,
+ * on ouvrait l'ancienne, barrée, et « Supprimer cette séance » effaçait celle qu'on
+ * n'avait pas choisie, avec ses inscrits.
+ *
+ * Une fonction plutôt qu'un gabarit écrit à la main dans chaque écran : c'est la seule
+ * façon qu'un test puisse dire « l'adresse porte bien l'identifiant ».
+ */
+export function occurrenceHref(occurrence: { activityId: string; id: string }): string {
+  return `/soignant/activite/${occurrence.activityId}/${occurrence.id}`
+}
+
 export type MergePlan = {
   /** Occurrences à créer. */
   create: Occurrence[]

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { staffStore } from '../../lib/staffState.svelte'
+  import { occurrenceHref } from '../../lib/domain/recurrence'
   import { canEditActivity } from '../../lib/domain/activityAccess'
   import { weekProgramme, programmeCount } from '../../lib/domain/programme'
   import {
@@ -149,7 +150,7 @@
     <WeekProgramme
       {programme}
       onAjouter={(date) => navigate(`/soignant/activite/nouvelle/${date}`)}
-      onOuvrir={(occurrence) => navigate(`/soignant/activite/${occurrence.activityId}/${occurrence.id}`)}
+      onOuvrir={(occurrence) => navigate(occurrenceHref(occurrence))}
     />
 
     {#if annulees.length > 0}

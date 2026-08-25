@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { planGeneration } from '../data/generation'
-import { expand } from './recurrence'
+import { expand, findOccurrence, occurrenceHref } from './recurrence'
 import type { Activity, Occurrence } from './types'
+import { makeOccurrence } from './fixtures'
 import { addLocalDays, startOfIsoWeek, todayLocalDate } from './time'
 
 /**
@@ -91,27 +92,22 @@ describe('deux séances de la même activité le même jour', () => {
     Les chercher par « activité + jour » rendait la première des deux : on cliquait la
     nouvelle et l'on ouvrait l'ancienne. « Supprimer cette séance » effaçait alors une
     séance que personne n'avait choisie, avec ses inscrits.
+
+    Ces cas éprouvent `findOccurrence`, la recherche que l'écran emploie vraiment. Ils
+    reconstruisaient auparavant la recherche sur place, avec un « .find » écrit dans le
+    test : ils vérifiaient donc `Array.prototype.find`, et rien de l'application. Remettre
+    le défaut dans l'écran ne les faisait pas rougir d'un pouce.
   */
   const seance = (id: string, heure: string, statut: 'scheduled' | 'cancelled'): Occurrence =>
     ({
+      ...makeOccurrence({ localDate: '2026-09-01' }),
       id,
       activityId: 'relaxation',
-      seriesId: 'relaxation',
       title: 'Relaxation',
-      description: '',
-      categoryId: 'relaxation',
-      locationId: 'salle',
-      localDate: '2026-09-01',
       start: new Date(`2026-09-01T${heure}:00.000Z`),
       end: new Date(`2026-09-01T${heure}:00.000Z`),
-      audienceKeys: ['all'],
-      capacity: 8,
-      registrationRequired: true,
-      waitlistEnabled: true,
       status: statut,
-      overridden: false,
       confirmedCount: 7,
-      waitlistCount: 0,
     }) as Occurrence
 
   const toutes = [
@@ -119,14 +115,37 @@ describe('deux séances de la même activité le même jour', () => {
     seance('relaxation_20260901T1600', '14:00', 'scheduled'),
   ]
 
-  it("le jour seul ne les distingue pas : il rend toujours la première", () => {
-    const parJour = toutes.find((o) => o.activityId === 'relaxation' && o.localDate === '2026-09-01')
-    expect(parJour?.id).toBe('relaxation_20260901T1400')
+  it("l'identifiant désigne celle qu'on a choisie, et elle seule", () => {
+    const choisie = findOccurrence(toutes, 'relaxation', 'relaxation_20260901T1600')
+    expect(choisie?.id).toBe('relaxation_20260901T1600')
+    expect(choisie?.status).toBe('scheduled')
   })
 
-  it("l'identifiant désigne celle qu'on a choisie, et elle seule", () => {
-    const choisie = toutes.find((o) => o.id === 'relaxation_20260901T1600')
-    expect(choisie?.status).toBe('scheduled')
-    expect(choisie?.id).toBe('relaxation_20260901T1600')
+  it("désigne l'ancienne quand c'est elle qu'on a nommée", () => {
+    expect(findOccurrence(toutes, 'relaxation', 'relaxation_20260901T1400')?.status).toBe('cancelled')
+  })
+
+  it('l’adresse construite par la semaine porte l’identifiant, et non le jour', () => {
+    /*
+      C'est ici que vivait le défaut. La recherche, elle, ne pouvait pas s'y tromper : ses
+      deux branches ne correspondent jamais en même temps. C'est l'écran qui passait un
+      jour — et un jour ne distingue pas deux séances de la même activité.
+    */
+    const nouvelle = toutes[1]!
+    expect(occurrenceHref(nouvelle)).toBe('/soignant/activite/relaxation/relaxation_20260901T1600')
+    expect(occurrenceHref(nouvelle)).not.toContain('2026-09-01/')
+    // Et l'adresse ainsi construite ramène bien la séance qu'on a choisie.
+    const reference = occurrenceHref(nouvelle).split('/').at(-1)!
+    expect(findOccurrence(toutes, 'relaxation', reference)?.status).toBe('scheduled')
+  })
+
+  it('accepte encore un jour, pour les anciens signets', () => {
+    // Le repli existe, et il rend la première du jour : c'est sa limite, elle est connue.
+    expect(findOccurrence(toutes, 'relaxation', '2026-09-01')?.id).toBe('relaxation_20260901T1400')
+  })
+
+  it('ne rend rien pour une adresse qui ne désigne aucune séance', () => {
+    expect(findOccurrence(toutes, 'relaxation', 'nexistepas')).toBeNull()
+    expect(findOccurrence(toutes, 'autre-activite', '2026-09-01')).toBeNull()
   })
 })

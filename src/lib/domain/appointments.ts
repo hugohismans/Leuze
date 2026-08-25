@@ -59,8 +59,13 @@ export function patientStatusLabel(appointment: Appointment, kinds: AppointmentK
           ? 'La personne que vous deviez voir sera absente ce jour-là. Votre demande est de nouveau en attente : un soignant vous dira quand.'
           : `La personne que vous deviez voir sera absente ce jour-là. Votre demande pour voir ${nomme} est de nouveau en attente : un soignant vous dira quand.`
       }
+      /*
+        Un intitulé sans article ne s'insère pas dans « pour voir … » — mais il ne
+        disparaît pas pour autant : le patient a choisi ce motif, et ne plus le lire
+        l'empêche de reconnaître sa demande parmi plusieurs.
+      */
       return nomme === null
-        ? 'Demande envoyée. Un soignant vous dira quand.'
+        ? `Demande envoyée — ${qui}. Un soignant vous dira quand.`
         : `Demande envoyée pour voir ${nomme}. Un soignant vous dira quand.`
     case 'scheduled':
       return appointment.localDate && appointment.start && appointment.end
@@ -245,6 +250,7 @@ export function cancelledToShow<
     localDate?: string
     start?: Date
     createdAt: Date
+    cancelledAt?: Date
     cancellationReason?: string
   },
 >(appointments: T[], today: string, now: Date = new Date()): T[] {
@@ -252,7 +258,18 @@ export function cancelledToShow<
   return appointments
     .filter((a) => a.status === 'cancelled')
     .filter((a) => (a.cancellationReason ?? '').trim() !== '')
-    .filter((a) => (a.localDate !== undefined ? a.localDate >= today : a.createdAt.getTime() >= limite))
+    /*
+      Les deux semaines se comptent depuis l'annulation, et non depuis le dépôt.
+
+      Une demande restée trois semaines dans la file puis retirée disparaissait à
+      l'instant même : le patient n'avait aucune chance de lire le motif. À défaut de date
+      d'annulation — un ancien enregistrement — on retombe sur le dépôt.
+    */
+    .filter((a) =>
+      a.localDate !== undefined
+        ? a.localDate >= today
+        : (a.cancelledAt ?? a.createdAt).getTime() >= limite,
+    )
     .sort((a, b) => {
       const quand = (x: T): number => x.start?.getTime() ?? x.createdAt.getTime()
       return quand(b) - quand(a)

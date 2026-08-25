@@ -151,6 +151,21 @@ describe('l’acceptation automatique et l’agenda du patient', () => {
   })
 
   it('ne pose pas un rendez-vous par-dessus une activité à laquelle la personne est inscrite', async () => {
+    /*
+      On arme réellement l'acceptation automatique.
+
+      Sans cela, aucun rendez-vous n'était posé, le test sautait son corps et passait —
+      la correction n'était protégée par rien. La plage couvre toute la journée de
+      demain, de sorte qu'il existe forcément une place : si le rendez-vous atterrit
+      malgré tout sur une activité de la personne, c'est que le croisement d'agendas ne
+      fonctionne pas.
+    */
+    const app = await ouvrirSoignant()
+    await app.catalogAdmin.saveAvailability('docteur-lemaire', [
+      { weekday: isoWeekdayOf(firstBookableDay(todayLocalDate())), from: '08:00', to: '20:00' },
+    ])
+    await app.catalogAdmin.setAutoAccept('docteur-lemaire', true)
+
     const repo = createMockRepository()
 
     // Ce que la personne a déjà, dans les trois semaines qui viennent.
@@ -165,12 +180,22 @@ describe('l’acceptation automatique et l’agenda du patient', () => {
     const resultat = await repo.appointments.request('psychiatre', 'peu-importe')
     expect(resultat.ok).toBe(true)
 
+    /*
+      Le test exige que la place ait été trouvée.
+
+      Il se contentait d'un « if (pose === undefined) return » : le jour où l'acceptation
+      automatique ne trouvait rien, il ne vérifiait plus rien et passait quand même. La
+      correction la plus visible pour le patient — ne pas se voir poser un rendez-vous
+      pendant son atelier — n'était alors protégée par rien du tout.
+    */
     const pose = world.appointments.find((a) => a.status === 'scheduled')
-    if (pose === undefined || pose.start === undefined || pose.end === undefined) return
+    expect(pose).toBeDefined()
+    expect(pose!.start).toBeDefined()
+    expect(pose!.end).toBeDefined()
 
     // Aucun chevauchement avec ce qu'elle avait déjà.
     const chevauche = occupeAvant.some(
-      (pris) => pose.start!.getTime() < pris.fin && pris.debut < pose.end!.getTime(),
+      (pris) => pose!.start!.getTime() < pris.fin && pris.debut < pose!.end!.getTime(),
     )
     expect(chevauche).toBe(false)
   })

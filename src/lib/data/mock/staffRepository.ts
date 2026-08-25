@@ -779,7 +779,9 @@ export function createMockStaffApp(): StaffApp {
 
       async cancelAppointment(appointmentId: string, reason: string) {
         world.appointments = world.appointments.map((a) =>
-          a.id === appointmentId ? { ...a, status: 'cancelled' as const, cancellationReason: reason } : a,
+          a.id === appointmentId
+            ? { ...a, status: 'cancelled' as const, cancellationReason: reason, cancelledAt: new Date() }
+            : a,
         )
         return { ok: true, message: 'Rendez-vous annulé.' }
       },
@@ -977,6 +979,15 @@ export function createMockStaffApp(): StaffApp {
           if (occurrence.facilitatorId !== practitionerId) continue
           if (occurrence.localDate < leave.from || occurrence.localDate > leave.to) continue
           if (occurrence.localDate < aujourdHui) continue
+          /*
+            L'activité doit toujours être au programme.
+
+            Enchaînement ordinaire : congé posé sur une séance, activité retirée du
+            programme pendant l'absence, puis congé retiré parce que la personne rentre
+            plus tôt. La séance réapparaissait alors dans le calendrier des patients,
+            pour une activité que l'équipe avait décidé d'arrêter.
+          */
+          if (activities.get(occurrence.activityId)?.isActive !== true) continue
           /*
             La séance rentre dans sa série, et n'en sort pas.
 

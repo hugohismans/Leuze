@@ -677,6 +677,9 @@ export function createFirestoreStaffApp(): StaffApp {
           await updateDoc(doc(db, 'appointments', appointmentId), {
             status: 'cancelled',
             cancellationReason: reason,
+            // Les deux semaines de visibilité se comptent depuis ici, et non depuis le
+            // dépôt de la demande : voir `cancelledToShow`.
+            cancelledAt: Timestamp.now(),
           })
           return { ok: true, message: 'Rendez-vous annulé.' }
         } catch {

@@ -399,6 +399,9 @@ export function createFirestoreRepository(): AppRepository {
               id: d.id,
               createdAt: (data.createdAt as Timestamp).toDate(),
               ...(data.start ? { start: (data.start as Timestamp).toDate() } : {}),
+              // Sans cette lecture, la borne de visibilité d'un rendez-vous annulé
+              // retomberait sur la date de dépôt : voir `cancelledToShow`.
+              ...(data.cancelledAt ? { cancelledAt: (data.cancelledAt as Timestamp).toDate() } : {}),
               ...(data.end ? { end: (data.end as Timestamp).toDate() } : {}),
             }
           })

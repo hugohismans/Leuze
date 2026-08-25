@@ -74,7 +74,8 @@ describe('deux personnes du même prénom', () => {
     const texte = sameNameWarning(gens, 'Camille', 'le-mazurel', 'Le Mazurel')
     expect(texte).toContain('2 personnes')
     expect(texte).toContain('Le Mazurel')
-    expect(texte).toContain('créer quand même')
+    // La mise en garde est portée par le libellé du bouton, plus par la phrase.
+    expect(texte).toContain('se ressembleront')
   })
 
   it('se tait quand le prénom est libre, ou quand le champ est vide', () => {

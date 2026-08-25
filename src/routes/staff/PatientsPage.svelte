@@ -153,7 +153,6 @@
     Il n'empêche rien : deux Camille peuvent parfaitement séjourner dans la même unité.
     Il demande de le faire exprès — un second appui, et la personne est créée.
   */
-  let prevenuPour = $state<string | null>(null)
   const nomDuService = (id: string): string =>
     staffStore.catalog.services.find((service) => service.id === id)?.name ?? 'ce service'
   const memePrenom = $derived(
@@ -164,18 +163,19 @@
     event.preventDefault()
     if (busy || prenom.trim().length === 0) return
 
-    const cle = `${serviceId}|${prenom.trim().toLocaleLowerCase('fr')}`
-    if (memePrenom !== null && prevenuPour !== cle) {
-      prevenuPour = cle
-      return
-    }
+    /*
+      Un seul appui, et le bouton dit ce qu'il fait.
 
+      On demandait un second appui « pour créer quand même ». Mais l'avertissement est
+      déjà à l'écran avant le premier — il apparaît dès que le prénom correspond : le
+      premier appui ne changeait donc rigoureusement rien, et l'on croyait le bouton mort.
+      C'est le libellé du bouton qui porte maintenant la mise en garde.
+    */
     busy = true
     erreur = null
     try {
       codeDelivre = await staffStore.createPatient(prenom.trim(), serviceId)
       prenom = ''
-      prevenuPour = null
       montrerLeCode()
     } catch (error) {
       erreur = enClair(error)
@@ -338,7 +338,7 @@
       </p>
     {/if}
     <button type="submit" class="btn btn-primary mt-4" disabled={busy || prenom.trim().length === 0}>
-      {busy ? 'Un instant…' : 'Créer le code'}
+      {busy ? 'Un instant…' : memePrenom !== null ? 'Créer quand même' : 'Créer le code'}
     </button>
     </form>
   {/if}

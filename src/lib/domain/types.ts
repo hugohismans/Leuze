@@ -298,6 +298,16 @@ export type Appointment = {
   locationId?: string
   /** Motif d'annulation, en français simple. */
   cancellationReason?: string
+  /**
+   * Quand l'annulation a été prononcée.
+   *
+   * La durée pendant laquelle un rendez-vous annulé reste lisible se comptait depuis le
+   * **dépôt** de la demande : une demande restée trois semaines dans la file — ce que le
+   * badge « En attente depuis N jours » sert justement à rendre visible — puis retirée
+   * par un soignant disparaissait de l'écran du patient à l'instant même, sans qu'il ait
+   * pu lire le motif.
+   */
+  cancelledAt?: Date
   /** Fixé sans intervention humaine, dans les plages de l'intervenant. */
   autoAccepted?: boolean
   /**
