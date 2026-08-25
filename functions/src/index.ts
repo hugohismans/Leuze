@@ -12,7 +12,6 @@ import { auth, COLLECTIONS, db, docToOccurrence } from './lib/firestore'
 import { generationWindow, regenerateActivity, regenerateAll } from './lib/occurrences'
 import { assertNotRateLimited, clearFailures, recordFailure } from './lib/rateLimit'
 import {
-  appointmentConflictsFor,
   busyBetween,
   conflictsFor,
   myRegistrationsFor,
@@ -427,11 +426,19 @@ export const staffRegister = onCall(async (request: CallableRequest) => {
     rendez-vous. Mais il doit le savoir avant d'inscrire, pas le découvrir le jour même.
     L'écran le lui demande, puis renvoie la même demande avec `overrideConflict`.
 
-    Seuls les rendez-vous arrêtent le geste. On avait d'abord fait s'arrêter l'application
-    sur n'importe quel chevauchement — y compris deux activités qui se recouvrent d'un
-    quart d'heure, ce qui est le cas courant d'un programme chargé. En réunion, cela
-    donnait une question à chaque prénom, et une réunion qui n'avance plus. Deux activités
-    en même temps, on le voit sur la feuille et l'on s'arrange ; un rendez-vous, non.
+    **Tout** chevauchement arrête le geste, et pas seulement les rendez-vous.
+
+    On n'avait d'abord regardé que les rendez-vous : deux activités qui se recouvrent d'un
+    quart d'heure sont le lot d'un programme chargé, et poser la question à chaque prénom
+    faisait traîner la réunion. Décision de l'hôpital, contre ce raisonnement : inscrire
+    quelqu'un à deux activités simultanées est une erreur, pas un arrangement, et c'est
+    justement en réunion qu'elle se commet — on passe la liste vite, sans avoir la semaine
+    de chacun en tête. Le patient qui s'inscrit seul en est empêché depuis longtemps ; il
+    serait étrange que le geste fait pour lui soit le seul à passer sans un mot.
+
+    Le prix est une lecture de plus par prénom — les inscriptions de la personne, pour
+    savoir ce qu'elle a déjà ce jour-là. Le soignant, lui, n'est jamais empêché : il
+    confirme, et l'inscription passe.
   */
   /*
     La question ne se pose qu'à qui s'engage.
@@ -445,7 +452,9 @@ export const staffRegister = onCall(async (request: CallableRequest) => {
   const dejaLa = await hasActiveRegistration(db(), occurrenceId, patientUid)
 
   if (!overrideConflict && !dejaLa) {
-    const conflits = await appointmentConflictsFor(db(), patientUid, occurrenceId)
+    // Sans service : le soignant voit tout le programme, et lui cacher un titre ne
+    // protégerait personne. C'est la cloison du patient, pas la sienne.
+    const conflits = await conflictsFor(db(), patientUid, occurrenceId)
     if (conflits.length > 0) {
       return {
         ok: false,

@@ -11,7 +11,7 @@ import {
   withoutLeave,
   type Leave,
 } from '../../domain/leave'
-import { blockingConflicts, type BusyEntry } from '../../domain/conflicts'
+import type { BusyEntry } from '../../domain/conflicts'
 import { hasOverrides, type PatientActionOverrides, type PatientPermissions } from '../../domain/permissions'
 import type { ActivityProposal } from '../../domain/proposals'
 import type { Activity, Appointment, LocalDate, LocalTime, Occurrence } from '../../domain/types'
@@ -593,16 +593,16 @@ export function createMockStaffApp(): StaffApp {
 
         /*
           Rien n'est interdit au soignant, mais il doit le savoir avant d'inscrire — et
-          seuls les rendez-vous valent qu'on s'arrête. Deux activités qui se recouvrent
-          sont le lot d'un programme chargé : demander confirmation à chaque prénom
-          rendait la réunion impraticable. Même règle que le serveur, au mot près.
-        */
-        /*
+          **tout** chevauchement vaut qu'on s'arrête, pas seulement les rendez-vous.
+          Décision de l'hôpital : inscrire quelqu'un à deux activités simultanées est une
+          erreur, pas un arrangement, et c'est en réunion qu'elle se commet. Même règle
+          que le serveur, au mot près.
+
           La question ne se pose qu'à qui s'engage : le deuxième appui du cycle de la
           réunion porte sur quelqu'un qui est déjà là. Même réserve que le serveur.
         */
         if (options.overrideConflict !== true && !dejaInscrit(occurrenceId, patientUid)) {
-          const conflits = blockingConflicts(conflictsFor(patientUid, occurrenceId))
+          const conflits = conflictsFor(patientUid, occurrenceId, 'soignant')
           if (conflits.length > 0) {
             return {
               ok: false,

@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
   blockingConflict,
-  blockingConflicts,
   conflictsWith,
   describeConflict,
   localDateOfOccurrenceId,
@@ -98,21 +97,35 @@ describe('la description d’un créneau occupé', () => {
 })
 
 describe('ce qui justifie de s’arrêter et de demander', () => {
-  it('ne retient que les rendez-vous', () => {
-    expect(blockingConflicts([atelier, rendezVous])).toEqual([rendezVous])
+  /*
+    Tout chevauchement arrête le geste, et plus seulement les rendez-vous.
+
+    On avait d'abord jugé le cas bénin : deux activités qui se recouvrent se voient sur la
+    feuille et s'arrangent de vive voix. L'hôpital a tranché autrement — inscrire
+    quelqu'un à deux activités simultanées est une erreur, pas un arrangement, et c'est
+    en réunion qu'elle se commet, en passant la liste vite.
+
+    Il reste une seule distinction, et elle porte sur ce qu'on **propose** : un rendez-vous
+    ne s'échange contre rien, une activité si. C'est `blockingConflict`, au singulier, qui
+    la fait — et elle ne concerne que le patient qui s'inscrit seul.
+  */
+  it('désigne le rendez-vous comme ce qui ne s’échange pas', () => {
+    expect(blockingConflict([atelier, rendezVous])).toEqual(rendezVous)
   })
 
-  it('ne retient rien quand il n’y a que des activités', () => {
-    /*
-      C'est la règle de la réunion : deux activités qui se recouvrent se voient sur la
-      feuille et s'arrangent de vive voix. Demander confirmation à chaque prénom, c'était
-      une réunion qui n'avance plus — et un « oui » cliqué sans lire.
-    */
-    expect(blockingConflicts([atelier])).toEqual([])
+  it('ne désigne rien quand il n’y a que des activités : elles, on peut les quitter', () => {
+    expect(blockingConflict([atelier])).toBeNull()
   })
 
-  it('ne retient rien quand rien ne gêne', () => {
-    expect(blockingConflicts([])).toEqual([])
+  it('ne désigne rien quand rien ne gêne', () => {
+    expect(blockingConflict([])).toBeNull()
+  })
+
+  it('arrête le soignant sur une activité comme sur un rendez-vous', () => {
+    // Le message qu'il lit nomme l'un et l'autre : c'est lui qui décide, pas l'application.
+    expect(staffConflictWarning('Eva', [atelier])).not.toBeNull()
+    expect(staffConflictWarning('Eva', [rendezVous])).not.toBeNull()
+    expect(staffConflictWarning('Eva', [])).toBeNull()
   })
 })
 

@@ -13,9 +13,12 @@
  * s'inscrit seul, et signalée au soignant qui inscrit à sa place — lui peut savoir que le
  * rendez-vous va être déplacé, l'application ne le sait pas.
  *
- * **Deux activités qui se chevauchent, c'est souvent sans importance.** On arrive en
- * retard au jeu de société parce que la marche a duré, et personne n'en fait un drame.
- * On le dit, on ne l'interdit pas.
+ * **Deux activités qui se chevauchent s'arrêtent aussi.** On avait d'abord jugé le cas
+ * bénin — on arrive en retard au jeu de société parce que la marche a duré, personne n'en
+ * fait un drame. L'hôpital a tranché autrement, et il a raison : le patient qui s'inscrit
+ * seul en est empêché depuis longtemps, et il serait étrange que le geste fait pour lui,
+ * en réunion et à la chaîne, soit le seul à passer sans un mot. Le soignant est averti et
+ * confirme ; il n'est jamais empêché.
  *
  * Ce module ne connaît que des intervalles et des libellés. Il ne lit rien, il ne décide
  * d'aucun droit, et il ignore tout de la raison d'un rendez-vous.
@@ -70,15 +73,6 @@ export function conflictsWith(candidate: TimeSpan, busy: BusyEntry[]): BusyEntry
 /** Le premier rendez-vous heurté, s'il y en a un. C'est lui qui bloque. */
 export function blockingConflict(conflicts: BusyEntry[]): BusyEntry | null {
   return conflicts.find((entry) => entry.kind === 'appointment') ?? null
-}
-
-/**
- * Tous les rendez-vous heurtés — c'est-à-dire tout ce qui justifie de s'arrêter et de
- * demander. Les activités qui tombent en même temps n'y figurent pas : elles se disent,
- * elles n'arrêtent rien. Une liste vide veut donc dire « on peut inscrire ».
- */
-export function blockingConflicts(conflicts: BusyEntry[]): BusyEntry[] {
-  return conflicts.filter((entry) => entry.kind === 'appointment')
 }
 
 /** « Rendez-vous avec le psychiatre, de 10h00 à 10h30 ». */

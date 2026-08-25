@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { COLLECTIONS, Timestamp, db } from '../../functions/src/lib/firestore'
 import {
-  appointmentConflictsFor,
+  conflictsFor,
   hasActiveRegistration,
   registerTx,
   unregisterTx,
@@ -66,7 +66,7 @@ describe('le cas d’Eva', () => {
   it('avertit quand le rendez-vous commence au milieu de l’activité', async () => {
     await seance()
     await rendezVous('2026-09-01T09:30:00+02:00', '2026-09-01T10:00:00+02:00')
-    const conflits = await appointmentConflictsFor(db(), EVA, SEANCE)
+    const conflits = await conflictsFor(db(), EVA, SEANCE)
     expect(conflits).toHaveLength(1)
     expect(conflits[0]?.label).toContain('Docteur Lemaire')
   })
@@ -74,33 +74,33 @@ describe('le cas d’Eva', () => {
   it('avertit aussi quand l’activité commence au milieu du rendez-vous', async () => {
     await seance()
     await rendezVous('2026-09-01T08:30:00+02:00', '2026-09-01T09:15:00+02:00')
-    expect(await appointmentConflictsFor(db(), EVA, SEANCE)).toHaveLength(1)
+    expect(await conflictsFor(db(), EVA, SEANCE)).toHaveLength(1)
   })
 
   it('avertit quand le rendez-vous est entièrement dedans', async () => {
     await seance()
     await rendezVous('2026-09-01T09:15:00+02:00', '2026-09-01T09:45:00+02:00')
-    expect(await appointmentConflictsFor(db(), EVA, SEANCE)).toHaveLength(1)
+    expect(await conflictsFor(db(), EVA, SEANCE)).toHaveLength(1)
   })
 
   it('n’avertit pas quand ils s’enchaînent bord à bord', async () => {
     // 10h00 pile : l'un finit, l'autre commence. Ce n'est pas un chevauchement.
     await seance()
     await rendezVous('2026-09-01T10:00:00+02:00', '2026-09-01T10:30:00+02:00')
-    expect(await appointmentConflictsFor(db(), EVA, SEANCE)).toHaveLength(0)
+    expect(await conflictsFor(db(), EVA, SEANCE)).toHaveLength(0)
   })
 
   it('n’avertit pas pour un rendez-vous annulé', async () => {
     await seance()
     await rendezVous('2026-09-01T09:30:00+02:00', '2026-09-01T10:00:00+02:00', 'cancelled')
-    expect(await appointmentConflictsFor(db(), EVA, SEANCE)).toHaveLength(0)
+    expect(await conflictsFor(db(), EVA, SEANCE)).toHaveLength(0)
   })
 
   it('n’avertit pas pour une demande pas encore fixée', async () => {
     // Une demande sans date ne bloque rien : il n'y a pas encore d'heure à heurter.
     await seance()
     await rendezVous('2026-09-01T09:30:00+02:00', '2026-09-01T10:00:00+02:00', 'requested')
-    expect(await appointmentConflictsFor(db(), EVA, SEANCE)).toHaveLength(0)
+    expect(await conflictsFor(db(), EVA, SEANCE)).toHaveLength(0)
   })
 })
 
@@ -119,7 +119,7 @@ describe('quand Eva est déjà sur la séance', () => {
 
     // Elle n'y est pas encore : la question se pose.
     expect(await hasActiveRegistration(db(), SEANCE, EVA)).toBe(false)
-    expect(await appointmentConflictsFor(db(), EVA, SEANCE)).toHaveLength(1)
+    expect(await conflictsFor(db(), EVA, SEANCE)).toHaveLength(1)
 
     // Le soignant a tranché, elle est inscrite.
     await registerTx(db(), { occurrenceId: SEANCE, patientUid: EVA, by: 'staff' })
