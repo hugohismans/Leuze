@@ -537,6 +537,16 @@ export const markAttendance = onCall(async (request: CallableRequest) => {
     const resultat = await registerTx(db(), { occurrenceId, patientUid, by: 'staff', walkIn: true })
     if (!resultat.ok) return resultat
     cibleId = resultat.registrationId
+  } else if (valeur === 'present' && active?.data()['status'] === 'waitlist') {
+    /*
+      Une personne notée présente est inscrite, même au-delà des places.
+
+      Elle restait « en liste d'attente » alors qu'elle était dans la salle : la feuille
+      disait deux choses à la fois, et la place qu'elle occupait n'était comptée nulle
+      part. Le domaine dit déjà la règle — « la feuille doit dire qui était là, pas ce qui
+      était prévu » — mais la marque de présence ne la faisait pas jouer.
+    */
+    await promoteTx(db(), { occurrenceId, patientUid }).catch(() => undefined)
   }
 
   await db().collection(COLLECTIONS.registrations).doc(cibleId).set(

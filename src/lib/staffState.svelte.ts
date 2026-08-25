@@ -1097,6 +1097,14 @@ class StaffStore {
     const resultat = await (await this.app$()).repository.deleteOccurrence(occurrenceId)
     await this.refresh()
     this.message = resultat.message
+    /*
+      Le message survit au retour à la semaine.
+
+      L'écran renvoie immédiatement à la journée, et le changement d'écran effaçait le
+      message : on supprimait une séance et ses inscriptions sans qu'aucun mot ne dise ce
+      qui venait de disparaître — pour le seul geste sans retour en arrière.
+    */
+    this.#survitAuProchainChangement = true
     return resultat.message
   }
 

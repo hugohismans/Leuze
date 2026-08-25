@@ -438,6 +438,22 @@ export function createMockStaffApp(): StaffApp {
             return { ok: false, message: registrationBlockMessage(outcome.reason as never) }
           }
           applyBoard(outcome.board)
+        } else if (attendance === 'present') {
+          /*
+            Une personne notée présente est inscrite, même au-delà des places.
+
+            Elle restait « en liste d'attente » alors qu'elle était dans la salle : la
+            feuille disait deux choses à la fois, et la place qu'elle occupait n'était
+            comptée nulle part. Le domaine dit déjà la règle — « la feuille doit dire qui
+            était là, pas ce qui était prévu » — mais la marque de présence ne la faisait
+            pas jouer.
+          */
+          const encore = boardOf(occurrenceId)
+          const ligne = encore?.registrations.find((r) => r.patientUid === patientUid)
+          if (encore !== null && ligne !== undefined && ligne.status === 'waitlist') {
+            const monte = domainPromote(encore, patientUid)
+            if (monte.ok) applyBoard(monte.board)
+          }
         }
         const cle = `${occurrenceId}|${patientUid}`
         if (attendance === null) world.attendance.delete(cle)

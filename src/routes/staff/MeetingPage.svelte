@@ -16,6 +16,7 @@
     todayLocalDate,
   } from '../../lib/domain/time'
   import type { Occurrence } from '../../lib/domain/types'
+  import { config } from '../../lib/config'
 
   /**
    * La réunion de début de semaine.
@@ -103,6 +104,18 @@
   )
   const passees = $derived(aInscription.length - semaine.length)
 
+  /*
+    La semaine consultée est-elle au-delà de ce qui est engendré ?
+
+    Les séances sont matérialisées douze semaines à l'avance. Passé cette limite, il n'y
+    a rien à voir — et l'écran conseillait pourtant de « poser d'abord le programme dans
+    La semaine », ce qui envoyait chercher un travail déjà fait.
+  */
+  const HORIZON_SEMAINES = config.generationWindowWeeks
+  const horsHorizon = $derived(
+    staffStore.date > addLocalDays(startOfIsoWeek(todayLocalDate()), HORIZON_SEMAINES * 7),
+  )
+
   const courante = $derived<Occurrence | null>(
     semaine.find((o) => o.id === selection) ?? semaine[0] ?? null,
   )
@@ -180,6 +193,9 @@
    */
   let chevauchement = $state<{ patientUid: string; conflicts: TimeConflict[] } | null>(null)
 
+  /** Les inscriptions parties mais pas encore revenues. Volontairement non réactif. */
+  let enVol = 0
+
   async function basculer(
     patientUid: string,
     options: { depassement?: boolean; malgreLeChevauchement?: boolean } = {},
@@ -191,17 +207,30 @@
     */
     if (courante === null || enCours === patientUid) return
     const board = { occurrence: courante, registrations: inscriptionsCourantes }
-    if (
-      options.depassement !== true &&
+    /*
+      Les inscriptions déjà parties comptent, même si la liste ne les montre pas encore.
+
+      `inscriptionsCourantes` vient de la dernière lecture ; en cliquant dix prénoms à la
+      suite, chaque appel lisait la liste d'avant. La question du dépassement n'était donc
+      posée à personne, et six personnes entraient au-delà des places sans qu'on demande
+      rien. `enVol` est un `let` ordinaire, non réactif : il ne sert qu'à compter ce qui
+      voyage.
+    */
+    const places = courante.capacity
+    const depasserait =
+      places !== null &&
       !staffStore.isRegistered(patientUid) &&
-      wouldExceedCapacity(board, patientUid)
-    ) {
+      (wouldExceedCapacity(board, patientUid) ||
+        board.registrations.filter((r) => r.status === 'confirmed').length + enVol >= places)
+    if (options.depassement !== true && depasserait) {
       aConfirmer = patientUid
       return
     }
     aConfirmer = null
     chevauchement = null
     enCours = patientUid
+    const inscrit = !staffStore.isRegistered(patientUid)
+    if (inscrit) enVol += 1
     let resultat
     try {
       resultat = await staffStore.togglePatient(courante.id, patientUid, {
@@ -212,6 +241,7 @@
       // Quoi qu'il arrive — y compris une erreur qu'on n'attendait pas — le prénom
       // redevient cliquable. Sans cela, un seul incident le figeait pour toute la réunion.
       enCours = null
+      if (inscrit) enVol -= 1
     }
     // Refusé faute de confirmation : on montre ce qui tombe en même temps, on demande.
     if (resultat.conflicts !== undefined && resultat.conflicts.length > 0) {
@@ -305,7 +335,15 @@
 
   {#if semaine.length === 0}
     <p class="card p-5 text-lg text-ink-soft">
-      {#if passees > 0}
+      {#if horsHorizon}
+        <!--
+          Au-delà de la fenêtre de génération, les séances n'existent pas encore : ce
+          n'est pas un programme manquant, et conseiller de « poser d'abord le
+          programme » envoyait chercher un travail déjà fait.
+        -->
+        Cette semaine est encore trop loin : les séances sont préparées {HORIZON_SEMAINES}
+        semaines à l'avance. Revenez plus près de la date.
+      {:else if passees > 0}
         Toutes les activités à inscription de cette semaine ont déjà eu lieu.
         Passez à la semaine suivante pour préparer le programme.
       {:else if serviceId !== null}

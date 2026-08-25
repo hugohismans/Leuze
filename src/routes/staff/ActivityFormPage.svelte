@@ -672,12 +672,17 @@
             >
               {retirant === 'seance' ? 'Un instant…' : 'Oui, supprimer la séance'}
             </button>
+            <!--
+              « Non, garder la séance » et non « Annuler » : sur un écran où « annuler »
+              veut déjà dire « annuler la séance », deux boutons « Annuler » de sens
+              opposés se répondaient à quelques centimètres l'un de l'autre.
+            -->
             <button
               type="button"
               class="btn btn-secondary"
               onclick={() => (aSupprimerLaSeance = false)}
             >
-              Annuler
+              Non, garder la séance
             </button>
           </div>
         </div>
@@ -1233,8 +1238,10 @@
               ? 'Enregistrer sans appel'
               : 'Enregistrer'}
       </button>
+      <!-- « Quitter sans enregistrer » : « Annuler » prêtait à confusion sur un écran
+           où l'on annule aussi des séances. -->
       <button type="button" class="btn btn-secondary" onclick={() => navigate(retour)}>
-        Annuler
+        Quitter sans enregistrer
       </button>
     </div>
   </form>

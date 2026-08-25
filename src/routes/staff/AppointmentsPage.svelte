@@ -373,6 +373,9 @@
 
   async function fixerDirectement(): Promise<void> {
     if (busy || !quelquUnEstDesigne || quelKind === '' || avecQuiDirecte.trim().length === 0) return
+    // Un rendez-vous daté d'hier ne sera vu par personne : le refuser vaut mieux que
+    // d'annoncer « Le patient le voit dans son calendrier ».
+    if (dateDirecte < todayLocalDate()) return
     busy = true
     const ok = await staffStore.createAppointment({
       // L'un ou l'autre, jamais les deux : c'est ce que les règles vérifient.
@@ -426,6 +429,7 @@
 
   async function fixer(appointmentId: string): Promise<void> {
     if (busy || avecQui.trim().length === 0) return
+    if (date < todayLocalDate()) return
     busy = true
     await staffStore.scheduleAppointment(appointmentId, {
       date,
@@ -634,7 +638,25 @@
       <div class="mt-4 grid gap-4 sm:grid-cols-3">
         <div class="min-w-0">
           <label for="jour" class="mb-2 block text-lg font-semibold text-ink">Le jour</label>
-          <input id="jour" type="date" bind:value={dateDirecte} class={champ} style="min-height: 56px;" />
+          <!--
+            `min` sur aujourd'hui : un rendez-vous daté d'hier s'enregistrait sans un mot,
+            et l'écran annonçait « Le patient le voit dans son calendrier ». Le navigateur
+            refuse la saisie ; la phrase juste en dessous dit pourquoi si elle passe.
+          -->
+          <input
+            id="jour"
+            type="date"
+            min={todayLocalDate()}
+            bind:value={dateDirecte}
+            class={champ}
+            style="min-height: 56px;"
+          />
+          {#if dateDirecte < todayLocalDate()}
+            <p class="mt-1 text-base font-semibold text-ink">
+              <span aria-hidden="true">⚠️</span>
+              Ce jour est passé. Choisissez aujourd'hui ou un jour à venir.
+            </p>
+          {/if}
         </div>
         <div class="min-w-0">
           <label for="quand" class="mb-2 block text-lg font-semibold text-ink">À quelle heure</label>
@@ -689,14 +711,20 @@
       <fieldset class="mt-4">
         <legend class="mb-2 text-lg font-semibold text-ink">Moment souhaité</legend>
         <div class="flex flex-wrap gap-2">
+          <!--
+            Le choix retenu porte une coche, et non la seule teinte du bouton :
+            « information portée par la couleur seule » est un critère de refus en revue.
+          -->
           {#each [['peu-importe', 'Peu importe'], ['matin', 'Le matin'], ['apres-midi', "L'après-midi"]] as [valeur, libelle] (valeur)}
             <button
               type="button"
               class="btn"
               class:btn-primary={preferenceSouhaitee === valeur}
               class:btn-secondary={preferenceSouhaitee !== valeur}
+              aria-pressed={preferenceSouhaitee === valeur}
               onclick={() => (preferenceSouhaitee = valeur as typeof preferenceSouhaitee)}
             >
+              <span aria-hidden="true">{preferenceSouhaitee === valeur ? '✓' : '·'}</span>
               {libelle}
             </button>
           {/each}
@@ -736,7 +764,10 @@
         <button
           type="submit"
           class="btn btn-primary"
-          disabled={busy || !quelquUnEstDesigne || avecQuiDirecte.trim().length === 0}
+          disabled={busy ||
+            !quelquUnEstDesigne ||
+            avecQuiDirecte.trim().length === 0 ||
+            dateDirecte < todayLocalDate()}
         >
           {busy ? 'Un instant…' : 'Enregistrer ce rendez-vous'}
         </button>
@@ -813,7 +844,20 @@
               <div class="grid gap-4 sm:grid-cols-2">
                 <div class="min-w-0">
                   <label for="date" class="mb-2 block text-lg font-semibold text-ink">Date</label>
-                  <input id="date" type="date" bind:value={date} class={champ} style="min-height: 56px;" />
+                  <input
+                    id="date"
+                    type="date"
+                    min={todayLocalDate()}
+                    bind:value={date}
+                    class={champ}
+                    style="min-height: 56px;"
+                  />
+                  {#if date < todayLocalDate()}
+                    <p class="mt-1 text-base font-semibold text-ink">
+                      <span aria-hidden="true">⚠️</span>
+                      Ce jour est passé. Choisissez aujourd'hui ou un jour à venir.
+                    </p>
+                  {/if}
                 </div>
                 <div class="min-w-0">
                   <label for="heure" class="mb-2 block text-lg font-semibold text-ink">Heure</label>
@@ -923,7 +967,7 @@
                 <button
                   type="button"
                   class="btn btn-primary"
-                  disabled={busy || avecQui.trim().length === 0}
+                  disabled={busy || avecQui.trim().length === 0 || date < todayLocalDate()}
                   onclick={() => fixer(demande.id)}
                 >
                   Fixer le rendez-vous

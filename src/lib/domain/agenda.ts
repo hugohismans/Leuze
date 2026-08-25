@@ -100,13 +100,29 @@ export function freeSlotsOn(
  * le même libellé. Rien de plus : deux ateliers différents à la même heure restent deux.
  */
 export function dedupeBusy(entries: BusyEntry[]): BusyEntry[] {
-  const vues = new Set<string>()
-  return entries.filter((entry) => {
-    const clef = `${entry.start.getTime()}|${entry.end.getTime()}|${entry.kind}|${entry.label}`
-    if (vues.has(clef)) return false
-    vues.add(clef)
-    return true
-  })
+  /*
+    Deux ateliers différents à la même heure restent deux : leur nom les distingue, et
+    l'un ne remplace pas l'autre.
+
+    Un rendez-vous, lui, arrivait deux fois sous deux noms : « Rendez-vous » depuis
+    l'agenda de l'intervenant, « Rendez-vous avec Docteur Lemaire » depuis celui du
+    patient. Un seul événement, à la minute près, compté deux fois. Les deux agendas
+    croisés ici sont ceux de deux personnes qui se voient : un rendez-vous commun aux
+    deux, aux mêmes bornes, est nécessairement le même. On garde le nom le plus explicite,
+    c'est celui qui apprend quelque chose.
+  */
+  const parClef = new Map<string, BusyEntry>()
+  for (const entry of entries) {
+    const clef =
+      entry.kind === 'appointment'
+        ? `${entry.start.getTime()}|${entry.end.getTime()}|rendez-vous`
+        : `${entry.start.getTime()}|${entry.end.getTime()}|${entry.kind}|${entry.label}`
+    const vue = parClef.get(clef)
+    if (vue === undefined || entry.label.length > vue.label.length) parClef.set(clef, entry)
+  }
+  // L'ordre d'arrivée est conservé : c'est celui de la journée.
+  const gardes = new Set(parClef.values())
+  return entries.filter((entry) => gardes.has(entry))
 }
 
 export function agendaWeek(

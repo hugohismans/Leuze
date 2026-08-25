@@ -70,3 +70,30 @@ describe('agendaWeek dédoublonne ce qui est pris', () => {
     expect(new Set(clefs).size).toBe(clefs.length)
   })
 })
+
+describe('un même rendez-vous vu des deux agendas', () => {
+  /*
+    Le rendez-vous arrive sous deux noms : « Rendez-vous » depuis l'agenda de
+    l'intervenant, « Rendez-vous avec Docteur Lemaire » depuis celui du patient. Les deux
+    agendas croisés ici sont ceux de deux personnes qui se voient : aux mêmes bornes,
+    c'est nécessairement le même.
+  */
+  it('ne compte qu’une fois, et garde le nom le plus explicite', () => {
+    const cote = entree('2026-08-27T09:00:00Z', '2026-08-27T09:30:00Z', 'Rendez-vous', 'appointment')
+    const autre = entree(
+      '2026-08-27T09:00:00Z',
+      '2026-08-27T09:30:00Z',
+      'Rendez-vous avec Docteur Lemaire',
+      'appointment',
+    )
+    const garde = dedupeBusy([cote, autre])
+    expect(garde).toHaveLength(1)
+    expect(garde[0]!.label).toBe('Rendez-vous avec Docteur Lemaire')
+  })
+
+  it('laisse deux rendez-vous à des heures différentes', () => {
+    const matin = entree('2026-08-27T09:00:00Z', '2026-08-27T09:30:00Z', 'Rendez-vous', 'appointment')
+    const soir = entree('2026-08-27T14:00:00Z', '2026-08-27T14:30:00Z', 'Rendez-vous', 'appointment')
+    expect(dedupeBusy([matin, soir])).toHaveLength(2)
+  })
+})
