@@ -292,10 +292,19 @@
   }
 
   /*
-    Tailles : jamais sous le plancher du projet à l'écran, resserrées sur le papier.
+    Tailles : les points du papier sont les seuls en vigueur aujourd'hui.
 
-    La grille était à 0,95 rem — dix-sept pixels — y compris sur l'écran d'un patient. Le
-    papier, lui, garde ses points : une semaine entière doit tenir sur une feuille, et
+    Cette grille est une mise en page de papier, et rien d'autre : ses deux seuls
+    emplaçants — « Ma semaine » et la feuille du personnel — la posent dans un bloc
+    `display: none` hors impression. Le commentaire précédent affirmait corriger dix-sept
+    pixels « sur l'écran d'un patient » : aucun patient n'a jamais vu cette grille à
+    l'écran, et la correction ne s'appliquait nulle part.
+
+    Les règles hors impression restent, à 1 rem : le jour où l'on affichera cette grille
+    — c'est une demande qui revient —, elle ne pourra pas paraître sous le plancher du
+    projet sans que personne s'en aperçoive.
+
+    Le papier, lui, garde ses points : une semaine entière doit tenir sur une feuille, et
     c'est une contrainte d'impression, pas un choix de lisibilité.
   */
   .entete,

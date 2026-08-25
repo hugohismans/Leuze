@@ -9,6 +9,7 @@
  * les charge ensemble pour cette raison.
  */
 import { config } from '../../config'
+import { isVisibleToService } from '../../domain/audience'
 import { conflictsWith, type BusyEntry } from '../../domain/conflicts'
 import { expand } from '../../domain/recurrence'
 import { addLocalDays, instantOf, startOfIsoWeek, todayLocalDate } from '../../domain/time'
@@ -309,6 +310,20 @@ export function busyOn(
   patientUid: string,
   localDate: string,
   ignoreOccurrenceId?: string,
+  /*
+    Le service qui lira ces libellés, quand c'est le patient qui les lit.
+
+    `label` porte le titre de l'activité, et cet agenda ressort tel quel dans
+    l'avertissement de chevauchement : « Vous avez déjà Groupe des sortants à cette
+    heure-là ». Le titre franchissait donc la cloison par ce chemin, alors que le
+    calendrier et « Mes inscriptions » venaient d'apprendre à le retenir. Le cas se
+    produit sans que personne s'y trompe : quelqu'un change d'unité, ou l'audience d'une
+    activité est resserrée après son inscription.
+
+    Absent — c'est le cas du soignant —, rien n'est filtré : il voit déjà tout le
+    programme, et lui cacher un titre ne protégerait personne.
+  */
+  visiblePour?: { serviceId: string | null },
 ): BusyEntry[] {
   const occupe: BusyEntry[] = []
 
@@ -318,6 +333,7 @@ export function busyOn(
     const occurrence = world.occurrences.get(inscription.occurrenceId)
     if (occurrence === undefined || occurrence.localDate !== localDate) continue
     if (occurrence.status === 'cancelled') continue
+    if (visiblePour !== undefined && !isVisibleToService(occurrence, visiblePour.serviceId)) continue
     occupe.push({
       start: occurrence.start,
       end: occurrence.end,
@@ -348,7 +364,8 @@ export function conflictsFor(patientUid: string, occurrenceId: string): BusyEntr
   if (occurrence === undefined) return []
   return conflictsWith(
     { start: occurrence.start, end: occurrence.end },
-    busyOn(patientUid, occurrence.localDate, occurrenceId),
+    // Le patient lit ces libellés : la cloison vaut ici comme partout ailleurs.
+    busyOn(patientUid, occurrence.localDate, occurrenceId, { serviceId: world.session.serviceId }),
   )
 }
 

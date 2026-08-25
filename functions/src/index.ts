@@ -253,7 +253,8 @@ export const register = onCall(async (request: CallableRequest) => {
   // de chevauchement : elles ne s'apprennent rien l'une à l'autre.
   const [ouvert, conflits] = await Promise.all([
     patientMay('register', patient.uid),
-    conflictsFor(db(), patient.uid, occurrenceId),
+    // Le service du patient : les titres qui lui reviennent ne franchissent pas la cloison.
+    conflictsFor(db(), patient.uid, occurrenceId, patient.serviceId),
   ])
   if (!ouvert.ok) return { ok: false, reason: 'closed', message: ouvert.message }
 

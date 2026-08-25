@@ -82,6 +82,20 @@ export async function busyOn(
   patientUid: string,
   localDate: string,
   ignoreOccurrenceId?: string,
+  /*
+    Le service qui lira ces libellés, quand c'est le patient qui les lit.
+
+    `label` porte le titre de l'activité, et cet agenda ressort tel quel dans
+    l'avertissement de chevauchement : « Vous avez déjà Groupe des sortants à cette
+    heure-là ». Le titre franchissait la cloison par ce chemin, alors que le calendrier
+    et « Mes inscriptions » venaient d'apprendre à le retenir. Le cas se produit sans que
+    personne s'y trompe : quelqu'un change d'unité, ou l'audience d'une activité est
+    resserrée après son inscription.
+
+    Absent — c'est le cas du soignant —, rien n'est filtré : il voit déjà tout le
+    programme, et lui cacher un titre ne protégerait personne.
+  */
+  visiblePour?: { serviceId: string | null },
 ): Promise<BusyEntry[]> {
   const [inscriptions, rendezVous] = await Promise.all([
     database.collection(COLLECTIONS.registrations).where('patientUid', '==', patientUid).get(),
@@ -128,6 +142,7 @@ export async function busyOn(
     const occurrence = docToOccurrence(document)
     // Une séance annulée n'occupe plus personne.
     if (occurrence.status === 'cancelled') continue
+    if (visiblePour !== undefined && !isVisibleToService(occurrence, visiblePour.serviceId)) continue
     occupe.push({
       start: occurrence.start,
       end: occurrence.end,
@@ -240,6 +255,8 @@ export async function conflictsFor(
   database: Firestore,
   patientUid: string,
   occurrenceId: string,
+  /** Le service du patient : ce qu'il lira ne doit pas franchir la cloison. */
+  serviceId?: string | null,
 ): Promise<BusyEntry[]> {
   /*
     On lisait la séance, puis on regardait la journée de la personne — deux temps, alors
@@ -256,7 +273,13 @@ export async function conflictsFor(
 
   const [snapshot, occupe] = await Promise.all([
     database.collection(COLLECTIONS.occurrences).doc(occurrenceId).get(),
-    busyOn(database, patientUid, jour, occurrenceId),
+    busyOn(
+      database,
+      patientUid,
+      jour,
+      occurrenceId,
+      serviceId === undefined ? undefined : { serviceId },
+    ),
   ])
   if (!snapshot.exists) return []
   const occurrence = docToOccurrence(snapshot)

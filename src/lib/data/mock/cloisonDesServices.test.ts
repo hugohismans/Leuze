@@ -102,4 +102,42 @@ describe('la cloison entre services', () => {
     const inscription = await repo.registrations.register(ID)
     expect(inscription.ok).toBe(false)
   })
+
+  /**
+   * Le dernier chemin, et le plus discret : l'avertissement de chevauchement.
+   *
+   * « Vous avez déjà Groupe des sortants à cette heure-là » revient au patient quand il
+   * s'inscrit à autre chose au même moment. Le libellé est le titre de la séance, repris
+   * tel quel de ses inscriptions — sans que la cloison ne soit reposée. Le cas se produit
+   * sans que personne s'y trompe : quelqu'un change d'unité, ou l'audience d'une activité
+   * est resserrée après son inscription.
+   */
+  it('ne renvoie pas le titre par l’avertissement de chevauchement', async () => {
+    poserUneSeanceReservee('l-escalette')
+
+    // Une seconde séance, celle-là ouverte à tous, exactement à la même heure.
+    const debut = instantOf(demain, '10:00')
+    const ouverte = 'ouverte_20990101T1000'
+    world.occurrences.set(
+      ouverte,
+      makeOccurrence({
+        id: ouverte,
+        activityId: 'activite-ouverte',
+        title: 'Atelier ouvert',
+        localDate: demain,
+        start: debut,
+        end: addMinutes(debut, 60),
+        audienceKeys: ['all'],
+        capacity: 10,
+        registrationRequired: true,
+      }),
+    )
+
+    const repo = createMockRepository()
+    const resultat = await repo.registrations.register(ouverte)
+
+    expect(resultat.ok).toBe(true)
+    // L'inscription est prise ; c'est le titre de l'autre séance qui ne doit pas revenir.
+    expect(JSON.stringify(resultat)).not.toContain('Groupe réservé')
+  })
 })
