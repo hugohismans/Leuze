@@ -390,7 +390,8 @@ export async function registerTx(
             ? options.by === 'staff'
               ? 'Cette personne est déjà inscrite.'
               : 'Vous êtes déjà inscrit à cette activité.'
-            : registrationBlockMessage(outcome.reason),
+            : // Le soignant lisait « Adressez-vous à un soignant ». Il l'est.
+              registrationBlockMessage(outcome.reason, options.by),
       }
     }
 

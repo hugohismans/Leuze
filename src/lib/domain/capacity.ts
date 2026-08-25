@@ -147,8 +147,28 @@ export function registrationBlock(occurrence: Occurrence, now: Date): Registrati
   return null
 }
 
-/** Message affiché au patient quand l'inscription est impossible. Dit toujours quoi faire. */
-export function registrationBlockMessage(block: RegistrationBlock): string {
+/**
+ * Le message d'un refus d'inscription. Il dit toujours quoi faire.
+ *
+ * `by` change à qui l'on parle, et donc ce qu'on propose de faire. Le serveur renvoyait
+ * au soignant les phrases écrites pour le patient : « Adressez-vous à un soignant » lu
+ * par le soignant lui-même, et « Un soignant peut vous proposer autre chose » sur un
+ * écran où l'on peut rétablir la séance d'un bouton.
+ */
+export function registrationBlockMessage(
+  block: RegistrationBlock,
+  by: 'patient' | 'staff' = 'patient',
+): string {
+  if (by === 'staff') {
+    switch (block) {
+      case 'cancelled':
+        return 'Cette séance est annulée : on ne peut pas y inscrire quelqu’un. Rétablissez-la, ou proposez autre chose à cette personne.'
+      case 'past':
+        return "Cette séance a déjà commencé. L'inscription n'est plus possible."
+      case 'full-no-waitlist':
+        return 'Cette séance est complète et la liste d’attente est fermée. Ouvrez-la, ou ajoutez des places, sur la fiche de l’activité.'
+    }
+  }
   switch (block) {
     case 'cancelled':
       return "Cette activité est annulée. Un soignant peut vous proposer autre chose."

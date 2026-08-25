@@ -165,6 +165,8 @@ class StaffStore {
       await this.loadLeaves()
       // Des rendez-vous ont pu retourner dans la file : la liste doit le montrer tout de suite.
       void this.loadAppointments()
+      // Des séances ont pu être annulées : le programme affiché ne le sait pas encore.
+      void this.refresh()
       this.message = resultat.message
     }
     return resultat
@@ -172,7 +174,17 @@ class StaffStore {
 
   async removeLeave(practitionerId: string, leave: Leave): Promise<void> {
     const resultat = await (await this.app$()).repository.removeLeave(practitionerId, leave)
-    if (resultat.ok) await this.loadLeaves()
+    if (resultat.ok) {
+      await this.loadLeaves()
+      /*
+        Le retrait rétablit des séances : le programme affiché ne les connaît pas encore.
+
+        Le message annonçait « 3 séances sont rétablies » pendant que les mêmes séances
+        restaient barrées sur tous les écrans, jusqu'à ce qu'on change de semaine. On
+        relit donc le programme, comme la déclaration relit la file des rendez-vous.
+      */
+      void this.refresh()
+    }
     this.message = resultat.message
   }
 

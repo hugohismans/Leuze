@@ -6,6 +6,7 @@ import {
   registeredLabel,
   registrationActionLabel,
   registrationBlock,
+  registrationBlockMessage,
   registrationInvitation,
   staffCapacityLabel,
   unregisterActionLabel,
@@ -174,5 +175,38 @@ describe('ce qu’on avait fait, sur une séance qui n’aura pas lieu', () => {
   it('n’annonce pas une inscription à qui attendait une place', () => {
     expect(wasRegisteredLabel(avecInscription, 'waitlist')).toContain("liste d'attente")
     expect(wasRegisteredLabel(sansInscription, 'waitlist')).toContain("liste d'attente")
+  })
+})
+
+/**
+ * Le refus d'inscription, selon qui le lit.
+ *
+ * Le serveur renvoyait au soignant les phrases écrites pour le patient : « Adressez-vous
+ * à un soignant » lu par le soignant lui-même, et « Un soignant peut vous proposer autre
+ * chose » sur un écran où l'on rétablit la séance d'un bouton.
+ */
+describe('pourquoi l’inscription est refusée', () => {
+  it('dit au patient à qui s’adresser', () => {
+    expect(registrationBlockMessage('full-no-waitlist')).toContain('Adressez-vous à un soignant')
+    expect(registrationBlockMessage('cancelled')).toContain('Un soignant peut vous proposer')
+  })
+
+  it('dit au soignant ce qu’il peut faire, lui', () => {
+    const complet = registrationBlockMessage('full-no-waitlist', 'staff')
+    expect(complet).not.toContain('Adressez-vous à un soignant')
+    expect(complet).toContain('fiche de l’activité')
+
+    const annulee = registrationBlockMessage('cancelled', 'staff')
+    expect(annulee).not.toContain('vous proposer autre chose')
+    expect(annulee).toContain('Rétablissez-la')
+  })
+
+  it('parle de « séance » au soignant, d’« activité » au patient', () => {
+    // Le mot du programme pour l'un, le mot de la fiche pour l'autre : c'est le
+    // vocabulaire que chacun a sous les yeux.
+    expect(registrationBlockMessage('past', 'staff')).toContain('Cette séance')
+    expect(registrationBlockMessage('past')).toContain('Cette activité')
+    // Quand il n'y a rien à faire, on ne propose rien à personne.
+    expect(registrationBlockMessage('past', 'staff')).toContain("n'est plus possible")
   })
 })

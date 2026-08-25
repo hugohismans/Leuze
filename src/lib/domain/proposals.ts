@@ -22,6 +22,7 @@
  * à y répondre sinon oui ou non.
  */
 import { accorde } from './francais'
+import { calendarDaysSince } from './time'
 
 export type ProposalStatus = 'proposed' | 'accepted' | 'declined'
 
@@ -161,8 +162,14 @@ export function pendingProposals(proposals: ActivityProposal[]): ActivityProposa
  * qu'un refus : l'attente doit se voir.
  */
 export function waitingDays(proposal: ActivityProposal, now: Date = new Date()): number {
-  const jours = Math.floor((now.getTime() - proposal.createdAt.getTime()) / 86_400_000)
-  return jours < 0 ? 0 : jours
+  /*
+    La même règle que la file des rendez-vous, et pour la même raison.
+
+    Celle-ci comptait des tranches de vingt-quatre heures : deux dépôts faits au même
+    instant s'affichaient « Demandé hier » d'un côté et « Déposée aujourd'hui » de
+    l'autre, sur deux écrans voisins du même espace soignant.
+  */
+  return calendarDaysSince(proposal.createdAt, now)
 }
 
 /**

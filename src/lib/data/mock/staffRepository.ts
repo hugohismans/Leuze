@@ -32,6 +32,8 @@ import {
   DEMO_SERVICE_ID,
   readDemo,
   storeDetour,
+  storedRoles,
+  storeRoles,
   world,
   writeDemo,
 } from './state'
@@ -113,7 +115,12 @@ const pourLaFeuille = (code: string): string => code.replace(/(.{3})(?=.)/g, '$1
   connecte. Sans cette ligne, les six fiches affichaient « Administrateur » décochée et
   l'écran prétendait que personne ne l'était.
 */
-const rolesDeDemonstration = new Map<string, 'staff' | 'admin'>([['marc', 'admin']])
+const rolesDeDemonstration = new Map<string, 'staff' | 'admin'>([
+  ['marc', 'admin'],
+  // Ce qui a été réglé pendant la visite l'emporte, et survit au rechargement que
+  // « Voir à leur place » provoque.
+  ...storedRoles(),
+])
 
 /** Un numéro qui ne se répète pas, pour fabriquer des identifiants uniques. */
 let compteur = 0
@@ -166,7 +173,15 @@ export function createMockStaffApp(): StaffApp {
       uid: `staff-${repris.id}`,
       email: `${repris.id}@exemple.test`,
       firstName: repris.name,
-      role: 'staff',
+      /*
+        Le rôle réel du compte, et non « soignant » d'office.
+
+        `impersonate` le lisait déjà, mais l'écran recharge aussitôt la page : c'est ce
+        bloc de reprise qui refabriquait l'identité, et la correction ne s'exécutait
+        jamais dans l'application. Prendre la place de quelqu'un pour voir ce qu'il voit
+        montrait alors autre chose que la vérité.
+      */
+      role: rolesDeDemonstration.get(repris.id) ?? 'staff',
       practitionerId: repris.id,
     }
   }
@@ -444,7 +459,7 @@ export function createMockStaffApp(): StaffApp {
             walkIn: true,
           })
           if (!outcome.ok) {
-            return { ok: false, message: registrationBlockMessage(outcome.reason as never) }
+            return { ok: false, message: registrationBlockMessage(outcome.reason as never, 'staff') }
           }
           applyBoard(outcome.board)
         }
@@ -586,7 +601,9 @@ export function createMockStaffApp(): StaffApp {
             message:
               outcome.reason === 'already-registered'
                 ? 'Cette personne est déjà inscrite.'
-                : registrationBlockMessage(outcome.reason),
+                : // Écrit pour le soignant : les phrases du patient lui renvoyaient à
+                  // lui-même.
+                  registrationBlockMessage(outcome.reason, 'staff'),
           }
         }
         applyBoard(outcome.board)
@@ -1217,6 +1234,7 @@ export function createMockStaffApp(): StaffApp {
         // Le changement se voit dans la démonstration comme il se verrait en vrai.
         const intervenantId = uid.replace(/^staff-/, '')
         rolesDeDemonstration.set(intervenantId, role)
+        storeRoles(rolesDeDemonstration)
         return {
           ok: true,
           message:

@@ -53,6 +53,32 @@ export function addLocalDays(localDate: LocalDate, days: number): LocalDate {
   return `${shifted.getUTCFullYear()}-${pad(shifted.getUTCMonth() + 1)}-${pad(shifted.getUTCDate())}`
 }
 
+/**
+ * Combien de jours de calendrier séparent un instant d'un autre, à Bruxelles.
+ *
+ * Des jours de calendrier, et non des tranches de vingt-quatre heures. Une demande
+ * déposée hier à 22 h s'affichait « Demandé aujourd'hui » jusqu'au lendemain 22 h : la
+ * file ne montrait pas qu'elle avait passé la nuit. C'est pourtant tout ce que ces
+ * compteurs servent à voir — ce qui traîne, faute de notification.
+ *
+ * Écrit ici parce que deux files le demandent, celle des rendez-vous et celle des idées,
+ * et qu'elles ne comptaient pas de la même façon : « Demandé hier » et « Déposée
+ * aujourd'hui » pour deux dépôts faits au même instant.
+ */
+export function calendarDaysSince(instant: Date, now: Date): number {
+  const depuis = localDateOf(instant)
+  const aujourdHui = localDateOf(now)
+  if (depuis >= aujourdHui) return 0
+  let jours = 0
+  let curseur = depuis
+  // Un an suffit largement : au-delà, le nombre exact n'apprend plus rien.
+  while (curseur < aujourdHui && jours < 366) {
+    curseur = addLocalDays(curseur, 1)
+    jours += 1
+  }
+  return jours
+}
+
 export function addLocalMonths(localDate: LocalDate, months: number): LocalDate {
   const { y, m, d } = parts(localDate)
   const target = new Date(Date.UTC(y, m - 1 + months, 1))

@@ -167,3 +167,34 @@ describe('le compte de caractères restants', () => {
     expect(remainingNotice(-12, atteint)).toBe(atteint)
   })
 })
+
+/**
+ * Deux files, un seul compteur.
+ *
+ * Celle des rendez-vous comptait des jours de calendrier ; celle des idées, des tranches
+ * de vingt-quatre heures. Deux dépôts faits au même instant s'affichaient « Demandé
+ * hier » d'un côté et « Déposée aujourd'hui » de l'autre, sur deux écrans voisins.
+ */
+describe('depuis combien de jours une idée attend', () => {
+  const idee = (createdAt: Date) => ({ createdAt }) as never
+
+  it('compte la nuit passée, pas les vingt-quatre heures', () => {
+    // Déposée hier à 22 h, lue ce matin à 9 h : moins de vingt-quatre heures, et
+    // pourtant elle a passé la nuit.
+    const hierSoir = new Date('2026-08-24T20:00:00.000Z')
+    const ceMatin = new Date('2026-08-25T07:00:00.000Z')
+    expect(waitingDays(idee(hierSoir), ceMatin)).toBe(1)
+  })
+
+  it('dit zéro le jour même', () => {
+    const ceMatin = new Date('2026-08-25T07:00:00.000Z')
+    const cetApresMidi = new Date('2026-08-25T15:00:00.000Z')
+    expect(waitingDays(idee(ceMatin), cetApresMidi)).toBe(0)
+  })
+
+  it('ne compte jamais à l’envers', () => {
+    const demain = new Date('2026-08-26T07:00:00.000Z')
+    const ceMatin = new Date('2026-08-25T07:00:00.000Z')
+    expect(waitingDays(idee(demain), ceMatin)).toBe(0)
+  })
+})
