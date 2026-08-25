@@ -12,6 +12,7 @@
   import { canSeePractitionerPlanning } from '../../lib/domain/appointmentAccess'
   import { practitionerAudience } from '../../lib/domain/practitioners'
   import { daysCovered, leaveRefusal, type Leave } from '../../lib/domain/leave'
+  import { practitionerAudienceLabel } from '../../lib/domain/practitioners'
   import type { LeaveOutcome } from '../../lib/data/staffPorts'
   import { formatLongDayLabel, formatTime, todayLocalDate } from '../../lib/domain/time'
   import type { LocalDate } from '../../lib/domain/types'
@@ -355,7 +356,15 @@
         */
         audience: pourToutes ? ('all' as const) : ('services' as const),
         serviceIds: pourToutes ? [] : unites,
-        isActive: true,
+        /*
+          Modifier une fiche ne remet pas la personne en poste.
+
+          `isActive: true` était écrit à chaque enregistrement : corriger l'orthographe
+          d'un nom sur la fiche de quelqu'un qu'on venait de retirer le remettait dans
+          toutes les listes, sans le dire. « Remettre » est un geste à part, et il existe
+          déjà.
+        */
+        isActive: edition === null ? true : (store.practitionerOf(edition)?.isActive ?? true),
       })
       fermer()
     })
@@ -916,6 +925,21 @@
           <div>
             <h3 class="text-xl font-bold text-ink">{personne.name}</h3>
             <p class="text-base text-ink-soft">{personne.role}</p>
+            <!--
+              Où cette personne intervient se lit sur la fiche, et pas seulement dans le
+              formulaire. Un intervenant rattaché à aucune unité paraissait normal — et
+              aucun patient ne pouvait demander à le voir, sans que rien ne le dise.
+            -->
+            <p class="text-base text-ink-soft">
+              <span aria-hidden="true">🏠</span>
+              {practitionerAudienceLabel(personne, staffStore.catalog.services)}
+            </p>
+            {#if personne.isActive && practitionerAudienceLabel(personne, staffStore.catalog.services) === 'Aucune unité choisie'}
+              <p class="text-base font-semibold text-ink">
+                <span aria-hidden="true">⚠️</span>
+                Aucune unité choisie : aucun patient ne peut demander à voir cette personne.
+              </p>
+            {/if}
           </div>
         </div>
 

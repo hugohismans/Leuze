@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   practitionerAudience,
   practitionerAudienceKeys,
+  practitionerAudienceLabel,
   practitionerChoiceNotice,
   requestablePractitioners,
   servesService,
@@ -105,5 +106,34 @@ describe('ce que l’écran du patient en dit', () => {
   it('parle au singulier comme au pluriel', () => {
     expect(practitionerChoiceNotice(1)).toContain('cette personne')
     expect(practitionerChoiceNotice(3)).toContain('en particulier')
+  })
+})
+
+describe('où une personne intervient, sur sa fiche', () => {
+  const services = [
+    { id: 'la-couturelle', name: 'La Couturelle' },
+    { id: 'le-mazurel', name: 'Le Mazurel' },
+  ]
+
+  it('dit « toutes les unités » quand elle passe partout', () => {
+    expect(practitionerAudienceLabel({ audience: 'all', serviceIds: [] }, services)).toContain(
+      'toutes les unités',
+    )
+  })
+
+  it('nomme les unités, en une énumération qui se lit', () => {
+    const texte = practitionerAudienceLabel(
+      { audience: 'services', serviceIds: ['la-couturelle', 'le-mazurel'] },
+      services,
+    )
+    expect(texte).toBe('Intervient dans La Couturelle et Le Mazurel')
+  })
+
+  it('dit franchement qu’aucune unité n’a été choisie', () => {
+    // Sans unité, aucun patient ne peut demander à voir cette personne : la fiche ne le
+    // disait nulle part, et cela passait pour normal.
+    expect(practitionerAudienceLabel({ audience: 'services', serviceIds: [] }, services)).toBe(
+      'Aucune unité choisie',
+    )
   })
 })

@@ -1125,7 +1125,19 @@ export function createMockStaffApp(): StaffApp {
         }
         const personne = mockCatalog.practitioners().find((i) => i.id === practitionerId)
         if (personne === undefined) throw new Error("Cette personne n'existe pas.")
-        mockCatalog.savePractitioner({ ...personne, availability: windows })
+        /*
+          Sans plage, l'acceptation automatique n'a plus de sens : elle s'éteint.
+
+          Elle restait activée en coulisse quand on effaçait toutes les plages — la
+          bascule disparaissait de l'écran, mais le réglage tenait. Le jour où l'on
+          redéclarait une plage, les rendez-vous se remettaient à se fixer tout seuls sans
+          que personne l'ait demandé.
+        */
+        mockCatalog.savePractitioner({
+          ...personne,
+          availability: windows,
+          ...(windows.length === 0 ? { autoAccept: false } : {}),
+        })
       },
       async setStaffRole(uid, role) {
         // La démonstration n'a pas de comptes réels : on répond ce que répondrait le

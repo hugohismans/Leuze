@@ -79,9 +79,15 @@
     <button type="button" class="btn btn-primary" onclick={() => navigate('/ma-semaine')}>
       <span aria-hidden="true">🗓️</span> Voir ma semaine
     </button>
-    <button type="button" class="btn btn-secondary" onclick={() => navigate('/rendez-vous')}>
-      <span aria-hidden="true">📅</span> Demander un rendez-vous
-    </button>
+    <!--
+      Le bouton suit le réglage, comme celui du calendrier. Il restait proposé quand le
+      geste était fermé, et menait à un écran qui disait que ce n'était pas possible.
+    -->
+    {#if store.may('requestAppointment')}
+      <button type="button" class="btn btn-secondary" onclick={() => navigate('/rendez-vous')}>
+        <span aria-hidden="true">📅</span> Demander un rendez-vous
+      </button>
+    {/if}
   </div>
 
   {#if registrations.length === 0}

@@ -3,10 +3,12 @@
   import { store } from '../../lib/appState.svelte'
   import { audienceLabelForStaff } from '../../lib/domain/audience'
   import { staffCapacityLabel } from '../../lib/domain/capacity'
-  import { attendanceOpen, attendanceRefusal } from '../../lib/domain/attendance'
+  import { attendanceOpen, attendanceRefusal, canMarkAttendance } from '../../lib/domain/attendance'
+  import { canEditActivity } from '../../lib/domain/activityAccess'
   import { formatLongDayLabel, formatTimeRange, todayLocalDate } from '../../lib/domain/time'
   import { navigate } from '../../lib/router.svelte'
   import CancelButton from './CancelButton.svelte'
+  import type { Occurrence } from '../../lib/domain/types'
 
   const aujourdhui = todayLocalDate()
 
@@ -14,6 +16,16 @@
     const activity = staffStore.activityOf(activityId)
     return activity === null ? '' : audienceLabelForStaff(activity, staffStore.catalog.services)
   }
+
+  /**
+   * L'appel est-il ouvert **à la personne connectée** ?
+   *
+   * `attendanceOpen` ne regarde que la séance : l'écran proposait donc « Faire l'appel »
+   * sur les séances des collègues, pour se le faire refuser ensuite. Les deux questions
+   * comptent — la séance en a-t-elle un, et celui qui regarde y a-t-il droit.
+   */
+  const peutFaireLAppel = (occurrence: Occurrence): boolean =>
+    attendanceOpen(occurrence) && canMarkAttendance(staffStore.identity, occurrence)
 </script>
 
 <section class="mx-auto max-w-4xl px-4 py-6">
@@ -63,7 +75,7 @@
           <p class="text-base text-ink-soft">{audience(occurrence.activityId)}</p>
           <p class="mt-1 text-base text-ink">{staffCapacityLabel(occurrence)}</p>
 
-          {#if !attendanceOpen(occurrence)}
+          {#if !peutFaireLAppel(occurrence)}
             <!--
               Proposer un bouton qui mène à un refus serait une promesse en l'air. La
               phrase vient du domaine : elle distingue « personne n'anime » de « quelqu'un
@@ -77,7 +89,14 @@
 
           <div class="mt-3 flex flex-wrap gap-2">
             <!-- L'appel d'abord : c'est le geste du jour, les autres sont occasionnels. -->
-            {#if attendanceOpen(occurrence)}
+            <!--
+              Les boutons suivent les droits, et non la seule séance.
+
+              « Faire l'appel » ne regardait que l'activité — jamais la personne connectée
+              — et « Modifier l'activité » n'était conditionné par rien : chacun se voyait
+              proposer les gestes de ses collègues, pour se les faire refuser ensuite.
+            -->
+            {#if peutFaireLAppel(occurrence)}
               <button
                 type="button"
                 class="btn btn-primary"
@@ -86,14 +105,16 @@
                 <span aria-hidden="true">📋</span> Faire l'appel
               </button>
             {/if}
-            <button
-              type="button"
-              class="btn btn-secondary"
-              onclick={() => navigate(`/soignant/activite/${occurrence.activityId}`)}
-            >
-              Modifier l'activité
-            </button>
-            <CancelButton {occurrence} />
+            {#if canEditActivity(staffStore.identity, occurrence)}
+              <button
+                type="button"
+                class="btn btn-secondary"
+                onclick={() => navigate(`/soignant/activite/${occurrence.activityId}`)}
+              >
+                Modifier l'activité
+              </button>
+              <CancelButton {occurrence} />
+            {/if}
           </div>
         </li>
       {/each}

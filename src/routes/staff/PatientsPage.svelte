@@ -397,19 +397,34 @@
                   </p>
                 {/if}
                 <!-- L'icône double la couleur : l'état ne se lit jamais à la teinte seule. -->
+                <!--
+                  Le détail du programme d'une personne ne s'affiche qu'à
+                  l'administrateur.
+
+                  L'écran affirmait à un intervenant « Seul un administrateur … consulte
+                  un planning », puis écrivait sous chaque prénom « Ensuite : Sport
+                  collectif vendredi à 10h00 » — une ligne du planning de tous les
+                  patients de l'hôpital. « Où est cette personne maintenant » reste
+                  visible de tous : c'est la question qu'un soignant se pose en la
+                  cherchant. Ce qu'elle fait de sa semaine, non.
+                -->
                 {#if etat.kind === 'busy'}
                   <p class="text-lg font-semibold text-ink">
                     <span aria-hidden="true">🔵</span>
-                    En activité : {etat.title}, jusqu'à {formatTime(etat.end)}
+                    {staffStore.isAdmin
+                      ? `En activité : ${etat.title}, jusqu'à ${formatTime(etat.end)}`
+                      : `En activité jusqu'à ${formatTime(etat.end)}`}
                   </p>
-                  <p class="text-base text-ink-soft">
-                    {store.locationOf(etat.locationId)?.name ?? ''}
-                  </p>
+                  {#if staffStore.isAdmin}
+                    <p class="text-base text-ink-soft">
+                      {store.locationOf(etat.locationId)?.name ?? ''}
+                    </p>
+                  {/if}
                 {:else}
                   <p class="text-lg font-semibold text-ink">
                     <span aria-hidden="true">⚪</span> Libre
                   </p>
-                  {#if etat.next !== null}
+                  {#if etat.next !== null && staffStore.isAdmin}
                     <p class="text-base text-ink-soft">
                       Ensuite : {nextLabel(etat.next, todayLocalDate())}
                     </p>
