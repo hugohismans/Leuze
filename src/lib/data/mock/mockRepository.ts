@@ -387,6 +387,19 @@ export function createMockRepository(options: { now?: () => Date } = {}): MockRe
           fixée. Sans cela, quelqu'un d'inquiet qui appuie trois fois prendrait trois
           créneaux dans l'agenda de quelqu'un.
         */
+        /*
+          Le motif doit exister et être encore proposé — le serveur le vérifie déjà, la
+          démonstration ne le vérifiait pas. Un motif retiré du catalogue laissait donc
+          passer une demande ici, et la refusait en ligne.
+        */
+        const motif = mockCatalog.appointmentKinds().find((k) => k.id === kindId)
+        if (motif === undefined || motif.isActive === false) {
+          return {
+            ok: false,
+            scheduled: false,
+            message: "Ce motif de rendez-vous n'existe plus. Demandez à un soignant.",
+          }
+        }
         const aujourdHui = todayLocalDate(clock())
         const dejaEnCours = world.appointments.find(
           (a) =>

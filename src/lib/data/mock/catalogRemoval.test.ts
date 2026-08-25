@@ -13,8 +13,15 @@ describe('retrait d’une entrée dans la démonstration', () => {
     resetWorld()
   })
 
-  it('supprime un lieu que rien n’utilise', async () => {
+  /** Le catalogue est réservé à l'administrateur, ici comme dans les règles Firestore. */
+  const admin = async () => {
     const app = createMockStaffApp()
+    await app.session.signIn('admin@exemple.test', 'peu-importe')
+    return app
+  }
+
+  it('supprime un lieu que rien n’utilise', async () => {
+    const app = await admin()
     mockCatalog.saveLocation({ id: 'salle-inutile', name: 'Salle inutile', isActive: true })
     expect(mockCatalog.locations().some((l) => l.id === 'salle-inutile')).toBe(true)
 
@@ -25,7 +32,7 @@ describe('retrait d’une entrée dans la démonstration', () => {
   })
 
   it('retire sans effacer un lieu déjà utilisé', async () => {
-    const app = createMockStaffApp()
+    const app = await admin()
     const activites = await app.repository.listActivities()
     const utilise = activites[0]!.locationId
 
@@ -39,7 +46,7 @@ describe('retrait d’une entrée dans la démonstration', () => {
   })
 
   it('compte les personnes rattachées à un service', async () => {
-    const app = createMockStaffApp()
+    const app = await admin()
     const plan = await app.catalogAdmin.removeEntry('service', 'le-mazurel')
 
     expect(plan.action).toBe('deactivated')

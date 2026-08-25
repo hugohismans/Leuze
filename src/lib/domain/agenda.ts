@@ -14,7 +14,7 @@
  */
 import { minutesOf, normalizeAvailability, windowsOn } from './availability'
 import { isOnLeave, type Leave } from './leave'
-import { addLocalDays, instantOf, isoWeekdayOf } from './time'
+import { addLocalDays, instantOf, isoWeekdayOf, localTimeOf } from './time'
 import type { AppointmentPreference, AvailabilityWindow, LocalDate, LocalTime } from './types'
 import type { BusyEntry } from './conflicts'
 
@@ -43,15 +43,30 @@ function toTime(minutes: number): LocalTime {
   return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`
 }
 
-/** Les minutes occupées ce jour-là, fondues et triées. */
+/**
+ * Les minutes occupées ce jour-là, fondues et triées.
+ *
+ * Les bornes du jour se prennent à minuit et à minuit du lendemain, et les minutes se
+ * lisent à l'horloge locale — jamais par soustraction de millisecondes. Les deux dimanches
+ * de changement d'heure durent vingt-trois ou vingt-cinq heures : l'ancienne arithmétique
+ * décalait alors d'une heure tout ce qui était déjà pris, et proposait un créneau occupé.
+ */
 function occupeDuJour(busy: BusyEntry[], localDate: LocalDate): { debut: number; fin: number }[] {
   const jour = instantOf(localDate, '00:00').getTime()
-  const finDuJour = jour + 86_400_000
+  const finDuJour = instantOf(addLocalDays(localDate, 1), '00:00').getTime()
+  const minutesLocales = (instant: Date): number => {
+    const [h, m] = localTimeOf(instant).split(':')
+    return Number(h) * 60 + Number(m)
+  }
   return busy
     .filter((entry) => entry.end.getTime() > jour && entry.start.getTime() < finDuJour)
     .map((entry) => ({
-      debut: Math.max(0, Math.round((entry.start.getTime() - jour) / 60_000)),
-      fin: Math.min(1440, Math.round((entry.end.getTime() - jour) / 60_000)),
+      debut: entry.start.getTime() <= jour ? 0 : minutesLocales(entry.start),
+      // Une fin qui déborde sur le lendemain, ou qui tombe pile à minuit, vaut la fin du jour.
+      fin:
+        entry.end.getTime() >= finDuJour || minutesLocales(entry.end) === 0
+          ? 1440
+          : minutesLocales(entry.end),
     }))
     .sort((a, b) => a.debut - b.debut)
 }
@@ -149,8 +164,11 @@ export function agendaWeek(
       taken: dedupeBusy(
         busy
           .filter((entry) => {
+            // Minuit à minuit, et non « plus vingt-quatre heures » : les deux dimanches
+            // de changement d'heure durent vingt-trois ou vingt-cinq heures.
             const jour = instantOf(localDate, '00:00').getTime()
-            return entry.end.getTime() > jour && entry.start.getTime() < jour + 86_400_000
+            const lendemain = instantOf(addLocalDays(localDate, 1), '00:00').getTime()
+            return entry.end.getTime() > jour && entry.start.getTime() < lendemain
           })
           .sort((a, b) => a.start.getTime() - b.start.getTime()),
       ),

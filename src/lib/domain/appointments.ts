@@ -4,7 +4,7 @@
  * Fonctions pures, comme le reste du domaine. Ce module ne décide de rien de clinique :
  * il ne connaît que des états, des dates et des libellés.
  */
-import { formatFullWhen, formatLongDayLabel } from './time'
+import { addLocalDays, formatFullWhen, formatLongDayLabel, localDateOf } from './time'
 import type { Appointment, AppointmentKind, AppointmentPreference } from './types'
 
 export const PREFERENCE_LABELS: Record<AppointmentPreference, string> = {
@@ -135,8 +135,24 @@ export function staffRequestLabel(appointment: Appointment, kinds: AppointmentKi
  * c'est la seule chose qui protège d'un oubli, faute de notification.
  */
 export function waitingDays(appointment: Appointment, now: Date = new Date()): number {
-  const jours = Math.floor((now.getTime() - appointment.createdAt.getTime()) / 86_400_000)
-  return jours < 0 ? 0 : jours
+  /*
+    Des jours de calendrier, et non des tranches de vingt-quatre heures.
+
+    Une demande déposée hier à 22 h s'affichait « Demandé aujourd'hui » jusqu'au lendemain
+    22 h : la file ne montrait pas qu'elle avait passé la nuit. C'est pourtant tout ce
+    que ce compteur sert à voir — ce qui traîne, faute de notification.
+  */
+  const depuis = localDateOf(appointment.createdAt)
+  const aujourdHui = localDateOf(now)
+  if (depuis >= aujourdHui) return 0
+  let jours = 0
+  let curseur = depuis
+  // Un an suffit largement : au-delà, le nombre exact n'apprend plus rien.
+  while (curseur < aujourdHui && jours < 366) {
+    curseur = addLocalDays(curseur, 1)
+    jours += 1
+  }
+  return jours
 }
 
 export function waitingLabel(days: number): string {

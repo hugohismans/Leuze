@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { agendaWeek, firstBookableDay, freeSlotsOn, suggestSlot, suggestionMessage } from './agenda'
-import type { BusyEntry } from './conflicts'
 import { instantOf } from './time'
 import type { AvailabilityWindow } from './types'
+import type { BusyEntry } from './conflicts'
 
 // 2026-08-24 est un lundi ; 25 mardi, 26 mercredi, 27 jeudi.
 const LUNDI = '2026-08-24'
@@ -275,5 +275,42 @@ describe('un jour de congé', () => {
       leaves: [],
     })
     expect(avecListeVide).toEqual(reference)
+  })
+})
+
+describe('les dimanches de changement d’heure', () => {
+  /*
+    Le dernier dimanche de mars dure vingt-trois heures, celui d'octobre vingt-cinq. Les
+    minutes d'occupation se calculaient en soustrayant minuit puis en divisant : tout ce
+    qui était déjà pris se décalait d'une heure ces deux jours-là, et l'agenda proposait
+    un créneau occupé.
+  */
+  const plages: AvailabilityWindow[] = [{ weekday: 7, from: '09:00', to: '17:00' }]
+
+  it('place au bon endroit ce qui est pris, le dimanche du passage à l’heure d’hiver', () => {
+    // 25 octobre 2026 : 03h00 revient à 02h00. Un rendez-vous de 14h00 à 15h00.
+    const pris = {
+      start: instantOf('2026-10-25', '14:00'),
+      end: instantOf('2026-10-25', '15:00'),
+      label: 'Rendez-vous',
+      kind: 'appointment' as const,
+    }
+    const libres = freeSlotsOn(plages, [pris], '2026-10-25', 60)
+    // 14h00 ne doit plus être proposé, et 13h00 doit l'être.
+    expect(libres.some((t) => t.from <= '14:00' && '15:00' <= t.to)).toBe(false)
+    expect(libres.some((t) => t.from <= '13:00' && '14:00' <= t.to)).toBe(true)
+  })
+
+  it('fait de même le dimanche du passage à l’heure d’été', () => {
+    // 29 mars 2026 : 02h00 saute à 03h00.
+    const pris = {
+      start: instantOf('2026-03-29', '14:00'),
+      end: instantOf('2026-03-29', '15:00'),
+      label: 'Rendez-vous',
+      kind: 'appointment' as const,
+    }
+    const libres = freeSlotsOn(plages, [pris], '2026-03-29', 60)
+    expect(libres.some((t) => t.from <= '14:00' && '15:00' <= t.to)).toBe(false)
+    expect(libres.some((t) => t.from <= '15:00' && '16:00' <= t.to)).toBe(true)
   })
 })

@@ -341,3 +341,27 @@ describe('une seconde demande pour le même motif', () => {
     expect(alreadyAskedMessage(sansArticle, 'autre', 'requested')).toContain('ce professionnel')
   })
 })
+
+describe('depuis combien de jours une demande attend', () => {
+  const depose = (quand: string) => demande({ createdAt: new Date(quand) })
+
+  it('compte des jours de calendrier, et non des tranches de vingt-quatre heures', () => {
+    // Déposée hier à 22 h, lue ce matin à 9 h : elle a passé la nuit, et cela doit se voir.
+    const hierSoir = depose('2026-08-24T20:00:00Z')
+    expect(waitingDays(hierSoir, new Date('2026-08-25T07:00:00Z'))).toBe(1)
+    expect(waitingLabel(waitingDays(hierSoir, new Date('2026-08-25T07:00:00Z')))).toBe('Demandé hier')
+  })
+
+  it('dit « aujourd’hui » pour une demande du jour même', () => {
+    const ceMatin = depose('2026-08-25T06:00:00Z')
+    expect(waitingDays(ceMatin, new Date('2026-08-25T20:00:00Z'))).toBe(0)
+  })
+
+  it('ne compte jamais en négatif', () => {
+    expect(waitingDays(depose('2026-08-30T06:00:00Z'), new Date('2026-08-25T06:00:00Z'))).toBe(0)
+  })
+
+  it('compte plusieurs jours', () => {
+    expect(waitingDays(depose('2026-08-20T20:00:00Z'), new Date('2026-08-25T07:00:00Z'))).toBe(5)
+  })
+})

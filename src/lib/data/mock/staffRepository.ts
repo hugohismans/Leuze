@@ -1092,13 +1092,23 @@ export function createMockStaffApp(): StaffApp {
     },
 
     catalogAdmin: {
+      /*
+        Les mêmes refus que les règles Firestore, au même endroit : dans la couche de
+        données, et non dans l'écran seul. Les lieux, les services et les catégories
+        s'écrivaient sans rien demander en démonstration, alors que les règles exigent
+        l'administrateur — la discipline est déjà tenue juste en dessous, pour les motifs
+        de rendez-vous et les intervenants.
+      */
       async saveLocation(location) {
+        exigeAdministrateur()
         mockCatalog.saveLocation(location)
       },
       async saveService(service) {
+        exigeAdministrateur()
         mockCatalog.saveService(service)
       },
       async saveCategory(category) {
+        exigeAdministrateur()
         mockCatalog.saveCategory(category)
       },
       async saveAppointmentKind(kind) {
@@ -1167,6 +1177,8 @@ export function createMockStaffApp(): StaffApp {
         mockCatalog.savePractitioner({ ...personne, autoAccept })
       },
       async removeEntry(kind, id) {
+        // `removeCatalogEntry` exige l'administrateur sur le serveur : ici aussi.
+        exigeAdministrateur()
         // Même décision que côté serveur, sur le petit monde de la démonstration :
         // supprimé si rien ne l'utilise, retiré des listes sinon.
         const parActivite = (activity: Activity): boolean =>
@@ -1267,13 +1279,18 @@ export function createMockStaffApp(): StaffApp {
         if (intervenant === undefined) {
           return { ok: false as const, message: "Ce compte n'existe pas." }
         }
-        // Un intervenant ordinaire n'est pas administrateur : c'est justement ce qu'on
-        // vient vérifier — il ne doit voir que l'appel de ses propres activités.
+        /*
+          Le rôle est celui du compte, et non « soignant » d'office.
+
+          Prendre la place de quelqu'un sert à voir ce qu'il voit : l'imposer simple
+          soignant montrait autre chose que la vérité dès qu'on venait de le rendre
+          administrateur. Le serveur, lui, laisse les droits réels du compte s'appliquer.
+        */
         identity = {
           uid,
           email: `${intervenant.id}@exemple.test`,
           firstName: intervenant.name,
-          role: 'staff',
+          role: rolesDeDemonstration.get(intervenant.id) ?? 'staff',
           practitionerId: intervenant.id,
         }
         world.session = { patientUid: null, firstName: null, serviceId: null }
