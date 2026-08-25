@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { createMockStaffApp } from './index'
 import { resetWorld, world } from './state'
 import { deletionConsequences } from '../../domain/catalog'
+import { mockCatalog } from './catalog'
+import { todayLocalDate } from '../../domain/time'
 
 /**
  * Supprimer pour de bon, à ne pas confondre avec annuler.
@@ -113,5 +115,34 @@ describe('supprimer une activité pour de bon', () => {
       /administrateur/,
     )
     expect(await app.repository.getActivity(activityId)).not.toBeNull()
+  })
+})
+
+describe('une séance supprimée définitivement', () => {
+  beforeEach(() => {
+    resetWorld()
+    mockCatalog.reset()
+  })
+
+  it('ne revient pas au premier enregistrement suivant de l’activité', async () => {
+    const app = createMockStaffApp()
+    await app.session.signIn('admin@exemple.test', 'peu-importe')
+
+    const seance = [...world.occurrences.values()].find((o) => o.localDate >= todayLocalDate())
+    expect(seance).toBeDefined()
+    const id = seance!.id
+
+    const suppression = await app.repository.deleteOccurrence(id)
+    expect(suppression.ok).toBe(true)
+    expect(world.occurrences.has(id)).toBe(false)
+
+    // On modifie l'activité — un changement de lieu suffit — et l'on régénère.
+    const activite = (await app.repository.listActivities()).find((a) => a.id === seance!.activityId)
+    expect(activite).toBeDefined()
+    await app.repository.saveActivity({ ...activite!, locationId: 'le-salon' })
+
+    // La séance ne doit pas être revenue : on la supprime parce qu'elle ne doit pas
+    // avoir lieu, et changer le lieu de l'activité ne la ramène pas au programme.
+    expect(world.occurrences.has(id)).toBe(false)
   })
 })

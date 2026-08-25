@@ -1425,6 +1425,33 @@ async function supprimerParPaquets(references: FirebaseFirestore.DocumentReferen
 }
 
 /**
+ * Une séance supprimée définitivement devient une exception de la série.
+ *
+ * Sans cela, elle revenait au premier enregistrement suivant de l'activité — au même
+ * jour, à la même heure — et la suppression n'avait été définitive que pour les
+ * inscriptions. On supprime une séance parce qu'elle ne doit pas avoir lieu ; changer
+ * ensuite le lieu de l'activité la ramenait au programme des patients.
+ *
+ * Une activité ponctuelle n'a pas de récurrence à laquelle accrocher l'exception : on la
+ * retire du programme, ce qui revient au même — elle n'avait qu'une séance.
+ */
+async function oublierCeJour(activityId: string, localDate: string): Promise<void> {
+  if (activityId === '' || localDate === '') return
+  const reference = db().collection(COLLECTIONS.activities).doc(activityId)
+  const snapshot = await reference.get()
+  if (!snapshot.exists) return
+  const donnees = snapshot.data() ?? {}
+  const recurrence = donnees['recurrence'] as { skipDates?: string[] } | null | undefined
+  if (recurrence === null || recurrence === undefined) {
+    await reference.update({ isActive: false })
+    return
+  }
+  const sautees = recurrence.skipDates ?? []
+  if (sautees.includes(localDate)) return
+  await reference.update({ recurrence: { ...recurrence, skipDates: [...sautees, localDate].sort() } })
+}
+
+/**
  * Supprime une séance et ses inscriptions — celle-là seule, les autres semaines restent.
  *
  * À ne pas confondre avec l'annulation, qui est le geste courant : une séance annulée
@@ -1457,6 +1484,10 @@ export const deleteOccurrence = onCall(async (request: CallableRequest) => {
 
   await supprimerParPaquets(inscriptions.docs.map((d) => d.ref))
   await reference.delete()
+  await oublierCeJour(
+    (donnees['activityId'] as string | undefined) ?? '',
+    (donnees['localDate'] as string | undefined) ?? '',
+  )
 
   const presences = inscriptions.docs.filter((d) => d.data()['attendance'] !== undefined).length
   logger.info('Séance supprimée', { occurrenceId, registrations: inscriptions.size, presences })
@@ -1884,6 +1915,9 @@ export const declareLeave = onCall(async (request: CallableRequest) => {
       cancellationReason: MOTIF_ABSENCE,
       // La séance a été touchée à la main : une régénération de la série l'épargne.
       overridden: true,
+      // Annulée par une décision humaine, et non par la régénération : elle ne se
+      // rétablit pas toute seule quand la série repasse dessus.
+      autoCancelled: false,
     })
   }
   for (const rendezVous of enCours) {

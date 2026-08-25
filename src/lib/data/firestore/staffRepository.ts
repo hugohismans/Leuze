@@ -368,6 +368,8 @@ export function createFirestoreStaffApp(): StaffApp {
           status: 'cancelled',
           cancellationReason: reason,
           overridden: true,
+          // Annulée par un soignant, avec un motif : la régénération n'y touche pas.
+          autoCancelled: false,
         })
       },
 
@@ -379,11 +381,19 @@ export function createFirestoreStaffApp(): StaffApp {
         return (await call({ from, to, ...(serviceId === undefined ? {} : { serviceId }) })).data.plannings
       },
 
+      /**
+       * Rétablir une séance la remet **dans** la série, et non à côté d'elle.
+       *
+       * Elle en sortait : marquée « modifiée isolément », elle gardait pour toujours
+       * l'ancien titre, l'ancien lieu et l'ancienne heure. La même activité portait alors
+       * deux noms dans le même programme.
+       */
       async restoreOccurrence(occurrenceId: string): Promise<void> {
         await updateDoc(doc(db, 'occurrences', occurrenceId), {
           status: 'scheduled',
           cancellationReason: '',
-          overridden: true,
+          overridden: false,
+          autoCancelled: false,
         })
       },
 

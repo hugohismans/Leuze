@@ -120,14 +120,25 @@ export function mergeOccurrences(
       plan.preserved.push(current)
       continue
     }
+    /*
+      Une séance que la régénération avait barrée redevient normale en rentrant dans la
+      série ; une séance qu'un soignant a annulée avec un motif ne bouge pas.
+
+      Sans cette distinction, retirer une activité du programme puis l'y remettre laissait
+      annulées à jamais exactement les séances qui portaient des inscriptions : les séances
+      vides étaient supprimées puis recréées, les autres restaient barrées avec un motif
+      qui n'avait plus de sens — « L'activité a été modifiée ». Le message annonçait
+      pourtant « Activité remise au programme ».
+    */
+    const rendue = current.status === 'cancelled' && current.autoCancelled === true
     plan.update.push({
       ...draft,
       // L'état vécu de l'occurrence n'appartient pas à la série.
-      status: forced ? 'scheduled' : current.status,
-      ...(current.cancellationReason !== undefined && !forced
+      status: forced || rendue ? 'scheduled' : current.status,
+      ...(current.cancellationReason !== undefined && !forced && !rendue
         ? { cancellationReason: current.cancellationReason }
         : {}),
-      overridden: forced ? false : current.overridden,
+      overridden: forced || rendue ? false : current.overridden,
       confirmedCount: current.confirmedCount,
       waitlistCount: current.waitlistCount,
     })
@@ -142,7 +153,18 @@ export function mergeOccurrences(
         plan.cancel.push({
           ...current,
           status: 'cancelled',
-          cancellationReason: current.cancellationReason ?? "L'activité a été modifiée",
+          /*
+            Un motif qui dit quoi faire. « L'activité a été modifiée » laissait la personne
+            inscrite devant une séance barrée sans savoir si elle devait faire quelque
+            chose. La séance n'est pas annulée : elle a changé d'heure ou de jour, et
+            l'inscription ne suit pas — c'est cela qu'il faut lire.
+          */
+          cancellationReason:
+            current.cancellationReason ??
+            "L'horaire a changé. Inscrivez-vous de nouveau à la nouvelle séance.",
+          // Barrée par la régénération, et non par un soignant : elle se rétablit seule
+          // si l'activité revient au programme.
+          autoCancelled: true,
         })
       }
     } else {

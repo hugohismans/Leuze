@@ -118,6 +118,34 @@ export function createMockStaffApp(): StaffApp {
   const activities = new Map<string, Activity>(activitiesSeed.map((a) => [a.id, a]))
   let identity: StaffIdentity = SIGNED_OUT
 
+  /**
+   * Une séance supprimée définitivement devient une exception de la série.
+   *
+   * Sans cela, elle revenait au premier enregistrement suivant de l'activité — au même
+   * jour, à la même heure — et la suppression n'avait été définitive que pour les
+   * inscriptions. On supprime une séance parce qu'elle ne doit pas avoir lieu ; changer
+   * ensuite le lieu de l'activité la ramenait au programme des patients.
+   *
+   * Une activité ponctuelle n'a pas de récurrence à laquelle accrocher l'exception : on
+   * la retire du programme, ce qui revient au même — elle n'avait qu'une séance.
+   */
+  function oublierCeJour(activityId: string, localDate: LocalDate): void {
+    const activite = activities.get(activityId)
+    if (activite === undefined) return
+    if (activite.recurrence === null) {
+      activities.set(activityId, { ...activite, isActive: false })
+      return
+    }
+    if (activite.recurrence.skipDates.includes(localDate)) return
+    activities.set(activityId, {
+      ...activite,
+      recurrence: {
+        ...activite.recurrence,
+        skipDates: [...activite.recurrence.skipDates, localDate].sort(),
+      },
+    })
+  }
+
   // Comme une vraie session Firebase, celle de la démonstration survit au rechargement.
   // Sans cela, revenir d'un détour ramènerait à l'écran de connexion.
   if (readDemo(CLE_SESSION_SOIGNANT) === 'ouverte') identity = DEMO_STAFF
@@ -282,6 +310,7 @@ export function createMockStaffApp(): StaffApp {
         world.registrations = world.registrations.filter((r) => r.occurrenceId !== occurrenceId)
         for (const r of inscriptions) world.attendance.delete(`${occurrenceId}|${r.patientUid}`)
         world.occurrences.delete(occurrenceId)
+        oublierCeJour(seance.activityId, seance.localDate)
         const combien =
           inscriptions.length === 0
             ? "Personne n'y était inscrit."
@@ -314,6 +343,8 @@ export function createMockStaffApp(): StaffApp {
           status: 'cancelled',
           cancellationReason: reason,
           overridden: true,
+          // Annulée par un soignant, avec un motif : la régénération n'y touche pas.
+          autoCancelled: false,
         })
       },
 
@@ -347,11 +378,19 @@ export function createMockStaffApp(): StaffApp {
           }))
       },
 
+      /**
+       * Rétablir une séance la remet **dans** la série, et non à côté d'elle.
+       *
+       * Elle en sortait : marquée « modifiée isolément », elle gardait pour toujours
+       * l'ancien titre, l'ancien lieu et l'ancienne heure. La même activité portait alors
+       * deux noms dans le même programme, et les patients de la première semaine lisaient
+       * un nom que le personnel croyait avoir changé.
+       */
       async restoreOccurrence(occurrenceId: string): Promise<void> {
         const occurrence = world.occurrences.get(occurrenceId)
         if (!occurrence) return
-        const { cancellationReason: _motif, ...reste } = occurrence
-        world.occurrences.set(occurrenceId, { ...reste, status: 'scheduled', overridden: true })
+        const { cancellationReason: _motif, autoCancelled: _auto, ...reste } = occurrence
+        world.occurrences.set(occurrenceId, { ...reste, status: 'scheduled', overridden: false })
       },
 
       async roster(occurrenceId: string) {

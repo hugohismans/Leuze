@@ -193,6 +193,13 @@
       recurrenceSautees = activity.recurrence?.skipDates ?? []
       heure = activity.recurrence?.startTime ?? activity.singleStart?.time ?? '14:00'
       duree = activity.recurrence?.durationMin ?? activity.singleStart?.durationMin ?? 60
+      /*
+        L'horaire tel qu'il était en arrivant, pour savoir si on l'a changé.
+
+        Un `let` ordinaire, non réactif : le comparer à l'état courant dans un « derived »
+        n'en ferait pas une dépendance, et l'écrire ici ne doit relancer aucun effet.
+      */
+      horaireInitial = `${repetition}|${jours.join(',')}|${dateUnique}|${heure}`
       pourTous = activity.audience === 'all'
       serviceIds = [...activity.serviceIds]
       placesLimitees = activity.capacity !== null
@@ -278,6 +285,24 @@
   )
   let avertissementConge = $state(false)
 
+  /*
+    Changer le jour ou l'heure d'une activité laisse les inscrits derrière.
+
+    L'identifiant d'une séance porte sa date et son heure : déplacer l'activité d'une
+    heure crée une séance neuve et vide, et l'ancienne — celle qui portait les
+    inscriptions — est barrée. Rien ne le disait avant d'enregistrer, et le patient lisait
+    « Cette activité a été annulée » pour une activité simplement déplacée.
+
+    L'application ne déplace pas les inscriptions : elle prévient, et l'on décide. C'est
+    une limite connue, pas un oubli.
+  */
+  let horaireInitial = ''
+  const horaireCourant = $derived(`${repetition}|${jours.join(',')}|${dateUnique}|${heure}`)
+  const horaireChange = $derived(
+    !nouvelle && horaireInitial !== '' && horaireCourant !== horaireInitial,
+  )
+  let avertissementHoraire = $state(false)
+
   async function enregistrer(event: SubmitEvent): Promise<void> {
     event.preventDefault()
     erreur = null
@@ -295,6 +320,19 @@
     }
     if (repetition === 'une-fois' && !dateUnique) {
       erreur = 'Choisissez la date de l’activité.'
+      return
+    }
+    /*
+      Une activité ponctuelle datée d'hier ne produit aucune séance.
+
+      Elle s'enregistrait quand même, figurait dans la liste comme les autres, avec sa
+      date — et n'apparaissait jamais nulle part : ni dans la semaine du soignant, ni chez
+      les patients. Le message, « Aucun changement dans le calendrier », ne se rattachait
+      à rien de visible. On refuse, en disant pourquoi.
+    */
+    if (repetition === 'une-fois' && dateUnique < todayLocalDate()) {
+      erreur =
+        'Cette date est passée : aucune séance ne serait créée. Choisissez aujourd’hui ou un jour à venir.'
       return
     }
     /*
@@ -344,6 +382,10 @@
     // congés lus sont ceux de la personne désignée.
     if (congesHeurtes.length > 0 && !avertissementConge) {
       avertissementConge = true
+      return
+    }
+    if (horaireChange && !avertissementHoraire) {
+      avertissementHoraire = true
       return
     }
     busy = true
@@ -1052,6 +1094,29 @@
       interdit — un collègue assure peut-être la séance — mais on ne l'apprend plus le
       lundi matin.
     -->
+    <!--
+      Déplacer une activité ne déplace pas les inscriptions : l'identifiant d'une séance
+      porte sa date et son heure. On le dit avant d'enregistrer, plutôt que de laisser le
+      patient lire « Cette activité a été annulée » pour une séance simplement décalée.
+    -->
+    {#if avertissementHoraire && horaireChange}
+      <div role="alert" class="card border-4 border-amber-500 bg-amber-50 p-4">
+        <h2 class="mb-2 text-2xl font-bold text-ink">
+          <span aria-hidden="true">⏰</span>
+          Vous changez le jour ou l'heure
+        </h2>
+        <p class="text-lg text-ink">
+          Les séances déjà au programme gardent leur ancien horaire et seront barrées ;
+          de nouvelles séances seront créées au nouvel horaire, vides. Les personnes déjà
+          inscrites ne sont pas déplacées : elles liront qu'il faut s'inscrire de nouveau,
+          et il vaut mieux les prévenir de vive voix.
+        </p>
+        <p class="mt-2 text-lg font-semibold text-ink">
+          Appuyez de nouveau sur « Enregistrer » pour continuer.
+        </p>
+      </div>
+    {/if}
+
     {#if avertissementConge && congesHeurtes.length > 0}
       <div role="alert" class="card border-4 border-amber-500 bg-amber-50 p-4">
         <h2 class="mb-2 text-2xl font-bold text-ink">

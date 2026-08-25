@@ -193,6 +193,19 @@ export type Occurrence = {
   cancellationReason?: string
   /** Vrai dès qu'un soignant a modifié cette occurrence seule : la régénération l'épargne. */
   overridden: boolean
+  /**
+   * Vrai quand c'est la régénération, et non un soignant, qui a barré cette séance.
+   *
+   * La différence est celle entre « cette séance n'aura pas lieu, voici pourquoi » et
+   * « cette séance est sortie de la série ». Sans elle, retirer une activité du programme
+   * puis l'y remettre laissait annulées à jamais **exactement** les séances qui portaient
+   * des inscriptions — les séances vides, elles, revenaient. Le retrait détruisait donc
+   * ce qui comptait et épargnait le reste, sans que rien ne le dise.
+   *
+   * Une séance ainsi barrée redevient normale dès qu'elle rentre dans la série. Une
+   * séance qu'un soignant a annulée avec un motif ne bouge jamais.
+   */
+  autoCancelled?: boolean
   confirmedCount: number
   waitlistCount: number
 }

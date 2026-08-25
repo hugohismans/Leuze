@@ -71,12 +71,14 @@ describe('suppression d’une activité', () => {
   it('protège une activité dès la première inscription', () => {
     const plan = planActivityRemoval('Yoga', { registrations: 1, sessions: 8 })
     expect(plan.action).toBe('deactivated')
-    expect(plan.message).toContain('1 personne s’y est inscrite')
+    expect(plan.message).toContain('1 inscription la concerne')
   })
 
   it('accorde le pluriel des inscriptions', () => {
     const plan = planActivityRemoval('Yoga', { registrations: 4, sessions: 8 })
-    expect(plan.message).toContain('4 personnes s’y sont inscrites')
+    // « inscriptions » et non « personnes » : une inscription vaut pour une séance.
+    expect(plan.message).toContain('4 inscriptions la concernent')
+    expect(plan.message).not.toContain('personnes')
   })
 })
 
