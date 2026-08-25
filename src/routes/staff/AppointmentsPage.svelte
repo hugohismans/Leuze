@@ -152,10 +152,6 @@
   let quiUid = $state('')
   let nomExterieur = $state('')
   const pourUnExterieur = $derived(quiUid === EXTERIEURE)
-  /** Le formulaire est complet quand quelqu'un est désigné, d'une façon ou de l'autre. */
-  const quelquUnEstDesigne = $derived(
-    pourUnExterieur ? nomExterieur.trim().length > 0 : quiUid !== '',
-  )
   let quelKind = $state('')
   let dateDirecte = $state<LocalDate>(firstBookableDay(todayLocalDate()))
   let heureDirecte = $state<LocalTime>('10:00')
@@ -176,8 +172,44 @@
       .filter((groupe) => groupe.patients.length > 0),
   )
 
+  /*
+    Le motif proposé d'office.
+
+    À un intervenant, le sien : Claire est psychologue, ses rendez-vous sont « Le
+    psychologue ». L'écran retirait déjà le menu des intervenants « parce que le
+    rendez-vous est le vôtre » ; le motif doit suivre la même logique. Il proposait
+    « Le psychiatre » — la première entrée du catalogue — à tout le monde, et le patient
+    lisait une phrase qui se contredit : « Le psychiatre … avec Claire ».
+
+    `motifSeme` est un `let` ordinaire, non réactif : le lire et l'écrire dans le même
+    effet en ferait une dépendance de cet effet, qui se relancerait aussitôt.
+  */
+  let motifSeme = false
+  /*
+    La personne choisie est-elle encore à l'écran ?
+
+    Décocher « Voir toutes les unités » après avoir choisi quelqu'un d'une autre unité
+    vidait le menu — plus aucune ligne sélectionnée — mais l'application gardait la
+    personne en mémoire : le bouton restait actif, et l'appui créait un vrai rendez-vous
+    pour quelqu'un qu'on ne voyait plus, sous un message qui promettait qu'il s'affichait.
+  */
+  const choisiEstVisible = $derived(
+    quiUid === '' ||
+      pourUnExterieur ||
+      patientsParService.some((groupe) => groupe.patients.some((p) => p.uid === quiUid)),
+  )
+
+  /** Le formulaire est complet quand quelqu'un est désigné, d'une façon ou de l'autre. */
+  const quelquUnEstDesigne = $derived(
+    pourUnExterieur ? nomExterieur.trim().length > 0 : quiUid !== '' && choisiEstVisible,
+  )
+
   $effect(() => {
-    if (quelKind === '' && kinds.length > 0) quelKind = kinds[0]!.id
+    if (motifSeme || kinds.length === 0) return
+    motifSeme = true
+    const mien = monIntervenant?.kindId ?? ''
+    const propose = kinds.find((k) => k.id === mien) ?? kinds[0]!
+    quelKind = propose.id
   })
 
   /**
@@ -192,7 +224,20 @@
     }),
   )
 
-  // Changer de motif propose l'intervenant correspondant, tant qu'on n'en a pas choisi un.
+  /*
+    Changer de motif propose l'intervenant correspondant.
+
+    Cet effet lisait `intervenantDirect` en même temps qu'il l'écrivait, et c'est le piège
+    que le projet a déjà payé trois fois : choisir « Le psychiatre — sans préciser qui »
+    remettait la valeur à vide, l'effet se relançait, voyait un champ vide, et reposait le
+    psychiatre attitré. L'entrée était affichée et pourtant inatteignable. Symétriquement,
+    une fois un intervenant posé, changer de motif ne changeait plus rien — la condition
+    `intervenantDirect === ''` n'était jamais vraie.
+
+    Il ne dépend donc plus que du motif, et se souvient de celui qu'il a déjà semé dans un
+    `let` ordinaire, non réactif.
+  */
+  let intervenantSemePour: string | null = null
   $effect(() => {
     // Un intervenant ne choisit pas : le rendez-vous est le sien, forcément.
     if (!toutVoir) {
@@ -200,14 +245,58 @@
       avecQuiDirecte = monIntervenant?.name ?? ''
       return
     }
-    const attitre = store.practitioners.find((i) => i.kindId === quelKind && i.isActive)
-    if (intervenantDirect === '' && attitre !== undefined) {
-      intervenantDirect = attitre.id
-      avecQuiDirecte = attitre.name
-    } else if (intervenantDirect === '' && avecQuiDirecte === '') {
-      avecQuiDirecte = kinds.find((k) => k.id === quelKind)?.name ?? ''
-    }
+    const motif = quelKind
+    if (motif === '' || motif === intervenantSemePour) return
+    intervenantSemePour = motif
+    const attitre = store.practitioners.find((i) => i.kindId === motif && i.isActive)
+    intervenantDirect = attitre?.id ?? ''
+    avecQuiDirecte = attitre?.name ?? kinds.find((k) => k.id === motif)?.name ?? ''
   })
+
+  /**
+   * Choisir « sans préciser qui » : le nom que le patient lira redevient le motif.
+   *
+   * Sans cela, le champ gardait « Docteur Lemaire » : le patient lisait ce nom, et le
+   * rendez-vous n'entrait dans l'agenda de personne. C'est le nom d'un professionnel
+   * promis à quelqu'un qui ne l'attend pas.
+   */
+  function changerIntervenantDirect(id: string): void {
+    intervenantDirect = id
+    const choisi = store.practitionerOf(id)
+    avecQuiDirecte = choisi?.name ?? kinds.find((k) => k.id === quelKind)?.name ?? ''
+  }
+
+  /*
+    Annuler un rendez-vous, ou retirer une demande de la file, se confirme.
+
+    Les deux boutons partaient au premier appui, sans nommer ce qui allait disparaître —
+    et le patient, lui, n'en saurait rien : les motifs enregistrés étaient faux. « Le
+    rendez-vous a été déplacé » alors que rien n'a été déplacé ; « Rendez-vous annulé »
+    pour une demande à laquelle aucun rendez-vous n'avait jamais été fixé.
+  */
+  let annulation = $state<{ id: string; quoi: 'rendez-vous' | 'demande'; qui: string } | null>(null)
+
+  const MOTIF_RENDEZ_VOUS = "Le rendez-vous n'aura pas lieu"
+  const MOTIF_DEMANDE = 'Un soignant en a parlé avec la personne'
+
+  async function annulerVraiment(): Promise<void> {
+    const geste = annulation
+    if (geste === null || busy) return
+    busy = true
+    annulation = null
+    await staffStore.cancelAppointment(
+      geste.id,
+      geste.quoi === 'rendez-vous' ? MOTIF_RENDEZ_VOUS : MOTIF_DEMANDE,
+    )
+    busy = false
+  }
+
+  /** Le même geste, depuis la file des demandes. */
+  function changerIntervenantDeLaFile(id: string, kindId: string): void {
+    intervenantFile = id
+    const choisi = store.practitionerOf(id)
+    avecQui = choisi?.name ?? kindName(kinds, kindId)
+  }
 
   /**
    * « Est-il là ? » — la question qu'on se pose au moment de proposer une date, et à
@@ -473,6 +562,19 @@
         </optgroup>
       </select>
 
+      {#if !choisiEstVisible}
+        <!--
+          La personne choisie n'est plus dans la liste : elle appartient à une autre unité
+          et la case vient d'être décochée. Le menu se vidait en silence pendant que
+          l'application gardait le choix ; l'écran le dit, et le bouton se désactive.
+        -->
+        <p role="status" class="mt-3 rounded-xl bg-surface-soft p-3 text-lg font-semibold text-ink">
+          <span aria-hidden="true">⚠️</span>
+          La personne choisie appartient à une autre unité et n'est plus dans la liste.
+          Cochez « Voir toutes les unités » pour la retrouver, ou choisissez quelqu'un d'autre.
+        </p>
+      {/if}
+
       {#if pourUnExterieur}
         <label for="nom-exterieur" class="mt-4 mb-2 block text-lg font-semibold text-ink">
           Son prénom
@@ -533,11 +635,7 @@
           class={champ}
           style="min-height: 56px;"
           value={intervenantDirect}
-          onchange={(event) => {
-            intervenantDirect = event.currentTarget.value
-            avecQuiDirecte =
-              store.practitionerOf(intervenantDirect)?.name ?? kindName(kinds, quelKind)
-          }}
+          onchange={(event) => changerIntervenantDirect(event.currentTarget.value)}
         >
           <option value="">{kindName(kinds, quelKind)} — sans préciser qui</option>
           {#each intervenantsProposes as intervenant (intervenant.id)}
@@ -723,12 +821,14 @@
                   class={champ}
                   style="min-height: 56px;"
                   value={intervenantFile}
-                  onchange={(event) => {
-                    intervenantFile = event.currentTarget.value
-                    avecQui = store.practitionerOf(intervenantFile)?.name ?? avecQui
-                  }}
+                  onchange={(event) =>
+                    changerIntervenantDeLaFile(event.currentTarget.value, demande.kindId)}
                 >
-                  <option value="">Personne en particulier</option>
+                  <!--
+                    « Sans préciser qui » : le patient lira le motif, et non le nom d'un
+                    professionnel qui ne l'attend pas. Le champ « Avec qui » suit.
+                  -->
+                  <option value="">{kindName(kinds, demande.kindId)} — sans préciser qui</option>
                   {#each proposed(store.practitioners) as intervenant (intervenant.id)}
                     <option value={intervenant.id}>{intervenant.name} — {intervenant.role}</option>
                   {/each}
@@ -811,11 +911,19 @@
               <button
                 type="button"
                 class="btn btn-secondary"
-                onclick={() => staffStore.cancelAppointment(demande.id, "Un soignant en a parlé avec la personne")}
+                onclick={() =>
+                  (annulation = {
+                    id: demande.id,
+                    quoi: 'demande',
+                    qui: appointmentWho(demande, (uid) => patient(uid)?.firstName),
+                  })}
               >
                 Retirer de la file
               </button>
             </div>
+            {#if annulation !== null && annulation.id === demande.id}
+              {@render question()}
+            {/if}
           {/if}
         </li>
       {/each}
@@ -823,9 +931,37 @@
   {/if}
 
   <!--
+    La question posée avant d'annuler. Elle nomme la personne, dit ce qu'elle lira, et
+    laisse revenir en arrière : les deux boutons partaient jusqu'ici au premier appui.
+  -->
+  {#snippet question()}
+    {#if annulation !== null}
+      <div class="mt-3 rounded-xl border-2 border-line p-4">
+        <p class="text-lg text-ink">
+          {#if annulation.quoi === 'rendez-vous'}
+            Annuler le rendez-vous de {annulation.qui} ? Il restera visible sur son écran,
+            barré, avec la mention « {MOTIF_RENDEZ_VOUS} ».
+          {:else}
+            Retirer la demande de {annulation.qui} de la file ? Cette personne lira
+            « {MOTIF_DEMANDE} ». Aucun rendez-vous n'avait été fixé.
+          {/if}
+        </p>
+        <div class="mt-3 flex flex-wrap gap-2">
+          <button type="button" class="btn btn-primary" disabled={busy} onclick={annulerVraiment}>
+            {busy ? 'Un instant…' : annulation.quoi === 'rendez-vous' ? 'Oui, annuler' : 'Oui, retirer'}
+          </button>
+          <button type="button" class="btn btn-secondary" onclick={() => (annulation = null)}>
+            Revenir en arrière
+          </button>
+        </div>
+      </div>
+    {/if}
+  {/snippet}
+
+  <!--
     Une seule ligne, écrite une fois, servie aux deux listes. Le bouton « Annuler » ne
-    suit pas dans le passé : proposer d'annuler ce qui a déjà eu lieu n'a pas de sens,
-    et le motif enregistré — « le rendez-vous a été déplacé » — serait faux.
+    suit pas dans le passé : proposer d'annuler ce qui a déjà eu lieu n'a pas de sens, et
+    le motif enregistré serait faux.
   -->
   {#snippet ligne(rendezVous: Appointment, annulable: boolean)}
     <li class="card p-4">
@@ -853,10 +989,18 @@
         <button
           type="button"
           class="btn btn-secondary mt-2"
-          onclick={() => staffStore.cancelAppointment(rendezVous.id, 'Le rendez-vous a été déplacé')}
+          onclick={() =>
+            (annulation = {
+              id: rendezVous.id,
+              quoi: 'rendez-vous',
+              qui: appointmentWho(rendezVous, (uid) => patient(uid)?.firstName),
+            })}
         >
           Annuler ce rendez-vous
         </button>
+      {/if}
+      {#if annulation !== null && annulation.id === rendezVous.id}
+        {@render question()}
       {/if}
     </li>
   {/snippet}

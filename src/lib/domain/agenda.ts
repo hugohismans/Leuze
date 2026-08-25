@@ -316,6 +316,23 @@ function chercher(
   return null
 }
 
+/**
+ * Vrai quand l'intervenant n'a déclaré aucune plage : pas une seule sur trois semaines.
+ *
+ * La différence avec « rien ne convient » est celle entre un agenda plein et un agenda
+ * jamais rempli, et l'écran les confondait : il annonçait « aucun créneau ne convient aux
+ * deux dans les trois semaines qui viennent » pour quelqu'un qui n'avait tout simplement
+ * jamais dit quand il recevait. On cherchait un agenda saturé qui n'existait pas.
+ */
+export function noAvailabilityDeclared(week: { windows: unknown[] }[]): boolean {
+  return week.length > 0 && week.every((jour) => jour.windows.length === 0)
+}
+
+/** Ce qu'il faut faire quand personne n'a déclaré de plage — et où le faire. */
+export function noAvailabilityMessage(practitionerName: string): string {
+  return `${practitionerName} n'a déclaré aucune plage de disponibilité : l'application ne peut donc rien proposer. Les plages se déclarent dans « Le personnel », sur sa fiche. Vous pouvez tout de même fixer le rendez-vous à l'heure de votre choix.`
+}
+
 /** Ce que l'écran dit du créneau proposé. Le refus d'une préférence se dit, il ne se tait pas. */
 export function suggestionMessage(
   suggestion: Suggestion | null,

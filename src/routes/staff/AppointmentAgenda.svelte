@@ -1,6 +1,12 @@
 <script lang="ts">
   import { staffStore } from '../../lib/staffState.svelte'
-  import { AGENDA_INLINE_DAYS, bookableSlots, suggestionMessage } from '../../lib/domain/agenda'
+  import {
+    AGENDA_INLINE_DAYS,
+    bookableSlots,
+    noAvailabilityDeclared,
+    noAvailabilityMessage,
+    suggestionMessage,
+  } from '../../lib/domain/agenda'
   import type { AppointmentPlanning } from '../../lib/data/staffPorts'
   import {
     addMinutes,
@@ -180,10 +186,21 @@
     boite?.close()
   }
 
+  /*
+    Une plage jamais déclarée n'est pas un agenda plein.
+
+    L'écran disait « aucun créneau ne convient aux deux dans les trois semaines qui
+    viennent » à qui n'avait tout simplement jamais dit quand il recevait : on cherchait
+    une saturation qui n'existait pas, et rien ne disait où déclarer les plages.
+  */
+  const aucunePlage = $derived(planning !== null && noAvailabilityDeclared(planning.week))
+
   const message = $derived(
     planning === null
       ? null
-      : suggestionMessage(
+      : aucunePlage
+        ? noAvailabilityMessage(practitionerName)
+        : suggestionMessage(
           planning.suggestion,
           preference,
           planning.suggestion === null

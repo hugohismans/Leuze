@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { agendaWeek, bookableSlots } from './agenda'
+import {
+  agendaWeek,
+  bookableSlots,
+  noAvailabilityDeclared,
+  noAvailabilityMessage,
+} from './agenda'
 import type { LocalDate } from './types'
 
 const lundi = '2026-08-24' as LocalDate
@@ -74,5 +79,34 @@ describe('bookableSlots', () => {
     // Rien pendant l'activité, ni à cheval sur elle.
     expect(times).not.toContain('10:00')
     expect(times).not.toContain('09:45')
+  })
+})
+
+describe('un intervenant qui n’a jamais déclaré de plage', () => {
+  const jour = (localDate: string, windows: { from: string; to: string }[]) => ({
+    localDate,
+    windows,
+    taken: [],
+    free: [],
+  })
+
+  it('se distingue d’un agenda plein', () => {
+    expect(noAvailabilityDeclared([jour('2026-08-25', []), jour('2026-08-26', [])])).toBe(true)
+    expect(
+      noAvailabilityDeclared([jour('2026-08-25', []), jour('2026-08-26', [{ from: '09:00', to: '12:00' }])]),
+    ).toBe(false)
+  })
+
+  it('ne conclut rien d’une semaine vide : il n’y a rien à conclure', () => {
+    expect(noAvailabilityDeclared([])).toBe(false)
+  })
+
+  it('dit la vérité, et où déclarer les plages', () => {
+    const texte = noAvailabilityMessage('Julien')
+    expect(texte).toContain('Julien')
+    expect(texte).toContain("n'a déclaré aucune plage")
+    expect(texte).toContain('Le personnel')
+    // Rien n'est interdit pour autant : une urgence se cale hors des plages.
+    expect(texte).toContain("l'heure de votre choix")
   })
 })
