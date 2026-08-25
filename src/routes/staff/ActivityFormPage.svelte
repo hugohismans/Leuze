@@ -1044,10 +1044,22 @@
 
       {#if repetition === 'une-fois'}
         <label for="date" class="mt-4 mb-2 block text-lg font-semibold text-ink">Date</label>
+        <!--
+          Pas de `min` sur ce champ.
+
+          Il y en avait un, et il gagnait contre le refus écrit plus haut : la validation
+          du navigateur arrête la soumission avant que `enregistrer()` ne s'exécute, si
+          bien que la phrase « Cette date est passée : aucune séance ne serait créée.
+          Choisissez aujourd'hui ou un jour à venir. » n'était jamais affichée. À la
+          place, le bouton ne faisait rien et le navigateur murmurait une bulle dans sa
+          propre langue — ni française, ni écrite pour ces écrans.
+
+          La date pré-remplie est déjà ramenée à aujourd'hui quand on arrive d'une semaine
+          passée : il ne reste que la date tapée à la main, et celle-là reçoit une phrase.
+        -->
         <input
           id="date"
           type="date"
-          min={nouvelle ? todayLocalDate() : undefined}
           bind:value={dateUnique}
           class={champ}
           style="min-height: 56px;"
