@@ -70,12 +70,21 @@
       {/each}
 
       {#if saisieLibre}
+        <!--
+          La mise en garde est ici, au bord du seul champ libre de cet écran.
+
+          Ce texte part tel quel sur la carte des patients inscrits. C'est le point de
+          l'application où une note clinique pourrait entrer sans que rien ne l'arrête, et
+          la règle du projet est sans exception : aucune donnée de santé.
+        -->
         <label class="text-base font-semibold text-ink" for={`motif-${occurrence.id}`}>
-          Autre motif — les patients le liront
+          Autre motif — les patients le liront. N'écrivez rien qui touche à leur santé.
         </label>
         <input
           id={`motif-${occurrence.id}`}
           bind:value={autre}
+          maxlength={120}
+          autocomplete="off"
           class="w-full rounded-xl border-2 border-line bg-white p-3 text-lg text-ink"
           style="min-height: 56px;"
         />

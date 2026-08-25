@@ -53,10 +53,25 @@ describe('ce que le patient lit', () => {
   })
 
   it('propose une suite quand le rendez-vous est annulé', () => {
-    expect(patientStatusLabel(demande({ status: 'cancelled' }), kinds)).toContain('peut vous en proposer un autre')
+    // Une demande jamais fixée n'est pas un rendez-vous annulé : elle se refait.
+    expect(patientStatusLabel(demande({ status: 'cancelled' }), kinds)).toContain(
+      'en faire une nouvelle',
+    )
     expect(
       patientStatusLabel(demande({ status: 'cancelled', cancellationReason: 'Le médecin est absent' }), kinds),
     ).toContain('Le médecin est absent')
+    // Un rendez-vous qui avait une date, lui, sera reproposé.
+    expect(
+      patientStatusLabel(
+        demande({
+          status: 'cancelled',
+          localDate: '2026-08-25',
+          start: new Date('2026-08-25T08:00:00.000Z'),
+          end: new Date('2026-08-25T08:30:00.000Z'),
+        }),
+        kinds,
+      ),
+    ).toContain('peut vous en proposer un autre')
   })
 
   it('nomme le professionnel, même si le motif a disparu de la liste', () => {
@@ -426,6 +441,32 @@ describe('la ligne d’un rendez-vous annulé', () => {
     expect(ligne).toContain('Plus de place')
   })
 
+  it('ne parle pas de rendez-vous à qui n’en avait jamais eu', () => {
+    /*
+      Une demande retirée de la file n'est pas un rendez-vous annulé. La ligne annonçait
+      « Rendez-vous annulé » dans les deux cas : on cherchait une date qu'on ne nous avait
+      jamais donnée.
+    */
+    const retiree = patientStatusLabel({ ...base, cancellationReason: 'Un soignant vous en a parlé' }, kinds)
+    expect(retiree).toContain('Demande retirée')
+    expect(retiree).not.toContain('Rendez-vous annulé')
+    // Et ce qu'on peut faire n'est pas le même : redemander, plutôt qu'attendre.
+    expect(retiree).toContain('en faire une nouvelle')
+
+    const annule = patientStatusLabel(
+      {
+        ...base,
+        localDate: '2026-08-27',
+        start: new Date('2026-08-27T09:00:00.000Z'),
+        end: new Date('2026-08-27T09:30:00.000Z'),
+        cancellationReason: 'Le professionnel est absent ce jour-là',
+      },
+      kinds,
+    )
+    expect(annule).toContain('Rendez-vous annulé')
+    expect(annule).toContain('vous en proposer un autre')
+  })
+
   it('n’ajoute pas un second point à un motif qui porte le sien', () => {
     const ligne = patientStatusLabel({ ...base, cancellationReason: 'La salle est prise.' }, kinds)
     expect(ligne).not.toContain('prise..')
@@ -433,7 +474,7 @@ describe('la ligne d’un rendez-vous annulé', () => {
 
   it('reste lisible sans motif', () => {
     const ligne = patientStatusLabel({ ...base }, kinds)
-    expect(ligne).toContain('Rendez-vous annulé.')
+    expect(ligne).toContain('Demande retirée.')
     expect(ligne).toContain('pour voir le psychiatre')
   })
 })

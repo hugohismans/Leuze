@@ -85,18 +85,30 @@ export function patientStatusLabel(appointment: Appointment, kinds: AppointmentK
         lignes rigoureusement identiques, et l'on ne pouvait pas savoir laquelle des deux
         dates on avait perdue. C'est pourtant le seul écran où on l'apprend.
       */
+      /*
+        Une demande retirée n'est pas un rendez-vous annulé.
+
+        La ligne annonçait « Rendez-vous annulé » dans les deux cas, y compris à qui
+        n'avait jamais eu de rendez-vous : il cherchait une date qu'on ne lui avait
+        jamais donnée. C'est la date fixée qui sépare les deux.
+      */
+      const { localDate, start, end } = appointment
+      const fixe = localDate !== undefined && start !== undefined && end !== undefined
       const motif = (appointment.cancellationReason ?? '').trim()
-      const entete = motif === '' ? 'Rendez-vous annulé.' : `Rendez-vous annulé — ${motif}`
+      const titre = fixe ? 'Rendez-vous annulé' : 'Demande retirée'
+      const entete = motif === '' ? `${titre}.` : `${titre} — ${motif}`
       // Les motifs sont écrits à la main : certains portent leur point, d'autres non.
       const point = motif === '' || /[.!?…]$/.test(motif) ? '' : '.'
-      const lequel =
-        appointment.localDate && appointment.start && appointment.end
-          ? // La date est capitalisée pour ouvrir une phrase ; ici elle est au milieu d'une.
-            `Il était prévu ${minuscule(formatFullWhen(appointment.localDate, appointment.start, appointment.end))}, avec ${appointment.withWhom ?? nomme ?? qui}.`
-          : nomme === null
-            ? `C'était votre demande — ${qui}.`
-            : `C'était votre demande pour voir ${nomme}.`
-      return `${entete}${point} ${lequel} Un soignant peut vous en proposer un autre.`
+      const lequel = fixe
+        ? // La date est capitalisée pour ouvrir une phrase ; ici elle est au milieu d'une.
+          `Il était prévu ${minuscule(formatFullWhen(localDate, start, end))}, avec ${appointment.withWhom ?? nomme ?? qui}.`
+        : nomme === null
+          ? `C'était votre demande — ${qui}.`
+          : `C'était votre demande pour voir ${nomme}.`
+      const suite = fixe
+        ? 'Un soignant peut vous en proposer un autre.'
+        : 'Vous pouvez en faire une nouvelle, ou en parler à un soignant.'
+      return `${entete}${point} ${lequel} ${suite}`
     }
   }
 }

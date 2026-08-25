@@ -300,18 +300,53 @@
   */
   let annulation = $state<{ id: string; quoi: 'rendez-vous' | 'demande'; qui: string } | null>(null)
 
-  const MOTIF_RENDEZ_VOUS = "Le rendez-vous n'aura pas lieu"
-  const MOTIF_DEMANDE = 'Un soignant en a parlé avec la personne'
+  /*
+    Le motif est demandé, et il est écrit pour la personne qui le lira.
 
-  async function annulerVraiment(): Promise<void> {
-    const geste = annulation
-    if (geste === null || busy) return
-    busy = true
+    Un seul motif était enregistré d'office — « Le rendez-vous n'aura pas lieu » —, qui
+    n'apprenait rien : le patient lisait que son rendez-vous était annulé, puis qu'il
+    n'aurait pas lieu. Il sait maintenant pourquoi, et c'est la seule chose qui lui
+    permette de ne pas croire à un oubli.
+
+    Les motifs courants sont proposés d'un appui, comme pour une séance annulée : taper
+    au clavier sur une tablette, entre deux portes, ne se fait pas.
+
+    Ils s'adressent à la personne — « vous », et non « la personne concernée ». C'est elle
+    qui les lit, mot pour mot, sur son écran.
+  */
+  const MOTIFS_RENDEZ_VOUS = [
+    'Le professionnel est absent ce jour-là',
+    'Un imprévu dans le service',
+    'Un autre rendez-vous vous sera proposé',
+  ]
+  const MOTIFS_DEMANDE = [
+    'Un soignant vous en a parlé',
+    'Cette demande avait été faite deux fois',
+    'Le rendez-vous a été pris autrement',
+  ]
+
+  let saisieLibre = $state(false)
+  let motifLibre = $state('')
+
+  /** Ouvre la question, en repartant d'un motif vide : celui d'avant ne vaut que pour lui. */
+  function demanderAConfirmer(geste: { id: string; quoi: 'rendez-vous' | 'demande'; qui: string }): void {
+    annulation = geste
+    saisieLibre = false
+    motifLibre = ''
+  }
+
+  function refermerLaQuestion(): void {
     annulation = null
-    await staffStore.cancelAppointment(
-      geste.id,
-      geste.quoi === 'rendez-vous' ? MOTIF_RENDEZ_VOUS : MOTIF_DEMANDE,
-    )
+    saisieLibre = false
+    motifLibre = ''
+  }
+
+  async function annulerVraiment(motif: string): Promise<void> {
+    const geste = annulation
+    if (geste === null || busy || motif.trim().length === 0) return
+    busy = true
+    refermerLaQuestion()
+    await staffStore.cancelAppointment(geste.id, motif.trim())
     busy = false
   }
 
@@ -1016,7 +1051,7 @@
                 type="button"
                 class="btn btn-secondary"
                 onclick={() =>
-                  (annulation = {
+                  demanderAConfirmer({
                     id: demande.id,
                     quoi: 'demande',
                     qui: appointmentWho(demande, (uid) => patient(uid)?.firstName),
@@ -1040,21 +1075,81 @@
   -->
   {#snippet question()}
     {#if annulation !== null}
+      {@const rendezVous = annulation.quoi === 'rendez-vous'}
+      {@const motifs = rendezVous ? MOTIFS_RENDEZ_VOUS : MOTIFS_DEMANDE}
       <div class="mt-3 rounded-xl border-2 border-line p-4">
         <p class="text-lg text-ink">
-          {#if annulation.quoi === 'rendez-vous'}
+          {#if rendezVous}
             Annuler le rendez-vous de {annulation.qui} ? Il restera visible sur son écran,
-            barré, avec la mention « {MOTIF_RENDEZ_VOUS} ».
+            barré, avec le motif que vous choisissez ci-dessous.
           {:else}
-            Retirer la demande de {annulation.qui} de la file ? Cette personne lira
-            « {MOTIF_DEMANDE} ». Aucun rendez-vous n'avait été fixé.
+            Retirer la demande de {annulation.qui} de la file ? Aucun rendez-vous n'avait
+            été fixé ; cette personne lira le motif que vous choisissez ci-dessous.
           {/if}
         </p>
-        <div class="mt-3 flex flex-wrap gap-2">
-          <button type="button" class="btn btn-primary" disabled={busy} onclick={annulerVraiment}>
-            {busy ? 'Un instant…' : annulation.quoi === 'rendez-vous' ? 'Oui, annuler' : 'Oui, retirer'}
-          </button>
-          <button type="button" class="btn btn-secondary" onclick={() => (annulation = null)}>
+
+        <!--
+          Le motif d'abord, le geste ensuite — un appui fait les deux.
+
+          C'est la forme du bouton « Annuler cette séance », et pour la même raison : sur
+          une tablette, entre deux portes, on ne tape pas au clavier. Un motif écrit à la
+          main reste possible, et c'est là que la mise en garde compte.
+        -->
+        <p class="mt-3 text-base font-semibold text-ink" id={`motif-titre-${annulation.id}`}>
+          Pourquoi ? {annulation.qui} lira cette phrase.
+        </p>
+        <div
+          class="mt-2 flex flex-col gap-2"
+          role="group"
+          aria-labelledby={`motif-titre-${annulation.id}`}
+        >
+          {#each motifs as motif (motif)}
+            <button
+              type="button"
+              class="btn btn-secondary w-full"
+              disabled={busy}
+              onclick={() => annulerVraiment(motif)}
+            >
+              {busy ? 'Un instant…' : motif}
+            </button>
+          {/each}
+
+          {#if saisieLibre}
+            <!--
+              La mise en garde est ici, au bord du seul champ libre de cet écran : ce
+              texte part tel quel sur l'écran du patient. La règle du projet est sans
+              exception — aucune donnée de santé.
+            -->
+            <label class="mt-1 text-base font-semibold text-ink" for={`motif-${annulation.id}`}>
+              Autre motif — {annulation.qui} le lira. N'écrivez rien qui touche à sa santé.
+            </label>
+            <input
+              id={`motif-${annulation.id}`}
+              bind:value={motifLibre}
+              maxlength={120}
+              autocomplete="off"
+              class="w-full rounded-xl border-2 border-line bg-white p-3 text-lg text-ink"
+              style="min-height: 56px;"
+            />
+            <button
+              type="button"
+              class="btn btn-primary w-full"
+              disabled={busy || motifLibre.trim().length === 0}
+              onclick={() => annulerVraiment(motifLibre)}
+            >
+              {busy ? 'Un instant…' : rendezVous ? 'Annuler le rendez-vous' : 'Retirer la demande'}
+            </button>
+          {:else}
+            <button
+              type="button"
+              class="btn btn-secondary w-full"
+              onclick={() => (saisieLibre = true)}
+            >
+              Autre motif…
+            </button>
+          {/if}
+
+          <button type="button" class="btn btn-secondary w-full" onclick={refermerLaQuestion}>
             Revenir en arrière
           </button>
         </div>
@@ -1094,7 +1189,7 @@
           type="button"
           class="btn btn-secondary mt-2"
           onclick={() =>
-            (annulation = {
+            demanderAConfirmer({
               id: rendezVous.id,
               quoi: 'rendez-vous',
               qui: appointmentWho(rendezVous, (uid) => patient(uid)?.firstName),
