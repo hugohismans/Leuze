@@ -125,7 +125,25 @@ export function patientRegistrationDecision(
    * ici », qui serait faux.
    */
   as: RegistrationKind = 'participant',
+  options: {
+    /**
+     * La personne a déjà une inscription vivante sur **cette** séance.
+     *
+     * Alors ce n'est pas un nouvel engagement : c'est un changement de nature — inscrite
+     * qui passe spectatrice, ou l'inverse. Elle était déjà là à cette heure-là, et
+     * personne ne l'ignorait ; lui reposer la question du chevauchement reviendrait à
+     * lui interdire de *réduire* son engagement au motif qu'il existe.
+     *
+     * Le cas se produit pour de bon : un soignant inscrit quelqu'un à une activité qui
+     * tombe sur son rendez-vous — il en a le droit, il sait que le rendez-vous va être
+     * déplacé. La personne ouvre ensuite la fiche et appuie sur « Finalement, je viens
+     * seulement regarder ». Sans cette réserve, elle lisait « Vous avez un rendez-vous à
+     * ce moment-là », et restait inscrite pour de bon.
+     */
+    alreadyRegistered?: boolean
+  } = {},
 ): RegistrationDecision {
+  if (options.alreadyRegistered === true) return { kind: 'libre' }
   if (conflicts.length === 0) return { kind: 'libre' }
 
   const rendezVous = blockingConflict(conflicts)

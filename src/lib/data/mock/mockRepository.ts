@@ -73,6 +73,7 @@ import {
   boardOf,
   busyOn,
   conflictsFor,
+  dejaInscrit,
   droitsDe,
   resetWorld,
   world,
@@ -263,7 +264,10 @@ export function createMockRepository(options: { now?: () => Date } = {}): MockRe
           On ne peut pas être à deux endroits à la fois. Même décision que le serveur, au
           mot près : un rendez-vous ferme la porte, une activité s'échange.
         */
-        const decision = patientRegistrationDecision(conflictsFor(uid, occurrenceId), genre)
+        // Même réserve que le serveur : déjà là, ce n'est pas un engagement de plus.
+        const decision = patientRegistrationDecision(conflictsFor(uid, occurrenceId), genre, {
+          alreadyRegistered: dejaInscrit(occurrenceId, uid),
+        })
         if (decision.kind === 'rendez-vous') {
           return { ok: false, reason: 'conflict', message: decision.message }
         }

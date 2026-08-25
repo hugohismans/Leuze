@@ -306,6 +306,29 @@ export async function conflictsFor(
 }
 
 /**
+ * Cette personne a-t-elle déjà une inscription vivante sur cette séance ?
+ *
+ * Une lecture minuscule, et elle décide d'une chose importante : le chevauchement ne se
+ * demande qu'à qui s'engage. Quelqu'un qui est déjà sur la séance ne s'y engage pas de
+ * nouveau — il change la nature de sa venue, ce qui ne peut heurter aucun horaire de
+ * plus. Reposer la question lui interdirait de *réduire* son engagement au motif que
+ * celui-ci existe, et ferait cliquer un soignant sur le même avertissement deux fois de
+ * suite, ce qui est la meilleure façon de lui apprendre à ne plus les lire.
+ */
+export async function hasActiveRegistration(
+  database: Firestore,
+  occurrenceId: string,
+  patientUid: string,
+): Promise<boolean> {
+  const snapshot = await database
+    .collection(COLLECTIONS.registrations)
+    .where('occurrenceId', '==', occurrenceId)
+    .where('patientUid', '==', patientUid)
+    .get()
+  return snapshot.docs.some((document) => document.data()['status'] !== 'cancelled')
+}
+
+/**
  * Les seuls chevauchements qui arrêtent une inscription prise en réunion : les rendez-vous.
  *
  * Deux lectures, menées de front, et pas une de plus. C'est la question posée à chaque

@@ -28,6 +28,7 @@ import {
   busyOn,
   CLE_SESSION_SOIGNANT,
   conflictsFor,
+  dejaInscrit,
   DEMO_PATIENT_UID,
   DEMO_SERVICE_ID,
   readDemo,
@@ -596,7 +597,11 @@ export function createMockStaffApp(): StaffApp {
           sont le lot d'un programme chargé : demander confirmation à chaque prénom
           rendait la réunion impraticable. Même règle que le serveur, au mot près.
         */
-        if (options.overrideConflict !== true) {
+        /*
+          La question ne se pose qu'à qui s'engage : le deuxième appui du cycle de la
+          réunion porte sur quelqu'un qui est déjà là. Même réserve que le serveur.
+        */
+        if (options.overrideConflict !== true && !dejaInscrit(occurrenceId, patientUid)) {
           const conflits = blockingConflicts(conflictsFor(patientUid, occurrenceId))
           if (conflits.length > 0) {
             return {

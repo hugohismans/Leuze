@@ -17,6 +17,7 @@ import {
   conflictsFor,
   myRegistrationsFor,
   promoteTx,
+  hasActiveRegistration,
   registerTx,
   rosterFor,
   unregisterTx,
@@ -272,14 +273,25 @@ export const register = onCall(async (request: CallableRequest) => {
   */
   // Le service a-t-il ouvert ce geste aux patients ? La question part avec la recherche
   // de chevauchement : elles ne s'apprennent rien l'une à l'autre.
-  const [ouvert, conflits] = await Promise.all([
+  const [ouvert, conflits, dejaLa] = await Promise.all([
     patientMay('register', patient.uid),
     // Le service du patient : les titres qui lui reviennent ne franchissent pas la cloison.
     conflictsFor(db(), patient.uid, occurrenceId, patient.serviceId),
+    /*
+      Est-il déjà sur cette séance ?
+
+      Alors ce geste n'est pas un engagement de plus : c'est un changement de nature —
+      inscrit qui passe spectateur, ou l'inverse. Le chevauchement ne le concerne pas, et
+      le lui opposer reviendrait à lui interdire de *réduire* son engagement au motif
+      qu'il existe. Le cas se produit pour de bon quand un soignant l'a inscrit à une
+      activité qui tombe sur son rendez-vous : il en a le droit, il sait que le
+      rendez-vous sera déplacé.
+    */
+    hasActiveRegistration(db(), occurrenceId, patient.uid),
   ])
   if (!ouvert.ok) return { ok: false, reason: 'closed', message: ouvert.message }
 
-  const decision = patientRegistrationDecision(conflits, genre)
+  const decision = patientRegistrationDecision(conflits, genre, { alreadyRegistered: dejaLa })
   if (decision.kind === 'rendez-vous') {
     return { ok: false, reason: 'conflict', message: decision.message }
   }
@@ -421,7 +433,18 @@ export const staffRegister = onCall(async (request: CallableRequest) => {
     donnait une question à chaque prénom, et une réunion qui n'avance plus. Deux activités
     en même temps, on le voit sur la feuille et l'on s'arrange ; un rendez-vous, non.
   */
-  if (!overrideConflict) {
+  /*
+    La question ne se pose qu'à qui s'engage.
+
+    Le deuxième appui du cycle de la réunion porte sur quelqu'un qui est **déjà** sur la
+    séance : on ne fait que changer la nature de sa venue. Reposer l'avertissement lui
+    ferait cliquer deux fois sur le même écran rouge pour un geste qui ne heurte aucun
+    horaire de plus — et c'est la meilleure façon d'apprendre à un soignant à ne plus
+    lire les avertissements, y compris celui qui compte.
+  */
+  const dejaLa = await hasActiveRegistration(db(), occurrenceId, patientUid)
+
+  if (!overrideConflict && !dejaLa) {
     const conflits = await appointmentConflictsFor(db(), patientUid, occurrenceId)
     if (conflits.length > 0) {
       return {

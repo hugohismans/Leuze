@@ -362,6 +362,19 @@ export function busyOn(
   return occupe
 }
 
+/**
+ * Cette personne a-t-elle déjà une inscription vivante sur cette séance ?
+ *
+ * Même question, même réponse que le serveur : le chevauchement ne se demande qu'à qui
+ * s'engage. Quelqu'un qui est déjà là ne s'engage pas de nouveau — il change la nature
+ * de sa venue, ce qui ne peut heurter aucun horaire de plus.
+ */
+export function dejaInscrit(occurrenceId: string, patientUid: string): boolean {
+  return world.registrations.some(
+    (r) => r.occurrenceId === occurrenceId && r.patientUid === patientUid && r.status !== 'cancelled',
+  )
+}
+
 /** Ce qui tombe en même temps qu'une séance, pour cette personne. */
 export function conflictsFor(patientUid: string, occurrenceId: string): BusyEntry[] {
   const occurrence = world.occurrences.get(occurrenceId)
