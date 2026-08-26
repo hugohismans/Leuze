@@ -131,7 +131,27 @@
     <p class="mb-2 text-base text-ink-soft" aria-live="polite">Mise à jour de la semaine…</p>
   {/if}
 
-  {#if staffStore.loading}
+  {#if staffStore.lectureEchouee}
+    <!--
+      Une lecture qui échoue ne dit pas la même chose qu'une semaine vide.
+
+      L'écran restait sur « Chargement… » sans fin, ou annonçait « Rien n'est encore
+      prévu » — c'est-à-dire une affirmation sur le programme, alors qu'il n'avait rien pu
+      lire. On dit ce qui s'est passé, et l'on propose le geste qui en sort.
+    -->
+    <div role="alert" class="card mb-4 p-5">
+      <p class="text-xl font-semibold text-ink">
+        <span aria-hidden="true">⚠️</span>
+        Le programme n'a pas pu être chargé.
+      </p>
+      <p class="mt-1 text-lg text-ink-soft">
+        Cela arrive quand la connexion est mauvaise. Réessayez dans un instant.
+      </p>
+      <button type="button" class="btn btn-primary mt-3" onclick={() => void staffStore.refresh()}>
+        Réessayer
+      </button>
+    </div>
+  {:else if staffStore.loading}
     <p class="text-lg text-ink-soft">Chargement…</p>
   {:else}
     {#if total === 0}

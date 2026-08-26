@@ -27,3 +27,18 @@ tuto/
 guide/
 courriel.md
 captures/
+
+# Fabrique des deux notes : les captures, le relevé des écrans, le HTML intermédiaire
+# et les scripts qui les produisent. Même raison que ci-dessus — ces fichiers décrivent
+# l'organisation interne du service, et le dépôt est public.
+capturer.mjs
+capturer-patient.mjs
+capturer-soignant.mjs
+verif-ecrans.mjs
+textes-ecrans.mjs
+textes-ecrans.txt
+documents.mjs
+documents/
+captures-legeres/
+Hodie-courriel.html
+Hodie-courriel.pdf

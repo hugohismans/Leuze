@@ -340,6 +340,16 @@ class StaffStore {
   /** Vrai dès qu'une semaine a été affichée une fois. Volontairement non réactif. */
   #dejaAffiche = false
 
+  /**
+   * Vrai quand la dernière lecture de la semaine n'a pas abouti.
+   *
+   * Sans lui, l'écran disait « Rien n'est encore prévu cette semaine » — c'est-à-dire une
+   * affirmation sur le programme — alors qu'il n'avait rien pu lire du tout. Les deux
+   * situations n'ont pas la même suite : l'une demande de poser des activités, l'autre
+   * de réessayer.
+   */
+  lectureEchouee = $state<boolean>(false)
+
   async refresh(): Promise<void> {
     const version = (this.#versionProgramme += 1)
     /*
@@ -354,15 +364,50 @@ class StaffStore {
     this.loading = !this.#dejaAffiche
     this.rafraichit = true
     const jours = weekDays(this.date)
-    const [activities, occurrences] = await Promise.all([
-      (await this.app$()).repository.listActivities().catch(() => []),
-      (await this.app$()).repository.listOccurrences(jours[0]!, jours[6]!).catch(() => []),
-    ])
+
+    /*
+      Le chargement de l'adapter est **dans** le filet, et non à côté.
+
+      Les deux `catch` ne protégeaient que les requêtes ; `app$()`, qui les précède,
+      restait à découvert. Or c'est lui qui télécharge le morceau branché sur Firestore :
+      une connexion qui cligne des yeux — un téléphone en 5G qui change de cellule — le
+      fait échouer. La promesse rejetée remontait alors hors de `refresh()`, `loading`
+      restait vrai, et l'écran affichait « Chargement… » pour toujours. Rien dans la
+      console, rien à l'écran, et seul un rechargement de la page en sortait : on croyait
+      avoir perdu Firestore pendant cinq minutes alors qu'on l'avait perdu deux secondes.
+
+      L'écran patient tenait déjà ce raisonnement ; l'écran soignant, non.
+    */
+    let lu: { activities: Activity[]; occurrences: Occurrence[] } | null = null
+    try {
+      const repository = (await this.app$()).repository
+      const [activities, occurrences] = await Promise.all([
+        repository.listActivities(),
+        repository.listOccurrences(jours[0]!, jours[6]!),
+      ])
+      lu = { activities, occurrences }
+    } catch {
+      lu = null
+    }
+
     // Une flèche plus récente est partie entre-temps : cette réponse ne vaut plus rien.
+    // Le drapeau de chargement appartient à la demande la plus récente, qui le baissera.
     if (version !== this.#versionProgramme) return
-    this.activities = activities
-    this.occurrences = occurrences
-    this.#dejaAffiche = occurrences.length > 0
+
+    if (lu === null) {
+      /*
+        Ce qui est à l'écran y reste.
+
+        Vider la semaine ajouterait un mensonge à la panne : on lirait « rien de prévu »
+        là où l'on n'a rien pu lire. Le bandeau, lui, dit ce qui s'est passé.
+      */
+      this.lectureEchouee = true
+    } else {
+      this.lectureEchouee = false
+      this.activities = lu.activities
+      this.occurrences = lu.occurrences
+      this.#dejaAffiche = lu.occurrences.length > 0
+    }
     /*
       Le programme relu écrasait le nombre d'inscrits de la séance ouverte.
 

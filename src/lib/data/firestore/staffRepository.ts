@@ -175,7 +175,7 @@ export function createFirestoreStaffApp(): StaffApp {
       const role: StaffRole | null = claim === 'admin' || claim === 'staff' ? claim : null
       let firstName: string | null = null
       try {
-        const fiche = await getDoc(doc(db, 'staff', user.uid))
+        const fiche = await lire(getDoc(doc(db, 'staff', user.uid)))
         firstName = (fiche.data()?.['firstName'] as string | undefined) ?? null
       } catch {
         firstName = null
@@ -319,12 +319,12 @@ export function createFirestoreStaffApp(): StaffApp {
     repository: {
       async listActivities(): Promise<Activity[]> {
         await ready
-        const snapshot = await getDocs(query(collection(db, 'activities'), orderBy('title')))
+        const snapshot = await lire(getDocs(query(collection(db, 'activities'), orderBy('title'))))
         return snapshot.docs.map(toActivity)
       },
 
       async getActivity(activityId: string): Promise<Activity | null> {
-        const snapshot = await getDoc(doc(db, 'activities', activityId))
+        const snapshot = await lire(getDoc(doc(db, 'activities', activityId)))
         return snapshot.exists() ? toActivity(snapshot) : null
       },
 
@@ -363,7 +363,7 @@ export function createFirestoreStaffApp(): StaffApp {
         // un aller-retour pour une valeur qu'on avait sous la main.
         let copie = source ?? null
         if (copie === null) {
-          const lue = await getDoc(doc(db, 'activities', activityId))
+          const lue = await lire(getDoc(doc(db, 'activities', activityId)))
           if (!lue.exists()) throw new Error("Cette activité n'existe plus.")
           copie = toActivity(lue)
         }
@@ -404,13 +404,15 @@ export function createFirestoreStaffApp(): StaffApp {
       async listOccurrences(from: LocalDate, to: LocalDate): Promise<Occurrence[]> {
         await ready
         // Le personnel voit tout le programme : pas de filtre de service ici.
-        const snapshot = await getDocs(
-          query(
-            collection(db, 'occurrences'),
-            where('localDate', '>=', from),
-            where('localDate', '<=', to),
-            orderBy('localDate'),
-            orderBy('start'),
+        const snapshot = await lire(
+          getDocs(
+            query(
+              collection(db, 'occurrences'),
+              where('localDate', '>=', from),
+              where('localDate', '<=', to),
+              orderBy('localDate'),
+              orderBy('start'),
+            ),
           ),
         )
         return snapshot.docs.map(toOccurrence)
@@ -605,7 +607,7 @@ export function createFirestoreStaffApp(): StaffApp {
               ? null
               : query(collection(db, 'appointments'), where('practitionerId', '==', lien))
         if (requete === null) return []
-        const snapshot = await getDocs(requete)
+        const snapshot = await lire(getDocs(requete))
         return snapshot.docs
           .map((d) => {
             const data = d.data() as Record<string, unknown>
@@ -782,7 +784,7 @@ export function createFirestoreStaffApp(): StaffApp {
         // Lecture directe : les règles accordent la collection au personnel, et une
         // fonction appelable coûterait un démarrage à froid pour quelques dates.
         try {
-          const snapshot = await getDocs(collection(db, 'leaves'))
+          const snapshot = await lire(getDocs(collection(db, 'leaves')))
           const par: Record<string, Leave[]> = {}
           for (const document of snapshot.docs) {
             const brut = document.data()['leaves']
@@ -837,7 +839,7 @@ export function createFirestoreStaffApp(): StaffApp {
         try {
           const uid = identity.uid
           if (uid === null) return null
-          const snapshot = await getDoc(doc(db, 'staff', uid))
+          const snapshot = await lire(getDoc(doc(db, 'staff', uid)))
           const lu = snapshot.data()?.['serviceId']
           return typeof lu === 'string' && lu !== '' ? lu : null
         } catch {
@@ -864,7 +866,7 @@ export function createFirestoreStaffApp(): StaffApp {
 
       async readPatientPermissions(): Promise<PatientPermissions> {
         try {
-          const snapshot = await getDoc(doc(db, 'config', 'app'))
+          const snapshot = await lire(getDoc(doc(db, 'config', 'app')))
           return readPermissions(snapshot.data()?.['patientActions'])
         } catch {
           return { ...OPEN_TO_PATIENTS }
@@ -884,7 +886,7 @@ export function createFirestoreStaffApp(): StaffApp {
 
       async readPatientActions(): Promise<Record<string, PatientActionOverrides>> {
         try {
-          const snapshot = await getDocs(collection(db, 'patientActions'))
+          const snapshot = await lire(getDocs(collection(db, 'patientActions')))
           const par: Record<string, PatientActionOverrides> = {}
           for (const document of snapshot.docs) {
             const lues = readOverrides(document.data())

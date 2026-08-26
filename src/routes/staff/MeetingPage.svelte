@@ -17,6 +17,7 @@
     todayLocalDate,
   } from '../../lib/domain/time'
   import type { Occurrence } from '../../lib/domain/types'
+  import { resolveUnit } from '../../lib/domain/unit'
   import { config } from '../../lib/config'
 
   /**
@@ -36,7 +37,14 @@
    *
    * Le choix est mémorisé sur l'appareil : la tablette du Mazurel rouvre sur Le Mazurel.
    */
-  const MEMOIRE = 'leuze.reunion.service'
+  /*
+    La démonstration et la vraie application partagent le même domaine — donc le même
+    stockage du navigateur. Un service choisi dans la démonstration s'écrivait sous la
+    même clé que celui de la vraie réunion, et le suivait ensuite : on ouvrait la vraie
+    application et l'on tombait sur un identifiant qui n'existe pas ici. La clé porte
+    donc de quel côté vient le choix.
+  */
+  const MEMOIRE = staffStore.isDemo ? 'leuze.reunion.service.demonstration' : 'leuze.reunion.service'
   /*
     « Tous les services » est un choix, et il s'enregistre comme les autres.
 
@@ -48,7 +56,21 @@
   */
   const TOUS = '*'
   const retenu = typeof localStorage === 'undefined' ? null : localStorage.getItem(MEMOIRE)
-  let serviceId = $state<string | null>(retenu === TOUS ? null : retenu)
+  let serviceChoisi = $state<string | null>(retenu === TOUS ? null : retenu)
+
+  /*
+    Le service retenu, une fois vérifié qu'il existe toujours.
+
+    Sans cette vérification, un identifiant devenu inconnu — un service retiré du
+    catalogue, ou celui d'une autre base — filtrait tout en silence. L'écran affichait
+    « Aucune activité cette semaine pour ce service », et le menu, incapable de retrouver
+    la valeur parmi ses options, montrait « Tous les services » : les deux se
+    contredisaient, et rien ne disait laquelle avait raison.
+
+    C'est exactement ce que `resolveUnit` fait déjà pour l'unité du compte, et pour la
+    même raison : un écran trop plein se comprend, un écran vide ne se comprend pas.
+  */
+  const serviceId = $derived(resolveUnit(staffStore.catalog.services, serviceChoisi))
 
   /*
     À défaut d'un choix retenu sur l'appareil, l'unité du compte fait le premier choix.
@@ -70,16 +92,16 @@
     const unite = staffStore.accountUnit
     if (semee || unite === null) return
     semee = true
-    serviceId = unite
+    serviceChoisi = unite
   })
 
   function choisirService(valeur: string): void {
     // Un choix à la main est un choix : l'unité du compte ne le défera pas.
     semee = true
-    serviceId = valeur === '' ? null : valeur
+    serviceChoisi = valeur === '' ? null : valeur
     changerDActivite(null)
     if (typeof localStorage !== 'undefined') {
-      localStorage.setItem(MEMOIRE, serviceId ?? TOUS)
+      localStorage.setItem(MEMOIRE, serviceChoisi ?? TOUS)
     }
   }
 
