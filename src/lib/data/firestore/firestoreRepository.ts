@@ -44,6 +44,7 @@ const httpsCallable: typeof httpsCallableSansLimite = ((...args: Parameters<type
   return ((donnees?: unknown) => ecrire(appel(donnees))) as ReturnType<typeof httpsCallableSansLimite>
 }) as typeof httpsCallableSansLimite
 import { audienceQueryKeys, isVisibleToService } from '../../domain/audience'
+import type { RegistrationKind } from '../../domain/capacity'
 import { enClair } from '../../erreurs'
 import { patientIdentityOf } from '../../domain/session'
 import {
@@ -302,10 +303,36 @@ export function createFirestoreRepository(): AppRepository {
         return occurrence === null ? null : { occurrence, status: line.status, position: line.position }
       },
 
-      async register(occurrenceId: string): Promise<RegisterResult> {
+      /*
+        Les options voyagent jusqu'au serveur.
+
+        Cette fonction ne déclarait que `occurrenceId` : `as` et `replacing` étaient
+        acceptés par l'appelant, puis jetés ici sans un mot. Le serveur les lit pourtant,
+        et l'adapter de démonstration les envoie — d'où un défaut invisible partout sauf
+        en production. TypeScript ne dit rien : une fonction qui prend moins de paramètres
+        reste assignable à un type qui en déclare plus.
+
+        Deux conséquences, et la seconde est la plus grave. « Finalement, je viens
+        seulement regarder » repartait en inscription ordinaire : le serveur voyait une
+        personne déjà inscrite et répondait « Vous êtes déjà inscrit à cette activité ».
+        Et sur une séance où l'on n'était pas encore inscrit, « Je viens seulement
+        regarder » prenait une vraie place — celle de quelqu'un d'autre — sans que rien ne
+        le dise. Enfin, sans `replacing`, échanger une activité contre une autre était
+        refusé pour chevauchement.
+      */
+      async register(
+        occurrenceId: string,
+        options: { replacing?: string[]; as?: RegistrationKind } = {},
+      ): Promise<RegisterResult> {
         const result = await callAndMap<RegisterResult>(
           'register',
-          { occurrenceId },
+          {
+            occurrenceId,
+            ...(options.replacing !== undefined && options.replacing.length > 0
+              ? { replacing: options.replacing }
+              : {}),
+            ...(options.as !== undefined ? { as: options.as } : {}),
+          },
           "L'inscription n'a pas pu être enregistrée. Réessayez dans un instant.",
         )
         mineCache = null
