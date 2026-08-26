@@ -14,6 +14,7 @@
 import {
   signInWithCustomToken,
   signInWithEmailAndPassword,
+  sendPasswordResetEmail,
   onAuthStateChanged,
   signOut,
   type User,
@@ -57,7 +58,13 @@ const httpsCallable: typeof httpsCallableSansLimite = ((...args: Parameters<type
   return ((donnees?: unknown) => ecrire(appel(donnees))) as ReturnType<typeof httpsCallableSansLimite>
 }) as typeof httpsCallableSansLimite
 import type { RegistrationKind } from '../../domain/capacity'
-import { loginErrorCode, loginFailureMessage, loginFailureOf } from '../../domain/connexion'
+import {
+  loginErrorCode,
+  loginFailureMessage,
+  loginFailureOf,
+  resetMessage,
+  resetOutcomeOf,
+} from '../../domain/connexion'
 import type { CatalogRemoval } from '../../domain/catalog'
 import { friendlyError } from '../../domain/errors'
 import type { Account } from '../../domain/impersonation'
@@ -286,6 +293,26 @@ export function createFirestoreStaffApp(): StaffApp {
       async signOut() {
         await signOut(auth)
         identity = SIGNED_OUT
+      },
+
+      /**
+       * Le courriel de réinitialisation.
+       *
+       * Firebase l'envoie et gère le lien : rien à écrire ici, rien à stocker. Le modèle
+       * du message se règle dans la console (Authentication → Templates), et c'est là
+       * qu'on le met en français.
+       *
+       * La réponse est la même dans tous les cas où il n'y a rien à corriger — compte
+       * inexistant compris. Voir `domain/connexion`.
+       */
+      async sendPasswordReset(email: string) {
+        try {
+          await ecrire(sendPasswordResetEmail(auth, email.trim()))
+          return { ok: true, message: resetMessage('envoye') }
+        } catch (error) {
+          const issue = resetOutcomeOf(loginErrorCode(error))
+          return { ok: issue === 'envoye', message: resetMessage(issue) }
+        }
       },
     },
 

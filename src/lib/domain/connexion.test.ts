@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import { friendlyError } from './errors'
-import { loginErrorCode, loginFailureMessage, loginFailureOf, type LoginFailure } from './connexion'
+import {
+  loginErrorCode,
+  loginFailureMessage,
+  loginFailureOf,
+  resetMessage,
+  resetOutcomeOf,
+  type LoginFailure,
+} from './connexion'
 import { DelaiDepasse, avecDelai, DELAI_ECRITURE, DELAI_LECTURE } from '../data/firestore/reseau'
 
 /**
@@ -139,5 +146,44 @@ describe('pourquoi la connexion a échoué', () => {
     expect(loginErrorCode(new Error('sans code'))).toBe('')
     expect(loginErrorCode(null)).toBe('')
     expect(loginErrorCode('une chaîne')).toBe('')
+  })
+})
+
+/**
+ * Redemander un mot de passe.
+ *
+ * Il n'y avait aucun moyen d'en sortir : un soignant qui oublie le sien était bloqué
+ * dehors, et il fallait ouvrir la console Firebase pour lui. Pour cinquante personnes,
+ * cela ne tient pas.
+ */
+describe('demander un nouveau mot de passe', () => {
+  it('répond la même chose que le compte existe ou non', () => {
+    /*
+      La même discipline que l'écran de connexion : dire « cette adresse n'a pas de
+      compte » permettrait d'apprendre, en essayant des adresses au hasard, qui travaille
+      ici. C'est la seule chose que cet écran doit taire.
+    */
+    expect(resetOutcomeOf('')).toBe('envoye')
+    expect(resetOutcomeOf('auth/user-not-found')).toBe('envoye')
+    expect(resetMessage('envoye')).toContain('Si cette adresse a un compte')
+  })
+
+  it('dit ce qui appelle un geste', () => {
+    expect(resetOutcomeOf('auth/invalid-email')).toBe('adresse-invalide')
+    expect(resetOutcomeOf('auth/too-many-requests')).toBe('trop-d-essais')
+    expect(resetOutcomeOf('auth/quelque-chose')).toBe('panne')
+  })
+
+  it('pense aux courriers indésirables : c’est là qu’il finit une fois sur deux', () => {
+    expect(resetMessage('envoye')).toContain('indésirables')
+  })
+
+  it('ne laisse passer ni jargon ni code d’erreur', () => {
+    for (const cause of ['envoye', 'adresse-invalide', 'trop-d-essais', 'panne'] as const) {
+      const dit = resetMessage(cause)
+      expect(dit.toLowerCase()).not.toContain('firebase')
+      expect(dit).not.toContain('auth/')
+      expect(dit).not.toContain('undefined')
+    }
   })
 })

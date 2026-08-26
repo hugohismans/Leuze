@@ -285,6 +285,16 @@ class StaffStore {
     return result.ok ? { ok: true } : { ok: false, message: result.message }
   }
 
+  /**
+   * Demander un nouveau mot de passe.
+   *
+   * Aucun état à tenir : le courriel part, et le lien vit dans le message. La réponse est
+   * la même que le compte existe ou non — voir `domain/connexion`.
+   */
+  async sendPasswordReset(email: string): Promise<{ ok: boolean; message: string }> {
+    return (await this.app$()).session.sendPasswordReset(email)
+  }
+
   /** Les comptes auxquels un administrateur peut se substituer, pour vérifier ce qu'ils voient. */
   async listAccounts(): Promise<Account[]> {
     return (await this.app$()).superAdmin.listAccounts()
