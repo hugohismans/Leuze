@@ -13,6 +13,7 @@
  * n'importe qui — or personne ne serait alors responsable de ce qui est noté, ni de ce
  * qui ne l'est pas. Le formulaire d'activité prévient au moment d'enregistrer.
  */
+import { animePar, facilitatorIdsOf, type Anime } from './animation'
 
 export type Attendance = 'present' | 'absent'
 
@@ -23,8 +24,8 @@ export type Marker = {
 }
 
 /** Vrai quand l'activité désigne quelqu'un pour l'animer. Sans cela, pas d'appel. */
-export function hasFacilitator(occurrence: { facilitatorId?: string }): boolean {
-  return occurrence.facilitatorId !== undefined && occurrence.facilitatorId !== ''
+export function hasFacilitator(occurrence: Anime): boolean {
+  return facilitatorIdsOf(occurrence).length > 0
 }
 
 /**
@@ -70,7 +71,7 @@ export function attendanceOpen(occurrence: {
 
 export function canMarkAttendance(
   actor: Marker,
-  occurrence: { facilitatorId?: string; ledByPatient?: boolean; status?: string },
+  occurrence: Anime & { ledByPatient?: boolean; status?: string },
 ): boolean {
   /*
     Une activité animée par un patient n'a pas d'appel, pour personne — pas même pour
@@ -87,7 +88,14 @@ export function canMarkAttendance(
   if (actor.role === 'admin') return hasFacilitator(occurrence)
   if (actor.role !== 'staff') return false
   if (!hasFacilitator(occurrence)) return false
-  return actor.practitionerId === occurrence.facilitatorId
+  /*
+    Chacun de ceux qui animent, et pas seulement le premier.
+
+    La question se posait par une égalité. Dès qu'un atelier se tenait à deux, la seconde
+    personne se voyait refuser l'appel de sa propre séance — alors qu'elle était dans la
+    salle, et souvent la seule à savoir qui était venu.
+  */
+  return animePar(occurrence, actor.practitionerId)
 }
 
 /**
@@ -106,6 +114,7 @@ export function attendanceRefusal(
   occurrence: {
     facilitator?: string
     facilitatorId?: string
+    facilitatorIds?: string[]
     ledByPatient?: boolean
     status?: string
     cancellationReason?: string

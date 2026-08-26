@@ -41,18 +41,59 @@ beforeEach(async () => {
     await setDoc(doc(database, 'activities', 'chez-marc'), activite({ facilitatorId: 'marc' }))
     await setDoc(doc(database, 'activities', 'chez-claire'), activite({ facilitatorId: 'claire' }))
     await setDoc(doc(database, 'activities', 'sans-personne'), activite())
+    // Un atelier tenu à deux : Claire d'abord, Marc en second.
+    await setDoc(
+      doc(database, 'activities', 'a-deux'),
+      activite({ facilitatorId: 'claire', facilitatorIds: ['claire', 'marc'] }),
+    )
   })
 })
 
 describe('lire le programme', () => {
   it('tout le personnel le lit : il est affiché au mur', async () => {
     const snapshot = await assertSucceeds(getDocs(collection(asStaff(env), 'activities')))
-    expect(snapshot.size).toBe(3)
+    expect(snapshot.size).toBe(4)
     await assertSucceeds(getDocs(collection(asPractitioner(env, 'marc'), 'activities')))
   })
 
   it('un patient ne lit jamais la définition des activités', async () => {
     await assertFails(getDocs(collection(asPatient(env, 'p_camille', MAZUREL), 'activities')))
+  })
+})
+
+describe('une activité animée à plusieurs', () => {
+  /*
+    Retour du terrain : un atelier cuisine se tient à deux. La règle ne regardait que
+    `facilitatorId`, c'est-à-dire le premier nommé — le second se voyait refuser sa propre
+    activité, sans pouvoir corriger une heure ni annuler une séance qu'il tient lui-même.
+
+    Les deux champs sont désormais regardés. `facilitatorId` reste indispensable : c'est
+    le seul que portent les activités enregistrées avant, et l'oublier retirerait à tout
+    le monde le droit de toucher à ce qui existe déjà.
+  */
+  it('se laisse modifier par le second animateur, pas seulement par le premier', async () => {
+    await assertSucceeds(
+      updateDoc(doc(asPractitioner(env, 'marc'), 'activities', 'a-deux'), { title: 'Cuisine à deux' }),
+    )
+    await assertSucceeds(
+      updateDoc(doc(asPractitioner(env, 'claire'), 'activities', 'a-deux'), { title: 'Cuisine' }),
+    )
+  })
+
+  it('reste fermée à qui n’y figure pas', async () => {
+    await assertFails(
+      updateDoc(doc(asPractitioner(env, 'sophie'), 'activities', 'a-deux'), { title: 'Chez Sophie' }),
+    )
+  })
+
+  it('n’ouvre rien sur les activités d’avant, qui n’ont pas de liste', async () => {
+    // La compatibilité ne doit pas devenir un passe-droit.
+    await assertSucceeds(
+      updateDoc(doc(asPractitioner(env, 'marc'), 'activities', 'chez-marc'), { title: 'À moi' }),
+    )
+    await assertFails(
+      updateDoc(doc(asPractitioner(env, 'marc'), 'activities', 'chez-claire'), { title: 'Pas à moi' }),
+    )
   })
 })
 

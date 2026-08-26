@@ -18,6 +18,11 @@
     canChooseFacilitator,
     facilitatorFor,
   } from '../../lib/domain/activityAccess'
+  import {
+    facilitatorFields,
+    facilitatorIdsOf,
+    facilitatorLabel,
+  } from '../../lib/domain/animation'
   import { deletionConsequences } from '../../lib/domain/catalog'
   import { leaveClashes } from '../../lib/domain/leave'
   import { findOccurrence } from '../../lib/domain/recurrence'
@@ -45,7 +50,29 @@
   let categoryId = $state('')
   let locationId = $state('')
   let facilitator = $state('')
-  let facilitatorId = $state('')
+  /*
+    Ceux qui animent, dans l'ordre où on les a nommés.
+
+    Retour du terrain : un atelier cuisine se tient à deux, une sortie en ville aussi. La
+    personne qui n'était pas nommée ne pouvait ni faire l'appel, ni voir la séance dans
+    son planning — elle n'existait pas pour l'application alors qu'elle était dans la
+    salle.
+
+    Le premier garde un nom à lui : c'est celui que les règles de sécurité et les
+    activités déjà enregistrées connaissent, et c'est aussi celui dont on lit les congés.
+  */
+  let facilitatorIds = $state<string[]>([])
+  const facilitatorId = $derived(facilitatorIds[0] ?? '')
+
+  /** « Claire », « Claire et Marc » : ce que le patient lira sur le programme. */
+  const nomsDesAnimateurs = (ids: string[]): string =>
+    facilitatorLabel(ids.map((id) => store.practitionerOf(id)?.name ?? ''))
+
+  /** Ajouter ou retirer quelqu'un ; le nom affiché suit toujours la liste. */
+  function poserAnimateurs(ids: string[]): void {
+    facilitatorIds = ids
+    facilitator = nomsDesAnimateurs(ids)
+  }
   /** L'activité est animée par un patient, seul : pas d'appel. Voir `domain/attendance`. */
   let animeParUnPatient = $state(false)
   /**
@@ -201,7 +228,8 @@
       categoryId = activity.categoryId
       locationId = activity.locationId
       facilitator = activity.facilitator ?? ''
-      facilitatorId = activity.facilitatorId ?? ''
+      // Les deux formes se lisent au même endroit : voir `domain/animation`.
+      facilitatorIds = facilitatorIdsOf(activity)
       animeParUnPatient = activity.ledByPatient === true
       repetition = activity.recurrence === null ? 'une-fois' : 'chaque-semaine'
       // « date » peut être un identifiant de séance : on prend alors son jour à elle.
@@ -267,7 +295,7 @@
     nouvelle || !chargee
       ? activityEditRefusal(moi, null)
       : activityEditRefusal(moi, {
-          ...(facilitatorId === '' ? {} : { facilitatorId }),
+          facilitatorIds,
           ...(facilitator === '' ? {} : { facilitator }),
         }),
   )
@@ -295,10 +323,12 @@
    * le choix — comme pour l'activité sans animateur désigné, juste au-dessus.
    */
   const congesHeurtes = $derived(
-    facilitatorId === ''
+    facilitatorIds.length === 0
       ? []
       : leaveClashes(
-          staffStore.leavesOf(facilitatorId),
+          // À plusieurs, le congé de n'importe lequel mérite d'être dit : c'est peut-être
+          // celui qui devait animer ce jour-là.
+          facilitatorIds.flatMap((id) => staffStore.leavesOf(id)),
           repetition === 'une-fois' ? { dates: [dateUnique] } : { weekdays: jours },
           isoWeekdayOf,
           // Un congé déjà terminé faisait apparaître un avertissement sur une date
@@ -346,7 +376,7 @@
   const libelleEnregistrer = $derived(
     avertissementConge && congesHeurtes.length > 0
       ? 'Enregistrer malgré le congé'
-      : avertissementAnimateur && facilitatorId === ''
+      : avertissementAnimateur && facilitatorIds.length === 0
         ? 'Enregistrer sans appel'
         : 'Enregistrer',
   )
@@ -432,18 +462,19 @@
       vient de demander, et à rouvrir un appel dont on a dit qu'il n'y en aurait pas.
     */
     if (animeParUnPatient) {
-      facilitatorId = ''
+      facilitatorIds = []
       if (facilitator.trim().length === 0) {
         erreur = 'Donnez le prénom de la personne qui anime.'
         return
       }
     } else {
+      // Pour qui ne choisit personne, le domaine attribue l'activité à son auteur.
       const anime = facilitatorFor(moi, facilitatorId === '' ? null : facilitatorId)
-      if (anime !== facilitatorId) {
-        facilitatorId = anime ?? ''
-        facilitator = store.practitionerOf(facilitatorId)?.name ?? ''
+      if (anime !== null && anime !== facilitatorId) {
+        facilitatorIds = [anime, ...facilitatorIds.filter((id) => id !== anime)]
+        facilitator = nomsDesAnimateurs(facilitatorIds)
       }
-      if (facilitatorId === '' && !avertissementAnimateur) {
+      if (facilitatorIds.length === 0 && !avertissementAnimateur) {
         avertissementAnimateur = true
         return
       }
@@ -470,7 +501,9 @@
         // Le nom est dénormalisé pour l'affichage, l'identifiant pour retrouver le
         // planning de la personne. Les deux voyagent ensemble.
         ...(facilitator.trim().length > 0 ? { facilitator: facilitator.trim() } : {}),
-        ...(facilitatorId ? { facilitatorId } : {}),
+        // `facilitatorIds` fait foi ; `facilitatorId` porte le premier, parce que les
+        // règles de sécurité et les séances déjà écrites s'appuient dessus.
+        ...(animeParUnPatient ? {} : facilitatorFields(facilitatorIds)),
         ...(animeParUnPatient ? { ledByPatient: true } : {}),
         audience: pourTous ? 'all' : 'services',
         serviceIds: pourTous ? [] : serviceIds,
@@ -975,7 +1008,7 @@
               checked={animeParUnPatient}
               onchange={() => {
                 animeParUnPatient = true
-                facilitatorId = ''
+                facilitatorIds = []
                 /*
                   Le nom du soignant ne reste pas dans « Son prénom » : le champ demande
                   le prénom d'un patient, et l'y trouver pré-rempli avec « Marc » invite à
@@ -1012,26 +1045,70 @@
             Une étiquette, comme les menus « Catégorie », « Lieu » et « Durée ». Sans elle,
             un lecteur d'écran annonce un menu sans dire de quoi il parle.
           -->
+          <!--
+            Plusieurs personnes peuvent animer la même activité.
+
+            Un menu par animateur, plutôt qu'une liste à cocher : l'écran reste le même
+            quand il n'y en a qu'un — le cas courant, de loin — et le second n'apparaît
+            que si on le demande. « Ajouter un animateur » se voit, « décocher la bonne
+            case parmi trente » ne se voit pas.
+          -->
           <label for="animateur" class="mt-3 mb-2 block text-lg font-semibold text-ink">
             Qui anime cette activité
           </label>
-          <select
-            id="animateur"
-            class={champ}
-            style="min-height: 56px;"
-            value={facilitatorId}
-            onchange={(event) => {
-              facilitatorId = event.currentTarget.value
-              // Le nom suit l'identifiant : c'est lui que le patient lira, et il reste juste
-              // même si la personne est retirée du catalogue plus tard.
-              facilitator = store.practitionerOf(facilitatorId)?.name ?? ''
-            }}
-          >
-            <option value="">Personne en particulier</option>
-            {#each proposed(store.practitioners) as intervenant (intervenant.id)}
-              <option value={intervenant.id}>{intervenant.name} — {intervenant.role}</option>
-            {/each}
-          </select>
+          {#each facilitatorIds.length === 0 ? [''] : facilitatorIds as choisi, rang (rang)}
+            <div class="mb-2 flex flex-wrap items-center gap-2">
+              <select
+                id={rang === 0 ? 'animateur' : `animateur-${rang}`}
+                aria-label={rang === 0 ? 'Qui anime cette activité' : `Animateur ${rang + 1}`}
+                class="{champ} min-w-0 flex-1"
+                style="min-height: 56px;"
+                value={choisi}
+                onchange={(event) => {
+                  const valeur = event.currentTarget.value
+                  const suivants = facilitatorIds.length === 0 ? [''] : [...facilitatorIds]
+                  suivants[rang] = valeur
+                  // « Personne en particulier » sur la seule ligne vide la liste ; sur une
+                  // ligne ajoutée, elle la retire — sans quoi un trou resterait au milieu.
+                  poserAnimateurs(suivants.filter((id) => id !== ''))
+                }}
+              >
+                <option value="">Personne en particulier</option>
+                {#each proposed(store.practitioners) as intervenant (intervenant.id)}
+                  <!-- Déjà nommé plus haut : on ne propose pas de le mettre deux fois. -->
+                  <option
+                    value={intervenant.id}
+                    disabled={intervenant.id !== choisi && facilitatorIds.includes(intervenant.id)}
+                  >
+                    {intervenant.name} — {intervenant.role}
+                  </option>
+                {/each}
+              </select>
+              {#if facilitatorIds.length > 1}
+                <button
+                  type="button"
+                  class="btn btn-secondary"
+                  onclick={() => poserAnimateurs(facilitatorIds.filter((_, i) => i !== rang))}
+                >
+                  Retirer
+                </button>
+              {/if}
+            </div>
+          {/each}
+
+          {#if facilitatorId !== ''}
+            <button
+              type="button"
+              class="btn btn-quiet"
+              onclick={() => {
+                // Une ligne vide de plus : elle se remplit au menu, et disparaît si on
+                // la laisse sur « Personne en particulier ».
+                facilitatorIds = [...facilitatorIds, '']
+              }}
+            >
+              <span aria-hidden="true">＋</span> Ajouter un animateur
+            </button>
+          {/if}
           {#if facilitatorId === '' && facilitator !== ''}
             <!-- Une activité créée avant le catalogue des intervenants garde son nom écrit
                  à la main : on l'affiche plutôt que de le perdre en silence. -->
