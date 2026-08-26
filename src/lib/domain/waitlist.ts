@@ -221,6 +221,8 @@ export function register(
       ...existante,
       status,
       ...(status === 'waitlist' ? { queuedAt } : {}),
+      // Une ligne écrite avant que ce champ existe le reçoit en passant.
+      localDate: board.occurrence.localDate,
     }
     let registrations = board.registrations.map((r) => (r.id === existante.id ? changee : r))
 
@@ -252,6 +254,9 @@ export function register(
     createdAt: options.now,
     queuedAt,
     createdBy: options.by,
+    // Le jour de la séance, recopié : c'est lui qui permet de demander « et ce mardi ? »
+    // sans lire tout l'historique de la personne. Voir `Registration.localDate`.
+    localDate: board.occurrence.localDate,
   }
 
   const next = recount({ ...board, registrations: [...board.registrations, registration] })

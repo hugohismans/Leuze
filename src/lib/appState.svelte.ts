@@ -767,7 +767,8 @@ class AppStore {
   async refreshOccurrence(occurrenceId: string): Promise<void> {
     const version = this.#versionMine
     const [updated, mine] = await Promise.all([
-      (await this.repo()).occurrences.get(occurrenceId).catch(() => null),
+      // `frais` : on veut le nombre de places d'après l'inscription, pas celui d'avant.
+      (await this.repo()).occurrences.get(occurrenceId, { frais: true }).catch(() => null),
       (await this.repo()).registrations.listMine().catch(() => null),
     ])
     if (version !== this.#versionMine || this.#ecrituresInscription > 0) return

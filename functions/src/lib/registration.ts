@@ -83,6 +83,36 @@ function writeCounters(
  * Les motifs de rendez-vous sont lus pour nommer ce qui bloque : « Rendez-vous avec le
  * psychiatre » se comprend, « rdv kind-3 » ne se comprend pas.
  */
+/**
+ * Les inscriptions d'une personne un jour donné, en lisant le moins possible.
+ *
+ * Sans date sur l'inscription, il fallait lire **toutes** celles de la personne depuis
+ * son admission — une centaine de documents facturés pour en garder trois. C'était la
+ * plus grosse dépense du projet, payée à chaque ouverture de l'application et à chaque
+ * prénom cliqué en réunion.
+ *
+ * `datees` dit si la reprise est passée (voir `npm run dater:inscriptions`). Tant qu'elle
+ * ne l'est pas, on relit tout : une requête filtrée écarterait silencieusement les
+ * inscriptions écrites avant que le champ existe, et l'on manquerait des chevauchements.
+ * Un chevauchement manqué est pire qu'une lecture de trop.
+ */
+async function inscriptionsDuJour(
+  database: Firestore,
+  patientUid: string,
+  localDate: string,
+  datees: boolean,
+): Promise<Registration[]> {
+  const base = database.collection(COLLECTIONS.registrations).where('patientUid', '==', patientUid)
+  const snapshot = datees
+    ? await base.where('localDate', '==', localDate).get()
+    : await base.get()
+  return snapshot.docs
+    .map(docToRegistration)
+    // Le tri par jour reste fait ici quand la requête ne l'a pas fait — et il ne coûte
+    // rien quand elle l'a fait.
+    .filter((r) => localDateOfOccurrenceId(r.occurrenceId) === localDate)
+}
+
 export async function busyOn(
   database: Firestore,
   patientUid: string,
@@ -102,9 +132,11 @@ export async function busyOn(
     programme, et lui cacher un titre ne protégerait personne.
   */
   visiblePour?: { serviceId: string | null },
+  /** La reprise des dates est-elle passée ? Voir `inscriptionsDuJour`. */
+  datees = false,
 ): Promise<BusyEntry[]> {
-  const [inscriptions, rendezVous] = await Promise.all([
-    database.collection(COLLECTIONS.registrations).where('patientUid', '==', patientUid).get(),
+  const [duJour, rendezVous] = await Promise.all([
+    inscriptionsDuJour(database, patientUid, localDate, datees),
     database
       .collection(COLLECTIONS.appointments)
       .where('patientUid', '==', patientUid)
@@ -112,10 +144,9 @@ export async function busyOn(
       .get(),
   ])
 
-  const memeJour = inscriptions.docs
-    .map(docToRegistration)
-    .filter((r) => r.status !== 'cancelled' && r.occurrenceId !== ignoreOccurrenceId)
-    .filter((r) => localDateOfOccurrenceId(r.occurrenceId) === localDate)
+  const memeJour = duJour.filter(
+    (r) => r.status !== 'cancelled' && r.occurrenceId !== ignoreOccurrenceId,
+  )
 
   /*
     Les séances du jour et les motifs de rendez-vous se lisent en même temps.
@@ -276,6 +307,8 @@ export async function conflictsFor(
   occurrenceId: string,
   /** Le service du patient : ce qu'il lira ne doit pas franchir la cloison. */
   serviceId?: string | null,
+  /** La reprise des dates est-elle passée ? Voir `inscriptionsDuJour`. */
+  datees = false,
 ): Promise<BusyEntry[]> {
   /*
     On lisait la séance, puis on regardait la journée de la personne — deux temps, alors
@@ -298,6 +331,7 @@ export async function conflictsFor(
       jour,
       occurrenceId,
       serviceId === undefined ? undefined : { serviceId },
+      datees,
     ),
   ])
   if (!snapshot.exists) return []
@@ -502,6 +536,13 @@ export async function promoteTx(
 export async function myRegistrationsFor(
   database: Firestore,
   patientUid: string,
+  /** La reprise des dates est-elle passée ? Voir `inscriptionsDuJour`. */
+  datees = false,
+  /**
+   * Le premier jour qui compte. La veille, et non aujourd'hui : une séance d'hier soir
+   * figure encore sur « Ma semaine », et la faire disparaître à minuit serait brutal.
+   */
+  depuis = '',
 ): Promise<
   Array<{
     occurrenceId: string
@@ -509,10 +550,19 @@ export async function myRegistrationsFor(
     position: number | null
   }>
 > {
-  const mine = await database
-    .collection(COLLECTIONS.registrations)
-    .where('patientUid', '==', patientUid)
-    .get()
+  /*
+    Seules les inscriptions à venir intéressent l'écran.
+
+    On lisait toutes celles de la personne depuis son admission — annulées comprises — pour
+    n'en afficher qu'une poignée. « Mes inscriptions » est relu à chaque navigation : c'était
+    la dépense la plus lourde de l'application, payée plusieurs fois par jour et par patient.
+
+    Tant que la reprise des dates n'est pas passée, on relit tout : une requête filtrée
+    écarterait les inscriptions écrites avant que le champ existe, et la personne verrait
+    disparaître ce à quoi elle est inscrite. Voir `npm run dater:inscriptions`.
+  */
+  const base = database.collection(COLLECTIONS.registrations).where('patientUid', '==', patientUid)
+  const mine = datees ? await base.where('localDate', '>=', depuis).get() : await base.get()
 
   const active = mine.docs.map(docToRegistration).filter((r) => r.status !== 'cancelled')
   const lignes = await Promise.all(
