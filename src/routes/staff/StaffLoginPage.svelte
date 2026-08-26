@@ -1,6 +1,7 @@
 <script lang="ts">
   import { staffStore } from '../../lib/staffState.svelte'
   import { enClair } from '../../lib/erreurs'
+  import { RECHARGER } from '../../lib/domain/errors'
 
   let email = $state('')
   let password = $state('')
@@ -83,6 +84,20 @@
       <p role="alert" class="mt-3 rounded-xl bg-red-50 p-3 text-lg font-semibold text-red-900">
         <span aria-hidden="true">⚠️</span> {message}
       </p>
+
+      <!--
+        Le seul geste qui s'en sort, offert d'un doigt.
+
+        Quand un morceau de l'application n'a pas pu se charger, le navigateur retient
+        l'échec : réessayer ne repart pas sur le réseau. Il faut recharger la page — et
+        savoir le faire sur un téléphone ne va pas de soi. Le bouton évite d'avoir à
+        l'expliquer.
+      -->
+      {#if message === RECHARGER}
+        <button type="button" class="btn btn-secondary mt-3 w-full" onclick={() => location.reload()}>
+          <span aria-hidden="true">🔄</span> Recharger la page
+        </button>
+      {/if}
     {/if}
 
     <button type="submit" class="btn btn-primary mt-4 w-full" disabled={busy}>
