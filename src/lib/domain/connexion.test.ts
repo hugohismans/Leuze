@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { friendlyError } from './errors'
+import { loginErrorCode, loginFailureMessage, loginFailureOf, type LoginFailure } from './connexion'
 import { DelaiDepasse, avecDelai, DELAI_ECRITURE, DELAI_LECTURE } from '../data/firestore/reseau'
 
 /**
@@ -55,5 +56,88 @@ describe('une connexion qui n’aboutit pas finit quand même', () => {
     const dit = friendlyError(new DelaiDepasse().message, false)
     expect(dit).not.toBe('')
     expect(dit.toLowerCase()).toContain('connexion')
+  })
+})
+
+/**
+ * Ce qu'on répond à quelqu'un qui n'arrive pas à entrer.
+ *
+ * Le code n'avait qu'une phrase pour tout : « L'adresse ou le mot de passe ne correspond
+ * pas. » Constaté en service : quelqu'un qui était sûr de son mot de passe se l'est vue
+ * répondre, sans aucun moyen de savoir que le problème était ailleurs. C'est la pire
+ * chose qu'un écran de connexion puisse faire — envoyer chercher une clé qu'on a déjà
+ * dans la poche.
+ */
+describe('pourquoi la connexion a échoué', () => {
+  it('ne met sur le dos du mot de passe que ce qui en relève', () => {
+    for (const code of [
+      'auth/invalid-credential',
+      'auth/wrong-password',
+      'auth/user-not-found',
+      'auth/invalid-email',
+    ]) {
+      expect(loginFailureOf(code)).toBe('identifiants')
+    }
+  })
+
+  it('reconnaît le compte mis en pause après plusieurs essais', () => {
+    // Le cas qui a mordu : après quelques tentatives, l'accès est bloqué quelques
+    // minutes. Le dire évite de chercher une faute de frappe qui n'existe pas.
+    expect(loginFailureOf('auth/too-many-requests')).toBe('trop-d-essais')
+    expect(loginFailureMessage('trop-d-essais')).toContain('Attendez')
+  })
+
+  it('reconnaît le réseau, et le délai dépassé du projet', () => {
+    expect(loginFailureOf('auth/network-request-failed')).toBe('reseau')
+    expect(loginFailureOf('auth/timeout')).toBe('reseau')
+  })
+
+  it('reconnaît une méthode de connexion fermée dans la console', () => {
+    // Tout le monde se voit alors refuser, et rien à l'écran ne permet de le deviner.
+    expect(loginFailureOf('auth/operation-not-allowed')).toBe('methode-fermee')
+  })
+
+  it('avoue ne pas savoir plutôt que d’accuser quelqu’un', () => {
+    expect(loginFailureOf('auth/quelque-chose-de-neuf')).toBe('panne')
+    expect(loginFailureOf('')).toBe('panne')
+    expect(loginFailureMessage('panne')).not.toContain('mot de passe')
+  })
+
+  it('ne dit jamais lequel des deux est faux', () => {
+    /*
+      Volontaire : le dire permettrait de deviner qui possède un compte ici, en essayant
+      des adresses au hasard. C'est la seule chose que cet écran doit taire.
+    */
+    const dit = loginFailureMessage('identifiants')
+    expect(dit).toContain('adresse')
+    expect(dit).toContain('mot de passe')
+    expect(dit).not.toMatch(/adresse (inconnue|introuvable)/i)
+  })
+
+  it('dit toujours quoi faire, dans tous les cas', () => {
+    const causes: LoginFailure[] = [
+      'identifiants',
+      'trop-d-essais',
+      'compte-desactive',
+      'reseau',
+      'methode-fermee',
+      'panne',
+    ]
+    for (const cause of causes) {
+      const dit = loginFailureMessage(cause)
+      expect(dit.length).toBeGreaterThan(20)
+      expect(dit).not.toContain('undefined')
+      // Pas de jargon : ni « Firebase », ni « auth », ni un code d'erreur.
+      expect(dit.toLowerCase()).not.toContain('firebase')
+      expect(dit).not.toContain('auth/')
+    }
+  })
+
+  it('lit le code porté par l’erreur, quelle qu’en soit la forme', () => {
+    expect(loginErrorCode({ code: 'auth/too-many-requests' })).toBe('auth/too-many-requests')
+    expect(loginErrorCode(new DelaiDepasse())).toBe('auth/timeout')
+    expect(loginErrorCode(new Error('sans code'))).toBe('')
+    expect(loginErrorCode(null)).toBe('')
+    expect(loginErrorCode('une chaîne')).toBe('')
   })
 })

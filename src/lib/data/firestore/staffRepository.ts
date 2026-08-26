@@ -57,6 +57,7 @@ const httpsCallable: typeof httpsCallableSansLimite = ((...args: Parameters<type
   return ((donnees?: unknown) => ecrire(appel(donnees))) as ReturnType<typeof httpsCallableSansLimite>
 }) as typeof httpsCallableSansLimite
 import type { RegistrationKind } from '../../domain/capacity'
+import { loginErrorCode, loginFailureMessage, loginFailureOf } from '../../domain/connexion'
 import type { CatalogRemoval } from '../../domain/catalog'
 import { friendlyError } from '../../domain/errors'
 import type { Account } from '../../domain/impersonation'
@@ -262,9 +263,23 @@ export function createFirestoreStaffApp(): StaffApp {
             }
           }
           return { ok: true as const }
-        } catch {
-          // Message unique : ne pas indiquer si c'est l'adresse ou le mot de passe.
-          return { ok: false as const, message: "L'adresse ou le mot de passe ne correspond pas." }
+        } catch (error) {
+          /*
+            On dit ce qui s'est réellement passé.
+
+            Ce `catch` rendait la même phrase pour tout : réseau coupé, serveur trop lent,
+            compte mis en pause après plusieurs essais, méthode de connexion fermée dans
+            la console. Quelqu'un qui était sûr de son mot de passe se voyait donc répondre
+            qu'il se trompe — et il n'avait aucun moyen de savoir que le problème était
+            ailleurs. Constaté en service.
+
+            La seule chose qu'on tait reste laquelle des deux valeurs est fausse : le dire
+            permettrait de deviner qui possède un compte ici. Voir `domain/connexion`.
+          */
+          return {
+            ok: false as const,
+            message: loginFailureMessage(loginFailureOf(loginErrorCode(error))),
+          }
         }
       },
 
