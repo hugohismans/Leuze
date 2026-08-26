@@ -1,5 +1,6 @@
 <script lang="ts">
   import { store } from '../lib/appState.svelte'
+  import { enClair } from '../lib/erreurs'
 
   /*
     Réveiller la fonction pendant qu'on saisit le code.
@@ -17,14 +18,28 @@
   let message = $state<string | null>(null)
   let busy = $state(false)
 
+  /*
+    Le bouton redevient utilisable quoi qu'il arrive. Voir l'écran de connexion soignant :
+    `busy = false` hors de tout `finally` laissait « Un instant… » à l'écran pour toujours
+    dès que la connexion partait en erreur au lieu de rendre un refus. C'est ici que cela
+    coûterait le plus cher : la personne devant cet écran n'a encore rien vu de
+    l'application, et n'a aucune raison de penser à recharger la page.
+  */
   async function submit(event: SubmitEvent): Promise<void> {
     event.preventDefault()
     if (busy) return
     busy = true
     message = null
-    const result = await store.signInWithCode(code)
-    if (!result.ok) message = result.message ?? "Ce code n'est pas reconnu. Demandez un nouveau code à un soignant."
-    busy = false
+    try {
+      const result = await store.signInWithCode(code)
+      if (!result.ok) {
+        message = result.message ?? "Ce code n'est pas reconnu. Demandez un nouveau code à un soignant."
+      }
+    } catch (error) {
+      message = enClair(error)
+    } finally {
+      busy = false
+    }
   }
 </script>
 

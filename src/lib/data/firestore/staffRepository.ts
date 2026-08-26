@@ -160,7 +160,9 @@ export function createFirestoreStaffApp(): StaffApp {
     } else {
       // Le rôle qui fait autorité est le « custom claim » du jeton, pas le document
       // `staff/` — un document ne décide jamais d'un droit.
-      const token = await user.getIdTokenResult()
+      // Même garde-temps que sur les lectures : voir `reseau.ts`. Le jeton part sur le
+      // réseau, et la bibliothèque d'authentification ne rend jamais la main d'elle-même.
+      const token = await lire(user.getIdTokenResult())
       const claim = token.claims['role']
       const role: StaffRole | null = claim === 'admin' || claim === 'staff' ? claim : null
       let firstName: string | null = null
@@ -240,7 +242,16 @@ export function createFirestoreStaffApp(): StaffApp {
 
       async signIn(email: string, password: string) {
         try {
-          const credential = await signInWithEmailAndPassword(auth, email.trim(), password)
+          /*
+            La connexion aussi a une limite de temps.
+
+            `reseau.ts` borne les lectures Firestore et les fonctions appelables, mais pas
+            l'authentification — qui traverse pourtant le même réseau, et qui reste le
+            tout premier geste de la journée. Sur un téléphone qui bascule du wifi à la
+            5G, l'appel n'échoue pas : il attend. L'écran affichait alors « Un instant… »
+            sans fin, sans message et sans issue. Constaté en service.
+          */
+          const credential = await ecrire(signInWithEmailAndPassword(auth, email.trim(), password))
           await readIdentity(credential.user)
           if (identity.role === null) {
             await signOut(auth)
