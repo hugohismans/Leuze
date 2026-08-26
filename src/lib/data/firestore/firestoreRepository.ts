@@ -158,8 +158,10 @@ export function createFirestoreRepository(): AppRepository {
       mineCache = { at: Date.now(), lines }
       return lines
     } catch {
-      const snapshot = await getDocs(
-        query(collection(db, 'registrations'), where('patientUid', '==', session.patientUid)),
+      const snapshot = await lire(
+        getDocs(
+          query(collection(db, 'registrations'), where('patientUid', '==', session.patientUid)),
+        ),
       )
       const lines = snapshot.docs
         .map((document) => document.data() as { occurrenceId: string; status: string })
@@ -197,7 +199,7 @@ export function createFirestoreRepository(): AppRepository {
     const connue = options.frais === true ? undefined : seancesLues.get(occurrenceId)
     if (connue !== undefined) return connue
     try {
-      const snapshot = await getDoc(doc(db, 'occurrences', occurrenceId))
+      const snapshot = await lire(getDoc(doc(db, 'occurrences', occurrenceId)))
       if (!snapshot.exists()) return null
       const occurrence = toOccurrence(snapshot)
       seancesLues.set(occurrence.id, occurrence)
@@ -222,19 +224,19 @@ export function createFirestoreRepository(): AppRepository {
   return {
     catalog: {
       async listLocations(): Promise<Location[]> {
-        const snapshot = await getDocs(query(collection(db, 'locations'), orderBy('name')))
+        const snapshot = await lire(getDocs(query(collection(db, 'locations'), orderBy('name'))))
         return snapshot.docs.map((d) => ({ ...(d.data() as Omit<Location, 'id'>), id: d.id }))
       },
       async listCategories(): Promise<Category[]> {
-        const snapshot = await getDocs(collection(db, 'categories'))
+        const snapshot = await lire(getDocs(collection(db, 'categories')))
         return snapshot.docs.map((d) => ({ ...(d.data() as Omit<Category, 'id'>), id: d.id }))
       },
       async listPractitioners(): Promise<Practitioner[]> {
-        const snapshot = await getDocs(query(collection(db, 'practitioners'), orderBy('name')))
+        const snapshot = await lire(getDocs(query(collection(db, 'practitioners'), orderBy('name'))))
         return snapshot.docs.map((d) => ({ ...(d.data() as Omit<Practitioner, 'id'>), id: d.id }))
       },
       async listServices(): Promise<Service[]> {
-        const snapshot = await getDocs(query(collection(db, 'services'), orderBy('name')))
+        const snapshot = await lire(getDocs(query(collection(db, 'services'), orderBy('name'))))
         return snapshot.docs.map((d) => ({ ...(d.data() as Omit<Service, 'id'>), id: d.id }))
       },
     },
@@ -245,14 +247,16 @@ export function createFirestoreRepository(): AppRepository {
         if (session.patientUid === null) return []
         // Une seule requête, filtrée sur le service : c'est aussi la seule que les règles
         // acceptent. Sans le filtre `audienceKeys`, Firestore refuse la requête entière.
-        const snapshot = await getDocs(
-          query(
-            collection(db, 'occurrences'),
-            where('audienceKeys', 'array-contains-any', audienceQueryKeys(session.serviceId)),
-            where('localDate', '>=', from),
-            where('localDate', '<=', to),
-            orderBy('localDate'),
-            orderBy('start'),
+        const snapshot = await lire(
+          getDocs(
+            query(
+              collection(db, 'occurrences'),
+              where('audienceKeys', 'array-contains-any', audienceQueryKeys(session.serviceId)),
+              where('localDate', '>=', from),
+              where('localDate', '<=', to),
+              orderBy('localDate'),
+              orderBy('start'),
+            ),
           ),
         )
         const lues = snapshot.docs.map(toOccurrence)
@@ -373,8 +377,10 @@ export function createFirestoreRepository(): AppRepository {
         try {
           // `getDocs` est déjà borné dans le temps ici (voir en haut du fichier) : le
           // réenvelopper poserait deux minuteries sur la même lecture.
-          const snapshot = await getDocs(
-            query(collection(db, 'proposals'), where('patientUid', '==', session.patientUid)),
+          const snapshot = await lire(
+            getDocs(
+              query(collection(db, 'proposals'), where('patientUid', '==', session.patientUid)),
+            ),
           )
           return snapshot.docs
             .map((d) => versProposition(d.id, d.data() as Record<string, unknown>))
@@ -409,7 +415,7 @@ export function createFirestoreRepository(): AppRepository {
      */
     appointments: {
       async listKinds(): Promise<AppointmentKind[]> {
-        const snapshot = await getDocs(query(collection(db, 'appointmentKinds'), orderBy('name')))
+        const snapshot = await lire(getDocs(query(collection(db, 'appointmentKinds'), orderBy('name'))))
         return snapshot.docs
           .map((d) => ({ ...(d.data() as Omit<AppointmentKind, 'id'>), id: d.id }))
           .filter((k) => k.isActive)
@@ -418,8 +424,10 @@ export function createFirestoreRepository(): AppRepository {
       async listMine(): Promise<Appointment[]> {
         await sessionReady
         if (session.patientUid === null) return []
-        const snapshot = await getDocs(
-          query(collection(db, 'appointments'), where('patientUid', '==', session.patientUid)),
+        const snapshot = await lire(
+          getDocs(
+            query(collection(db, 'appointments'), where('patientUid', '==', session.patientUid)),
+          ),
         )
         return snapshot.docs
           .map((d) => {
