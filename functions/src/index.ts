@@ -12,11 +12,11 @@ import { auth, COLLECTIONS, db, docToOccurrence } from './lib/firestore'
 import { generationWindow, regenerateActivity, regenerateAll } from './lib/occurrences'
 import { assertNotRateLimited, clearFailures, recordFailure } from './lib/rateLimit'
 import {
-  appointmentConflictsFor,
   busyBetween,
   conflictsFor,
   myRegistrationsFor,
   promoteTx,
+  hasActiveRegistration,
   registerTx,
   rosterFor,
   unregisterTx,
@@ -272,14 +272,25 @@ export const register = onCall(async (request: CallableRequest) => {
   */
   // Le service a-t-il ouvert ce geste aux patients ? La question part avec la recherche
   // de chevauchement : elles ne s'apprennent rien l'une à l'autre.
-  const [ouvert, conflits] = await Promise.all([
+  const [ouvert, conflits, dejaLa] = await Promise.all([
     patientMay('register', patient.uid),
     // Le service du patient : les titres qui lui reviennent ne franchissent pas la cloison.
     conflictsFor(db(), patient.uid, occurrenceId, patient.serviceId),
+    /*
+      Est-il déjà sur cette séance ?
+
+      Alors ce geste n'est pas un engagement de plus : c'est un changement de nature —
+      inscrit qui passe spectateur, ou l'inverse. Le chevauchement ne le concerne pas, et
+      le lui opposer reviendrait à lui interdire de *réduire* son engagement au motif
+      qu'il existe. Le cas se produit pour de bon quand un soignant l'a inscrit à une
+      activité qui tombe sur son rendez-vous : il en a le droit, il sait que le
+      rendez-vous sera déplacé.
+    */
+    hasActiveRegistration(db(), occurrenceId, patient.uid),
   ])
   if (!ouvert.ok) return { ok: false, reason: 'closed', message: ouvert.message }
 
-  const decision = patientRegistrationDecision(conflits, genre)
+  const decision = patientRegistrationDecision(conflits, genre, { alreadyRegistered: dejaLa })
   if (decision.kind === 'rendez-vous') {
     return { ok: false, reason: 'conflict', message: decision.message }
   }
@@ -415,14 +426,35 @@ export const staffRegister = onCall(async (request: CallableRequest) => {
     rendez-vous. Mais il doit le savoir avant d'inscrire, pas le découvrir le jour même.
     L'écran le lui demande, puis renvoie la même demande avec `overrideConflict`.
 
-    Seuls les rendez-vous arrêtent le geste. On avait d'abord fait s'arrêter l'application
-    sur n'importe quel chevauchement — y compris deux activités qui se recouvrent d'un
-    quart d'heure, ce qui est le cas courant d'un programme chargé. En réunion, cela
-    donnait une question à chaque prénom, et une réunion qui n'avance plus. Deux activités
-    en même temps, on le voit sur la feuille et l'on s'arrange ; un rendez-vous, non.
+    **Tout** chevauchement arrête le geste, et pas seulement les rendez-vous.
+
+    On n'avait d'abord regardé que les rendez-vous : deux activités qui se recouvrent d'un
+    quart d'heure sont le lot d'un programme chargé, et poser la question à chaque prénom
+    faisait traîner la réunion. Décision de l'hôpital, contre ce raisonnement : inscrire
+    quelqu'un à deux activités simultanées est une erreur, pas un arrangement, et c'est
+    justement en réunion qu'elle se commet — on passe la liste vite, sans avoir la semaine
+    de chacun en tête. Le patient qui s'inscrit seul en est empêché depuis longtemps ; il
+    serait étrange que le geste fait pour lui soit le seul à passer sans un mot.
+
+    Le prix est une lecture de plus par prénom — les inscriptions de la personne, pour
+    savoir ce qu'elle a déjà ce jour-là. Le soignant, lui, n'est jamais empêché : il
+    confirme, et l'inscription passe.
   */
-  if (!overrideConflict) {
-    const conflits = await appointmentConflictsFor(db(), patientUid, occurrenceId)
+  /*
+    La question ne se pose qu'à qui s'engage.
+
+    Le deuxième appui du cycle de la réunion porte sur quelqu'un qui est **déjà** sur la
+    séance : on ne fait que changer la nature de sa venue. Reposer l'avertissement lui
+    ferait cliquer deux fois sur le même écran rouge pour un geste qui ne heurte aucun
+    horaire de plus — et c'est la meilleure façon d'apprendre à un soignant à ne plus
+    lire les avertissements, y compris celui qui compte.
+  */
+  const dejaLa = await hasActiveRegistration(db(), occurrenceId, patientUid)
+
+  if (!overrideConflict && !dejaLa) {
+    // Sans service : le soignant voit tout le programme, et lui cacher un titre ne
+    // protégerait personne. C'est la cloison du patient, pas la sienne.
+    const conflits = await conflictsFor(db(), patientUid, occurrenceId)
     if (conflits.length > 0) {
       return {
         ok: false,

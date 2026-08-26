@@ -247,11 +247,15 @@ describe('le soignant qui inscrit quelqu’un de déjà pris', () => {
     )
   })
 
-  it('n’est pas arrêté par une autre activité — on ne demande que pour un rendez-vous', async () => {
+  it('est arrêté par une autre activité aussi, et elle est nommée', async () => {
     /*
-      Un programme chargé fait se recouvrir des activités tout le temps. Poser la question
-      à chaque prénom, c'était une réunion qui n'avance plus — et l'on finissait par
-      cliquer « oui » sans lire. On inscrit ; ce qui se chevauche se voit sur la feuille.
+      Décision de l'hôpital, revenue sur le choix d'origine.
+
+      On laissait passer deux activités qui se recouvrent : cela se voit sur la feuille, et
+      poser la question à chaque prénom faisait traîner la réunion. Mais inscrire quelqu'un
+      à deux activités simultanées est une erreur, pas un arrangement — et c'est justement
+      en réunion qu'elle se commet, en passant la liste vite, sans avoir la semaine de
+      chacun en tête. Le patient qui s'inscrit seul en est empêché depuis longtemps.
     */
     const app = await ouvrirSoignant()
     const seance = seanceAVenir()
@@ -261,7 +265,77 @@ describe('le soignant qui inscrit quelqu’un de déjà pris', () => {
     await app.repository.registerPatient(seance.id, DEMO_PATIENT_UID)
     const seconde = await app.repository.registerPatient(copie.id, DEMO_PATIENT_UID)
 
-    expect(seconde.ok).toBe(true)
-    expect(seconde.conflicts).toBeUndefined()
+    expect(seconde.ok).toBe(false)
+    expect(seconde.conflicts?.[0]?.label).toBe(seance.title)
+    expect(seconde.conflicts?.[0]?.kind).toBe('activity')
+    // Rien n'a bougé tant qu'il n'a pas répondu.
+    expect(inscritA(copie.id)).toBe(false)
+  })
+
+  it('voit une activité d’un autre service que celui du patient de session', async () => {
+    /*
+      La cloison est celle du patient, pas celle du soignant.
+
+      La démonstration filtrait ces libellés au service du patient connecté, quel que soit
+      celui qui demandait. Tant que le soignant ne regardait que les rendez-vous, cela ne
+      se voyait pas — un rendez-vous n'a pas d'audience. Le jour où il a fallu lui montrer
+      aussi les activités, la démonstration s'est mise à taire ce que le serveur signale.
+
+      C'est exactement ce qu'elle existe pour éprouver : elle doit refuser ce que le
+      serveur refuse, et signaler ce qu'il signale.
+    */
+    const app = await ouvrirSoignant()
+    const seance = seanceAVenir()
+    const ailleurs = {
+      ...seance,
+      id: `${seance.id}-ailleurs`,
+      title: 'Réservée à un autre service',
+      audienceKeys: ['un-autre-service'],
+    }
+    world.occurrences.set(ailleurs.id, ailleurs)
+    // Le patient de session n'est pas de ce service-là : lui, ne doit rien en lire.
+    world.session = { ...world.session, serviceId: 'le-mazurel' }
+
+    await app.repository.registerPatient(ailleurs.id, DEMO_PATIENT_UID)
+    const seconde = await app.repository.registerPatient(seance.id, DEMO_PATIENT_UID)
+
+    expect(seconde.ok).toBe(false)
+    expect(seconde.conflicts?.[0]?.label).toBe('Réservée à un autre service')
+  })
+
+  it('mais il tranche, et l’inscription passe', async () => {
+    // Il n'est jamais empêché : il connaît la salle, le groupe et la personne.
+    const app = await ouvrirSoignant()
+    const seance = seanceAVenir()
+    const copie = { ...seance, id: `${seance.id}-ter`, title: 'Séance qui recouvre' }
+    world.occurrences.set(copie.id, copie)
+
+    await app.repository.registerPatient(seance.id, DEMO_PATIENT_UID)
+    const accepte = await app.repository.registerPatient(copie.id, DEMO_PATIENT_UID, {
+      overrideConflict: true,
+    })
+    expect(accepte.ok).toBe(true)
+    expect(inscritA(copie.id)).toBe(true)
+  })
+
+  it('ne repose pas la question au deuxième appui du cycle', async () => {
+    /*
+      Le prénom est déjà sur la séance : on ne fait que changer la nature de sa venue.
+      Reposer le même écran rouge apprendrait à cliquer sans lire — y compris sur
+      l'avertissement qui compte.
+    */
+    const app = await ouvrirSoignant()
+    const seance = seanceAVenir()
+    const copie = { ...seance, id: `${seance.id}-quater`, title: 'Séance qui recouvre' }
+    world.occurrences.set(copie.id, copie)
+
+    await app.repository.registerPatient(seance.id, DEMO_PATIENT_UID)
+    await app.repository.registerPatient(copie.id, DEMO_PATIENT_UID, { overrideConflict: true })
+
+    const spectateur = await app.repository.registerPatient(copie.id, DEMO_PATIENT_UID, {
+      as: 'spectator',
+    })
+    expect(spectateur.ok).toBe(true)
+    expect(spectateur.conflicts).toBeUndefined()
   })
 })

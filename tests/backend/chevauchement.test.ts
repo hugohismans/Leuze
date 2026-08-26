@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { COLLECTIONS, Timestamp, db } from '../../functions/src/lib/firestore'
-import { appointmentConflictsFor, conflictsFor, registerTx } from '../../functions/src/lib/registration'
+import { conflictsFor, registerTx } from '../../functions/src/lib/registration'
 
 /**
  * Ce qui arrête une inscription prise en réunion, éprouvé sur l'émulateur.
@@ -75,7 +75,7 @@ beforeEach(async () => {
 describe('ce qui arrête une inscription prise par un soignant', () => {
   it('trouve le rendez-vous qui tombe au même moment, et le nomme', async () => {
     await seedRendezVous('14:15', '14:45', 'Docteur Lemaire')
-    const conflits = await appointmentConflictsFor(db(), PATIENT, SEANCE)
+    const conflits = await conflictsFor(db(), PATIENT, SEANCE)
     expect(conflits).toHaveLength(1)
     expect(conflits[0]?.kind).toBe('appointment')
     expect(conflits[0]?.label).toBe('Rendez-vous avec Docteur Lemaire')
@@ -87,33 +87,43 @@ describe('ce qui arrête une inscription prise par un soignant', () => {
       .doc('psychiatre')
       .set({ name: 'le psychiatre', icon: '🩺', isActive: true })
     await seedRendezVous('14:15', '14:45', null)
-    const conflits = await appointmentConflictsFor(db(), PATIENT, SEANCE)
+    const conflits = await conflictsFor(db(), PATIENT, SEANCE)
     expect(conflits[0]?.label).toBe('Rendez-vous avec le psychiatre')
   })
 
   it('ignore un rendez-vous qui s’enchaîne bord à bord', async () => {
     await seedRendezVous('15:30', '16:00', 'Docteur Lemaire')
-    expect(await appointmentConflictsFor(db(), PATIENT, SEANCE)).toEqual([])
+    expect(await conflictsFor(db(), PATIENT, SEANCE)).toEqual([])
   })
 
   it('ignore un rendez-vous annulé', async () => {
     await seedRendezVous('14:15', '14:45', 'Docteur Lemaire')
     await db().collection(COLLECTIONS.appointments).doc('rdv-chevauchement').update({ status: 'cancelled' })
-    expect(await appointmentConflictsFor(db(), PATIENT, SEANCE)).toEqual([])
+    expect(await conflictsFor(db(), PATIENT, SEANCE)).toEqual([])
   })
 
-  it('ignore une autre activité prise au même moment', async () => {
+  it('arrête aussi le soignant sur une autre activité prise au même moment', async () => {
     /*
-      Le cas courant, et celui qui bloquait la réunion : deux activités qui se recouvrent.
-      On inscrit sans rien demander — ce qui se chevauche se voit sur la feuille.
+      Décision de l'hôpital, revenue sur le choix d'origine.
+
+      On laissait passer deux activités qui se recouvrent : cela se voit sur la feuille,
+      et poser la question à chaque prénom faisait traîner la réunion. Mais inscrire
+      quelqu'un à deux activités simultanées est une erreur, pas un arrangement — et c'est
+      justement en réunion qu'elle se commet, en passant la liste vite. Le patient qui
+      s'inscrit seul en est empêché depuis longtemps.
+
+      Le soignant n'est pas empêché pour autant : il est averti, il confirme, cela passe.
     */
     await seedOccurrence(VOISINE, 'Jeux de société', '14:30', '16:00')
     await registerTx(db(), { occurrenceId: VOISINE, patientUid: PATIENT, by: 'staff' })
-    expect(await appointmentConflictsFor(db(), PATIENT, SEANCE)).toEqual([])
+    const conflits = await conflictsFor(db(), PATIENT, SEANCE)
+    expect(conflits).toHaveLength(1)
+    expect(conflits[0]?.label).toBe('Jeux de société')
+    expect(conflits[0]?.kind).toBe('activity')
   })
 
   it('ne trouve rien quand la journée est libre', async () => {
-    expect(await appointmentConflictsFor(db(), PATIENT, SEANCE)).toEqual([])
+    expect(await conflictsFor(db(), PATIENT, SEANCE)).toEqual([])
   })
 })
 

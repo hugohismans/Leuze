@@ -362,14 +362,50 @@ export function busyOn(
   return occupe
 }
 
+/**
+ * Cette personne a-t-elle déjà une inscription vivante sur cette séance ?
+ *
+ * Même question, même réponse que le serveur : le chevauchement ne se demande qu'à qui
+ * s'engage. Quelqu'un qui est déjà là ne s'engage pas de nouveau — il change la nature
+ * de sa venue, ce qui ne peut heurter aucun horaire de plus.
+ */
+export function dejaInscrit(occurrenceId: string, patientUid: string): boolean {
+  return world.registrations.some(
+    (r) => r.occurrenceId === occurrenceId && r.patientUid === patientUid && r.status !== 'cancelled',
+  )
+}
+
 /** Ce qui tombe en même temps qu'une séance, pour cette personne. */
-export function conflictsFor(patientUid: string, occurrenceId: string): BusyEntry[] {
+export function conflictsFor(
+  patientUid: string,
+  occurrenceId: string,
+  /**
+   * Qui va lire ces libellés.
+   *
+   * `'patient'` — celui de la session — ne doit pas voir franchir la cloison le titre
+   * d'une activité réservée à un autre service. `'soignant'` voit déjà tout le programme,
+   * et lui cacher un titre ne protégerait personne : c'est la cloison du patient, pas la
+   * sienne.
+   *
+   * Le paramètre n'existait pas, et la démonstration filtrait donc **toujours** au service
+   * du patient de session. Tant que le soignant ne regardait que les rendez-vous, cela ne
+   * se voyait pas — un rendez-vous n'a pas d'audience. Le jour où il a fallu lui montrer
+   * aussi les activités, la démonstration s'est mise à taire ce que le serveur signale :
+   * elle ne refusait plus ce que le serveur refuse, ce qui est précisément ce qu'elle
+   * existe pour éprouver.
+   */
+  pour: 'patient' | 'soignant' = 'patient',
+): BusyEntry[] {
   const occurrence = world.occurrences.get(occurrenceId)
   if (occurrence === undefined) return []
   return conflictsWith(
     { start: occurrence.start, end: occurrence.end },
-    // Le patient lit ces libellés : la cloison vaut ici comme partout ailleurs.
-    busyOn(patientUid, occurrence.localDate, occurrenceId, { serviceId: world.session.serviceId }),
+    busyOn(
+      patientUid,
+      occurrence.localDate,
+      occurrenceId,
+      pour === 'patient' ? { serviceId: world.session.serviceId } : undefined,
+    ),
   )
 }
 

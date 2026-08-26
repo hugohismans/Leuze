@@ -284,6 +284,42 @@ describe('on ne regarde pas deux choses à la fois', () => {
   })
 })
 
+describe('changer d’avis n’est pas s’engager de nouveau', () => {
+  const rendezVous: BusyEntry = {
+    start: new Date('2025-08-12T09:30:00Z'),
+    end: new Date('2025-08-12T10:00:00Z'),
+    label: 'Rendez-vous avec Docteur Lemaire',
+    kind: 'appointment',
+  }
+
+  it('laisse passer qui est déjà sur la séance, même sous un rendez-vous', () => {
+    /*
+      Le cas se produit pour de bon : un soignant inscrit quelqu'un à une activité qui
+      tombe sur son rendez-vous — il en a le droit, il sait que le rendez-vous sera
+      déplacé. La personne ouvre ensuite la fiche et veut seulement regarder. Sans cette
+      réserve, elle lisait « Vous avez un rendez-vous à ce moment-là » et restait inscrite
+      pour de bon : on lui interdisait de *réduire* son engagement au motif qu'il existe.
+    */
+    expect(patientRegistrationDecision([rendezVous], 'spectator').kind).toBe('rendez-vous')
+    expect(
+      patientRegistrationDecision([rendezVous], 'spectator', { alreadyRegistered: true }).kind,
+    ).toBe('libre')
+  })
+
+  it('vaut aussi dans l’autre sens, du regard vers la participation', () => {
+    expect(
+      patientRegistrationDecision([rendezVous], 'participant', { alreadyRegistered: true }).kind,
+    ).toBe('libre')
+  })
+
+  it('ne désarme rien pour quelqu’un qui n’y est pas encore', () => {
+    // La garantie ne doit pas fuir : sans inscription vivante, le rendez-vous ferme.
+    expect(
+      patientRegistrationDecision([rendezVous], 'participant', { alreadyRegistered: false }).kind,
+    ).toBe('rendez-vous')
+  })
+})
+
 describe('les mots des boutons', () => {
   it('disent ce qu’on va faire, pas comment cela s’appelle', () => {
     expect(spectatorActionLabel()).toBe('Je viens seulement regarder')
