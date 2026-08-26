@@ -29,6 +29,26 @@ const inscritA = (occurrenceId: string): boolean =>
     (r) => r.occurrenceId === occurrenceId && r.patientUid === DEMO_PATIENT_UID && r.status !== 'cancelled',
   )
 
+/**
+ * Le terrain, dégagé de ce que la démonstration a semé.
+ *
+ * Le monde de démonstration pré-remplit des inscriptions d'ambiance, et lesquelles dépend
+ * du jour où l'on lance les tests : « la prochaine séance à venir » n'est pas la même un
+ * lundi matin et un vendredi soir. Tant qu'un chevauchement d'activités n'arrêtait
+ * personne, cela ne se voyait pas. Depuis qu'il arrête aussi le soignant, ces
+ * inscriptions d'ambiance faisaient échouer les scénarios selon l'heure — la pire sorte
+ * de test, celle qui passe chez soi et tombe en intégration.
+ *
+ * On efface donc tout : chaque test ne parle plus que de ce qu'il pose lui-même.
+ */
+function terrainDegage(): void {
+  world.registrations = []
+  world.appointments = []
+  for (const [id, occurrence] of world.occurrences) {
+    world.occurrences.set(id, { ...occurrence, confirmedCount: 0, waitlistCount: 0, spectatorCount: 0 })
+  }
+}
+
 /** Une séance à venir, à laquelle le patient de démonstration a le droit de s'inscrire. */
 function seanceAVenir() {
   const aujourdHui = todayLocalDate()
@@ -42,7 +62,7 @@ describe('s’inscrire quand on a déjà quelque chose', () => {
   beforeEach(() => {
     resetWorld()
     mockCatalog.reset()
-    world.appointments = world.appointments.filter((a) => a.patientUid !== DEMO_PATIENT_UID)
+    terrainDegage()
   })
 
   it('est refusé au patient quand un rendez-vous tombe au même moment', async () => {
@@ -209,7 +229,7 @@ describe('le soignant qui inscrit quelqu’un de déjà pris', () => {
   beforeEach(() => {
     resetWorld()
     mockCatalog.reset()
-    world.appointments = world.appointments.filter((a) => a.patientUid !== DEMO_PATIENT_UID)
+    terrainDegage()
   })
 
   it('reçoit d’abord la liste de ce qui tombe en même temps', async () => {

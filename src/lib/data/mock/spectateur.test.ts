@@ -24,6 +24,26 @@ const ouvrirSoignant = async () => {
   return app
 }
 
+/**
+ * Le terrain, dégagé de ce que la démonstration a semé.
+ *
+ * Le monde de démonstration pré-remplit des inscriptions d'ambiance, et lesquelles dépend
+ * du jour où l'on lance les tests : « la prochaine séance à venir » n'est pas la même un
+ * lundi matin et un vendredi soir. Tant qu'un chevauchement d'activités n'arrêtait
+ * personne, cela ne se voyait pas. Depuis qu'il arrête aussi le soignant, ces
+ * inscriptions d'ambiance faisaient échouer les scénarios une fois sur deux — selon
+ * l'heure, ce qui est la pire sorte de test.
+ *
+ * On efface donc tout : chaque test ne parle plus que de ce qu'il pose lui-même.
+ */
+function terrainDegage(): void {
+  world.registrations = []
+  world.appointments = []
+  for (const [id, occurrence] of world.occurrences) {
+    world.occurrences.set(id, { ...occurrence, confirmedCount: 0, waitlistCount: 0, spectatorCount: 0 })
+  }
+}
+
 /** Une séance à venir, ouverte à tout le monde. */
 function seanceAVenir() {
   const aujourdHui = todayLocalDate()
@@ -74,9 +94,19 @@ function rendreComplete(occurrenceId: string): void {
       },
     ]
   }
+  /*
+    Le compteur suit, sinon la séance n'est complète qu'à moitié.
+
+    `capacityOf` lit `confirmedCount` sur la séance, pas les inscriptions : laisser le
+    compteur à zéro pendant qu'une place est prise faisait dire « il reste une place » à
+    une séance pleine, et l'inscription passait. Ce qu'on pose ici doit être cohérent
+    avec ce que le domaine lira.
+  */
+  const pris = Math.max(inscrits, 1)
   world.occurrences.set(occurrenceId, {
     ...occurrence,
-    capacity: Math.max(inscrits, 1),
+    capacity: pris,
+    confirmedCount: pris,
     waitlistEnabled: false,
   })
 }
@@ -85,7 +115,7 @@ describe('venir regarder', () => {
   beforeEach(() => {
     resetWorld()
     mockCatalog.reset()
-    world.appointments = world.appointments.filter((a) => a.patientUid !== DEMO_PATIENT_UID)
+    terrainDegage()
   })
 
   it('est possible là où l’inscription est refusée faute de place', async () => {
@@ -132,7 +162,7 @@ describe('un spectateur est quelque part', () => {
   beforeEach(() => {
     resetWorld()
     mockCatalog.reset()
-    world.appointments = world.appointments.filter((a) => a.patientUid !== DEMO_PATIENT_UID)
+    terrainDegage()
   })
 
   it('ne peut pas regarder deux activités à la même heure', async () => {
@@ -209,7 +239,7 @@ describe('changer d’avis sur place', () => {
   beforeEach(() => {
     resetWorld()
     mockCatalog.reset()
-    world.appointments = world.appointments.filter((a) => a.patientUid !== DEMO_PATIENT_UID)
+    terrainDegage()
   })
 
   it('rend sa place sans laisser deux lignes derrière soi', async () => {
@@ -237,6 +267,7 @@ describe('ce que l’animateur voit', () => {
   beforeEach(() => {
     resetWorld()
     mockCatalog.reset()
+    terrainDegage()
   })
 
   it('range les spectateurs à part sur la feuille, sans les compter comme inscrits', async () => {
@@ -257,6 +288,7 @@ describe('le cycle de la réunion du lundi', () => {
   beforeEach(() => {
     resetWorld()
     mockCatalog.reset()
+    terrainDegage()
   })
 
   /** L'état d'un prénom, lu dans le monde de la démonstration. */
