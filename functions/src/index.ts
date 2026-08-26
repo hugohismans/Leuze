@@ -141,7 +141,37 @@ async function readConfig<T>(field: string, fallback: T): Promise<T> {
  * prenne effet dans la seconde, et l'écran d'administration le dit.
  */
 const DUREE_DU_REGLAGE_MS = 30_000
-let reglageEnCache: { lu: number; permissions: PatientPermissions } | null = null
+let reglageEnCache: { lu: number; permissions: PatientPermissions; datees: boolean } | null = null
+
+/**
+ * Les inscriptions portent-elles toutes leur date ?
+ *
+ * Le champ `localDate` est écrit sur toute inscription nouvelle, et il permet de demander
+ * « qu'a cette personne ce mardi ? » sans lire tout son historique. Les inscriptions
+ * écrites avant qu'il existe ne l'ont pas : une requête filtrée les écarterait en
+ * silence, et l'on manquerait des chevauchements — ce qui est bien pire qu'une lecture de
+ * trop.
+ *
+ * `npm run dater:inscriptions` les complète et pose ce drapeau. Tant qu'il est faux, le
+ * serveur relit tout, comme avant. Il ne coûte aucune lecture de plus : il vient du même
+ * document que les réglages, déjà gardé une demi-minute en mémoire.
+ */
+async function inscriptionsDatees(): Promise<boolean> {
+  const maintenant = Date.now()
+  if (reglageEnCache !== null && maintenant - reglageEnCache.lu < DUREE_DU_REGLAGE_MS) {
+    return reglageEnCache.datees
+  }
+  try {
+    const brut = (await db().collection(COLLECTIONS.config).doc('app').get()).data()
+    const permissions = readPermissions(brut?.['patientActions'])
+    const datees = brut?.['registrationsDated'] === true
+    reglageEnCache = { lu: maintenant, permissions, datees }
+    return datees
+  } catch {
+    // Réglage illisible : on relit tout, ce qui coûte mais ne rate rien.
+    return false
+  }
+}
 
 async function patientPermissions(): Promise<PatientPermissions> {
   const maintenant = Date.now()
@@ -149,9 +179,9 @@ async function patientPermissions(): Promise<PatientPermissions> {
     return reglageEnCache.permissions
   }
   try {
-    const brut = (await db().collection(COLLECTIONS.config).doc('app').get()).data()?.['patientActions']
-    const permissions = readPermissions(brut)
-    reglageEnCache = { lu: maintenant, permissions }
+    const brut = (await db().collection(COLLECTIONS.config).doc('app').get()).data()
+    const permissions = readPermissions(brut?.['patientActions'])
+    reglageEnCache = { lu: maintenant, permissions, datees: brut?.['registrationsDated'] === true }
     return permissions
   } catch (error) {
     // Un réglage qu'on n'arrive pas à lire ne doit jamais fermer une porte : une base
@@ -272,10 +302,11 @@ export const register = onCall(async (request: CallableRequest) => {
   */
   // Le service a-t-il ouvert ce geste aux patients ? La question part avec la recherche
   // de chevauchement : elles ne s'apprennent rien l'une à l'autre.
+  const datees = await inscriptionsDatees()
   const [ouvert, conflits, dejaLa] = await Promise.all([
     patientMay('register', patient.uid),
     // Le service du patient : les titres qui lui reviennent ne franchissent pas la cloison.
-    conflictsFor(db(), patient.uid, occurrenceId, patient.serviceId),
+    conflictsFor(db(), patient.uid, occurrenceId, patient.serviceId, datees),
     /*
       Est-il déjà sur cette séance ?
 
@@ -379,7 +410,21 @@ export const unregister = onCall(async (request: CallableRequest) => {
 /** Les inscriptions du patient connecté, avec sa position en liste d'attente. */
 export const myRegistrations = onCall(async (request: CallableRequest) => {
   const patient = requirePatient(request)
-  return { registrations: await myRegistrationsFor(db(), patient.uid) }
+  /*
+    On ne remonte pas au-delà d'hier.
+
+    « Mes inscriptions » et « Ma semaine » ne montrent que ce qui vient ; relire tout
+    l'historique depuis l'admission pour l'écarter ensuite était la dépense la plus lourde
+    de l'application, payée à chaque navigation. La veille, et non aujourd'hui : une
+    séance d'hier soir figure encore sur « Ma semaine », et la faire disparaître à minuit
+    serait brutal.
+  */
+  const hier = new Date(Date.now() - 86_400_000).toLocaleDateString('en-CA', {
+    timeZone: 'Europe/Brussels',
+  })
+  return {
+    registrations: await myRegistrationsFor(db(), patient.uid, await inscriptionsDatees(), hier),
+  }
 })
 
 /** Le soignant inscrit quelqu'un à sa place — un patient sans borne, une demande orale. */
@@ -454,7 +499,7 @@ export const staffRegister = onCall(async (request: CallableRequest) => {
   if (!overrideConflict && !dejaLa) {
     // Sans service : le soignant voit tout le programme, et lui cacher un titre ne
     // protégerait personne. C'est la cloison du patient, pas la sienne.
-    const conflits = await conflictsFor(db(), patientUid, occurrenceId)
+    const conflits = await conflictsFor(db(), patientUid, occurrenceId, undefined, await inscriptionsDatees())
     if (conflits.length > 0) {
       return {
         ok: false,

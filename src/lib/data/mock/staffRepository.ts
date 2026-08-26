@@ -232,6 +232,20 @@ export function createMockStaffApp(): StaffApp {
         storeDetour(null)
         world.impersonating = null
       },
+
+      /**
+       * En démonstration, aucun courriel ne part : il n'y a pas de compte.
+       *
+       * On le dit plutôt que de faire semblant — quelqu'un qui montre l'application
+       * attendrait sinon un message qui n'arrivera jamais.
+       */
+      async sendPasswordReset() {
+        return {
+          ok: true,
+          message:
+            'Ceci est une démonstration : aucun courriel n’est envoyé. Sur la vraie application, un message part vers votre adresse.',
+        }
+      },
     },
 
     repository: {

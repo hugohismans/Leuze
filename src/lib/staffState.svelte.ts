@@ -2,6 +2,7 @@
  * État de l'espace soignant. Comme pour le patient, ne connaît que les ports.
  */
 import { createStaffApp, usesMock } from './data'
+import { chargeurRessayable } from './chargement'
 import type {
   NewPatientCode,
   ActivityDraft,
@@ -58,12 +59,19 @@ const SIGNED_OUT: StaffIdentity = {
 }
 
 class StaffStore {
-  /** Chargé à la demande, comme l'adapter patient : voir `data/index.ts`. */
-  private readonly loading$: Promise<StaffApp> = createStaffApp()
+  /**
+   * Chargé à la demande, comme l'adapter patient : voir `data/index.ts`.
+   *
+   * Et retenté après un échec. La promesse était gardée telle quelle : une fois rejetée,
+   * elle l'était pour toujours, et chaque appui sur « Se connecter » retombait dessus à
+   * l'instant, sans jamais retenter le chargement. Seul un rechargement de la page s'en
+   * sortait — et rien ne le disait. Voir `chargement.ts`.
+   */
+  private readonly charger = chargeurRessayable<StaffApp>(createStaffApp)
   private application: StaffApp | null = null
 
   private async app$(): Promise<StaffApp> {
-    if (this.application === null) this.application = await this.loading$
+    this.application = await this.charger()
     return this.application
   }
 
@@ -275,6 +283,16 @@ class StaffStore {
       await this.refresh()
     }
     return result.ok ? { ok: true } : { ok: false, message: result.message }
+  }
+
+  /**
+   * Demander un nouveau mot de passe.
+   *
+   * Aucun état à tenir : le courriel part, et le lien vit dans le message. La réponse est
+   * la même que le compte existe ou non — voir `domain/connexion`.
+   */
+  async sendPasswordReset(email: string): Promise<{ ok: boolean; message: string }> {
+    return (await this.app$()).session.sendPasswordReset(email)
   }
 
   /** Les comptes auxquels un administrateur peut se substituer, pour vérifier ce qu'ils voient. */

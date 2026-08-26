@@ -26,6 +26,7 @@ import type {
   Service,
 } from './domain/types'
 import { createRepository, isMockRepository, usesMock } from './data'
+import { chargeurRessayable } from './chargement'
 import type { AppRepository, MyRegistration, RegisterResult } from './data/ports'
 
 export type CalendarView = 'day' | 'week' | 'month'
@@ -69,15 +70,20 @@ class AppStore {
   /**
    * L'adapter est chargé à la demande — c'est ce qui permet de ne pas embarquer Firebase
    * dans la version de démonstration. Tous les accès passent donc par `repo()`.
+   *
+   * Le chargement se retente après un échec : une promesse rejetée reste rejetée, et
+   * garder celle-ci condamnait l'application jusqu'au rechargement de la page, pendant
+   * que l'écran invitait à réessayer. Voir `chargement.ts`.
    */
-  private readonly loading$: Promise<AppRepository> = createRepository()
+  private readonly charger = chargeurRessayable<AppRepository>(createRepository)
+  /** L'adapter une fois chargé : quelques lectures d'écran ne peuvent pas attendre. */
   private repository: AppRepository | null = null
 
   /** Vrai sur l'écran de démonstration : données fictives, panneau de réglage visible. */
   readonly isDemo = usesMock()
 
   private async repo(): Promise<AppRepository> {
-    if (this.repository === null) this.repository = await this.loading$
+    this.repository = await this.charger()
     return this.repository
   }
 
@@ -761,7 +767,8 @@ class AppStore {
   async refreshOccurrence(occurrenceId: string): Promise<void> {
     const version = this.#versionMine
     const [updated, mine] = await Promise.all([
-      (await this.repo()).occurrences.get(occurrenceId).catch(() => null),
+      // `frais` : on veut le nombre de places d'après l'inscription, pas celui d'avant.
+      (await this.repo()).occurrences.get(occurrenceId, { frais: true }).catch(() => null),
       (await this.repo()).registrations.listMine().catch(() => null),
     ])
     if (version !== this.#versionMine || this.#ecrituresInscription > 0) return

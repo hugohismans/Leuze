@@ -258,6 +258,21 @@ export type Registration = {
   /** Horodatage d'entrée en liste d'attente : fixe l'ordre de promotion. */
   queuedAt: Date
   createdBy: 'patient' | 'staff'
+  /**
+   * Le jour de la séance, recopié ici.
+   *
+   * Il se déduit de `occurrenceId`, qui est déterministe — mais une base de données ne
+   * sait pas déduire. Sans ce champ, répondre à « qu'a-t-elle déjà ce mardi ? » obligeait
+   * à lire **toutes** ses inscriptions depuis son admission, puis à trier en mémoire :
+   * une centaine de lectures facturées, pour trois lignes utiles, et cela à chaque
+   * ouverture de l'application comme à chaque prénom cliqué en réunion. C'était, de loin,
+   * la plus grosse dépense du projet.
+   *
+   * Absent sur les inscriptions écrites avant ce champ. Le serveur ne s'appuie dessus que
+   * lorsque le réglage `registrationsDated` dit que la reprise est passée — voir
+   * `npm run dater:inscriptions`.
+   */
+  localDate?: LocalDate
 }
 
 /**

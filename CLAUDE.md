@@ -111,6 +111,7 @@ L'UI n'importe **jamais** `firebase/*` directement : elle consomme les interface
 | `npm run check` | `svelte-check` + `tsc --noEmit` |
 | `npm run check:functions` | typage des Cloud Functions |
 | `npm run promote:admin` | donne le rôle administrateur à un compte existant |
+| `npm run dater:inscriptions` | écrit le jour de la séance sur les inscriptions qui ne l'ont pas, puis autorise le serveur à lire au jour le jour ; `-- --corriger` écrit |
 | `npm run recompter` | compare le nombre d'inscrits écrit sur chaque séance et le vrai ; `-- --corriger` écrit |
 | `npm run demo:reset -- --je-confirme` | **vide la vraie base** (sauf le compte administrateur) et la remplit d'un jeu de présentation — précédé de `npm install` et `gcloud config set project leuze-d23b5` sur un Cloud Shell remis à neuf |
 | `npm run demo:vider -- --je-confirme` | vide seulement |

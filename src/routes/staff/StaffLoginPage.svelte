@@ -1,11 +1,38 @@
 <script lang="ts">
   import { staffStore } from '../../lib/staffState.svelte'
   import { enClair } from '../../lib/erreurs'
+  import { RECHARGER } from '../../lib/domain/errors'
 
   let email = $state('')
   let password = $state('')
   let message = $state<string | null>(null)
   let busy = $state(false)
+  /*
+    La demande de nouveau mot de passe.
+
+    Elle n'existait pas : un soignant qui oubliait le sien était bloqué dehors, et il
+    fallait ouvrir la console Firebase pour lui. Pour cinquante personnes, cela ne tient
+    pas — et c'est le matin, avant la réunion, qu'on s'en aperçoit.
+
+    Le lien reste discret sous le bouton : c'est un geste rare, il n'a rien à faire sur le
+    chemin de tous les jours.
+  */
+  let oubli = $state(false)
+  let envoi = $state(false)
+  let reponse = $state<string | null>(null)
+
+  async function reinitialiser(): Promise<void> {
+    if (envoi) return
+    envoi = true
+    reponse = null
+    try {
+      reponse = (await staffStore.sendPasswordReset(email)).message
+    } catch (error) {
+      reponse = enClair(error)
+    } finally {
+      envoi = false
+    }
+  }
 
   /*
     Le bouton redevient utilisable quoi qu'il arrive.
@@ -83,10 +110,61 @@
       <p role="alert" class="mt-3 rounded-xl bg-red-50 p-3 text-lg font-semibold text-red-900">
         <span aria-hidden="true">⚠️</span> {message}
       </p>
+
+      <!--
+        Le seul geste qui s'en sort, offert d'un doigt.
+
+        Quand un morceau de l'application n'a pas pu se charger, le navigateur retient
+        l'échec : réessayer ne repart pas sur le réseau. Il faut recharger la page — et
+        savoir le faire sur un téléphone ne va pas de soi. Le bouton évite d'avoir à
+        l'expliquer.
+      -->
+      {#if message === RECHARGER}
+        <button type="button" class="btn btn-secondary mt-3 w-full" onclick={() => location.reload()}>
+          <span aria-hidden="true">🔄</span> Recharger la page
+        </button>
+      {/if}
     {/if}
 
     <button type="submit" class="btn btn-primary mt-4 w-full" disabled={busy}>
       {busy ? 'Un instant…' : 'Se connecter'}
     </button>
+
+    <!--
+      Mot de passe oublié.
+
+      Discret, sous le bouton : c'est un geste rare. Mais il doit exister — sans lui, la
+      seule sortie était d'ouvrir la console Firebase, ce qu'une seule personne sait faire.
+    -->
+    {#if !oubli}
+      <button type="button" class="btn btn-quiet mt-3 w-full" onclick={() => (oubli = true)}>
+        Mot de passe oublié ?
+      </button>
+    {:else}
+      <div class="mt-4 rounded-xl border-2 border-line p-4">
+        <p class="text-lg text-ink">
+          Entrez votre adresse électronique ci-dessus, puis demandez un nouveau mot de
+          passe. Vous recevrez un courriel avec un lien.
+        </p>
+        {#if reponse !== null}
+          <p role="status" class="mt-3 rounded-xl bg-surface-soft p-3 text-lg text-ink">
+            {reponse}
+          </p>
+        {/if}
+        <div class="mt-3 grid gap-2">
+          <button
+            type="button"
+            class="btn btn-secondary"
+            disabled={envoi || email.trim() === ''}
+            onclick={reinitialiser}
+          >
+            {envoi ? 'Un instant…' : 'Envoyer le courriel'}
+          </button>
+          <button type="button" class="btn btn-quiet" onclick={() => { oubli = false; reponse = null }}>
+            Revenir à la connexion
+          </button>
+        </div>
+      </div>
+    {/if}
   </form>
 </section>

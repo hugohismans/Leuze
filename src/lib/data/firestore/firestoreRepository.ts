@@ -174,10 +174,34 @@ export function createFirestoreRepository(): AppRepository {
     }
   }
 
-  const occurrenceById = async (occurrenceId: string): Promise<Occurrence | null> => {
+  /**
+   * Les séances déjà lues, gardées le temps de la page.
+   *
+   * « Mes inscriptions » repartait chercher **chaque** séance une par une, `getDoc` par
+   * `getDoc` — alors que le calendrier venait de toutes les lire d'un coup, à l'instant
+   * d'avant. Sur quelque cent inscriptions accumulées pendant un séjour, cela faisait
+   * cent lectures facturées à chaque ouverture de l'application, et autant à chaque
+   * navigation. C'était, de loin, la plus grosse dépense de l'application.
+   *
+   * Le cache est volontairement bête : une séance lue est gardée telle quelle. Les
+   * compteurs de places qu'elle porte vieillissent, mais ils vieillissaient déjà — le
+   * calendrier les relit à chaque rafraîchissement, et c'est lui qui remplit ce cache.
+   * Une inscription, elle, relit sa séance exprès (`refreshOccurrence`).
+   */
+  const seancesLues = new Map<string, Occurrence>()
+
+  const occurrenceById = async (
+    occurrenceId: string,
+    options: { frais?: boolean } = {},
+  ): Promise<Occurrence | null> => {
+    const connue = options.frais === true ? undefined : seancesLues.get(occurrenceId)
+    if (connue !== undefined) return connue
     try {
       const snapshot = await getDoc(doc(db, 'occurrences', occurrenceId))
-      return snapshot.exists() ? toOccurrence(snapshot) : null
+      if (!snapshot.exists()) return null
+      const occurrence = toOccurrence(snapshot)
+      seancesLues.set(occurrence.id, occurrence)
+      return occurrence
     } catch {
       // Refus des règles : l'activité appartient à un autre service. Même réponse que
       // « elle n'existe pas » — ne pas révéler qu'elle existe.
@@ -231,7 +255,11 @@ export function createFirestoreRepository(): AppRepository {
             orderBy('start'),
           ),
         )
-        return snapshot.docs.map(toOccurrence)
+        const lues = snapshot.docs.map(toOccurrence)
+        // Ce que le calendrier vient de lire sert à « Mes inscriptions » et à « Ma
+        // semaine », qui allaient sinon rechercher les mêmes séances une par une.
+        for (const occurrence of lues) seancesLues.set(occurrence.id, occurrence)
+        return lues
       },
 
       get: occurrenceById,

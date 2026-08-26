@@ -37,7 +37,15 @@ export interface OccurrenceRepository {
    * transmise au navigateur du patient.
    */
   listBetween(from: LocalDate, to: LocalDate): Promise<Occurrence[]>
-  get(occurrenceId: string): Promise<Occurrence | null>
+  /**
+   * `frais` force une vraie lecture.
+   *
+   * Les séances déjà lues sont gardées le temps de la page — sans quoi « Mes
+   * inscriptions » redemandait chacune une par une, alors que le calendrier venait de
+   * toutes les lire. Après une inscription, en revanche, on veut le nombre de places
+   * exact : cette relecture-là doit passer outre.
+   */
+  get(occurrenceId: string, options?: { frais?: boolean }): Promise<Occurrence | null>
 }
 
 export type MyRegistration = {

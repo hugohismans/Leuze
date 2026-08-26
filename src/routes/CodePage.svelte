@@ -1,6 +1,7 @@
 <script lang="ts">
   import { store } from '../lib/appState.svelte'
   import { enClair } from '../lib/erreurs'
+  import { RECHARGER } from '../lib/domain/errors'
 
   /*
     Réveiller la fonction pendant qu'on saisit le code.
@@ -73,6 +74,17 @@
       <p id="code-erreur" role="alert" class="mt-3 rounded-xl bg-red-50 p-3 text-lg font-semibold text-red-900">
         <span aria-hidden="true">⚠️</span> {message}
       </p>
+
+      <!--
+        Le seul geste qui s'en sort, offert d'un doigt : voir l'écran de connexion
+        soignant. Ici cela compte davantage — la personne devant cet écran n'a encore rien
+        vu de l'application, et « rechargez la page » ne lui dit peut-être rien.
+      -->
+      {#if message === RECHARGER}
+        <button type="button" class="btn btn-secondary mt-3 w-full" onclick={() => location.reload()}>
+          <span aria-hidden="true">🔄</span> Recharger la page
+        </button>
+      {/if}
     {/if}
 
     <button type="submit" class="btn btn-primary mt-4 w-full" disabled={busy || code.trim().length === 0}>

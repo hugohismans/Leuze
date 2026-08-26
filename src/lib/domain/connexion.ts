@@ -97,3 +97,51 @@ export function loginErrorCode(error: unknown): string {
   const name = (error as { name?: unknown }).name
   return name === 'DelaiDepasse' ? 'auth/timeout' : ''
 }
+
+/**
+ * Ce qu'on répond à une demande de nouveau mot de passe.
+ *
+ * **La même phrase, que le compte existe ou non.** C'est la même discipline que l'écran
+ * de connexion : dire « cette adresse n'a pas de compte » permettrait d'apprendre, en
+ * essayant des adresses au hasard, qui travaille ici. Le courriel part si le compte
+ * existe ; sinon rien ne part, et personne d'autre que son propriétaire ne peut le
+ * savoir.
+ *
+ * Deux échecs se disent quand même, parce qu'ils appellent un geste : une adresse
+ * visiblement mal écrite, et l'accès mis en pause après trop de demandes.
+ */
+export type ResetOutcome = 'envoye' | 'adresse-invalide' | 'trop-d-essais' | 'panne'
+
+export function resetOutcomeOf(code: string): ResetOutcome {
+  const propre = code.trim().toLowerCase()
+  switch (propre) {
+    /*
+      « Adresse inconnue » vaut succès, et c'est voulu : la réponse doit être la même dans
+      les deux cas. Firebase ne le renvoie d'ailleurs plus quand la protection contre
+      l'énumération des adresses est active — mais les versions plus anciennes, si.
+    */
+    case '':
+    case 'auth/user-not-found':
+      return 'envoye'
+    case 'auth/invalid-email':
+    case 'auth/missing-email':
+      return 'adresse-invalide'
+    case 'auth/too-many-requests':
+      return 'trop-d-essais'
+    default:
+      return 'panne'
+  }
+}
+
+export function resetMessage(outcome: ResetOutcome): string {
+  switch (outcome) {
+    case 'envoye':
+      return 'Si cette adresse a un compte, un courriel vient de partir. Ouvrez-le et suivez le lien pour choisir un nouveau mot de passe. Regardez aussi dans les courriers indésirables.'
+    case 'adresse-invalide':
+      return 'Cette adresse électronique n’est pas écrite correctement. Vérifiez-la, puis réessayez.'
+    case 'trop-d-essais':
+      return 'Trop de demandes de suite : attendez quelques minutes, puis réessayez.'
+    case 'panne':
+      return 'La demande n’a pas abouti. Réessayez dans un instant ; si cela recommence, demandez à l’administrateur.'
+  }
+}

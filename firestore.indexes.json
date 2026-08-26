@@ -131,6 +131,21 @@
           "order": "ASCENDING"
         }
       ]
+    },
+    {
+      "//": "Ce qu'une personne a déjà un jour donné, et ses inscriptions à venir — sans lire tout son historique.",
+      "collectionGroup": "registrations",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "patientUid",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "localDate",
+          "order": "ASCENDING"
+        }
+      ]
     }
   ],
   "fieldOverrides": []

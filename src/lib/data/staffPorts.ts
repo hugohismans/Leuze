@@ -41,6 +41,17 @@ export interface StaffSessionService {
   current(): StaffIdentity
   signIn(email: string, password: string): Promise<{ ok: true } | { ok: false; message: string }>
   signOut(): Promise<void>
+  /**
+   * Envoie un courriel pour choisir un nouveau mot de passe.
+   *
+   * Il n'y avait aucun moyen de s'en sortir : un soignant qui oubliait le sien était
+   * bloqué dehors, et il fallait ouvrir la console Firebase pour lui. Pour cinquante
+   * personnes, cela ne tient pas.
+   *
+   * La réponse est **la même que le compte existe ou non** : dire le contraire
+   * permettrait d'apprendre, en essayant des adresses au hasard, qui travaille ici.
+   */
+  sendPasswordReset(email: string): Promise<{ ok: boolean; message: string }>
 }
 
 /** Ce qu'un soignant saisit. L'identifiant et la série sont attribués à l'enregistrement. */
