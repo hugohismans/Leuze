@@ -107,7 +107,9 @@ export function createFirestoreRepository(): AppRepository {
       // Être connecté ne suffit pas : il faut l'être *en tant que patient*. Firebase ne
       // tient qu'une session par navigateur, partagée avec l'espace soignant. La règle
       // vit dans le domaine, testée : voir `patientIdentityOf`.
-      const token = user === null ? null : await user.getIdTokenResult()
+      // Garde-temps, comme sur les lectures : le jeton part sur le réseau, et la
+      // bibliothèque d'authentification ne rend jamais la main d'elle-même (`reseau.ts`).
+      const token = user === null ? null : await lire(user.getIdTokenResult())
       const identite = patientIdentityOf(user?.uid ?? null, token?.claims ?? null)
       session =
         identite === null
@@ -478,7 +480,14 @@ export function createFirestoreRepository(): AppRepository {
           )
           const { token, firstName } = (await call({ code })).data
           localStorage.setItem(FIRST_NAME_KEY, firstName)
-          const credential = await signInWithCustomToken(auth, token)
+          /*
+            La connexion aussi a une limite de temps.
+
+            C'est ici que cela compte le plus : la personne devant cet écran n'a encore
+            rien vu de l'application. Un « Un instant… » qui ne s'en va plus lui dit que
+            son code ne marche pas, et elle repart chercher un soignant pour rien.
+          */
+          const credential = await ecrire(signInWithCustomToken(auth, token))
           await readSession(credential.user)
           mineCache = null
           return { ok: true as const }
