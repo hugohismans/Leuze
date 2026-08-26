@@ -1,7 +1,7 @@
 /**
  * État de l'espace soignant. Comme pour le patient, ne connaît que les ports.
  */
-import { createStaffApp } from './data'
+import { createStaffApp, usesMock } from './data'
 import type {
   NewPatientCode,
   ActivityDraft,
@@ -628,6 +628,14 @@ class StaffStore {
         : occurrence,
     )
   }
+
+  /**
+   * L'espace soignant tourne-t-il sur les données fictives ?
+   *
+   * Lu au chargement, comme côté patient : l'adresse ne change pas sans que la page ne
+   * soit rechargée (voir la garde dans `App.svelte`).
+   */
+  readonly isDemo = usesMock()
 
   isRegistered(patientUid: string): boolean {
     return this.roster.some((ligne) => ligne.patientUid === patientUid)

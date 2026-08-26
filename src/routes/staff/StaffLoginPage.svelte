@@ -40,6 +40,24 @@
     Connectez-vous pour créer et modifier les activités.
   </p>
 
+  <!--
+    En démonstration, il n'y a pas de compte : n'importe quel mot de passe ouvre l'accès.
+
+    L'écran du code patient le disait déjà ; celui-ci, non. Quelqu'un qui essaie son vrai
+    mot de passe ici le voit fonctionner et croit être entré dans le vrai espace — ou,
+    dans l'autre sens, croit que son compte marche alors qu'il n'a pas été vérifié. Il n'y
+    a rien à protéger derrière — la version de démonstration ne contient pas une ligne du
+    SDK Firebase, donc aucun accès à la base — mais il y a tout à dire.
+  -->
+  {#if staffStore.isDemo}
+    <p class="mb-6 rounded-xl border-2 border-line p-3 text-base text-ink">
+      <span aria-hidden="true">🧪</span>
+      Ceci est une démonstration : n'importe quelle adresse et n'importe quel mot de passe
+      ouvrent l'accès, et les données sont inventées. Rien de ce que vous ferez ici ne
+      touche le vrai programme.
+    </p>
+  {/if}
+
   <form onsubmit={submit} class="card p-5">
     <label for="courriel" class="mb-2 block text-lg font-semibold text-ink">Adresse électronique</label>
     <input
