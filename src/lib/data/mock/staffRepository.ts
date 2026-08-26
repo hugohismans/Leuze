@@ -11,6 +11,7 @@ import {
   withoutLeave,
   type Leave,
 } from '../../domain/leave'
+import { animePar } from '../../domain/animation'
 import type { BusyEntry } from '../../domain/conflicts'
 import { hasOverrides, type PatientActionOverrides, type PatientPermissions } from '../../domain/permissions'
 import type { ActivityProposal } from '../../domain/proposals'
@@ -294,7 +295,7 @@ export function createMockStaffApp(): StaffApp {
         const activite = activities.get(activityId)
         if (!activite) throw new Error("Cette activité n'existe plus.")
         // Même garde que le serveur : une suppression sans retour n'est pas confiée à tous.
-        if (identity.role !== 'admin' && activite.facilitatorId !== identity.practitionerId) {
+        if (identity.role !== 'admin' && !animePar(activite, identity.practitionerId)) {
           throw new Error(
             "Seul un administrateur, ou la personne qui anime cette activité, peut la supprimer.",
           )
@@ -335,7 +336,7 @@ export function createMockStaffApp(): StaffApp {
       async deleteOccurrence(occurrenceId: string) {
         const seance = world.occurrences.get(occurrenceId)
         if (!seance) return { ok: false, message: "Cette séance n'existe plus." }
-        if (identity.role !== 'admin' && seance.facilitatorId !== identity.practitionerId) {
+        if (identity.role !== 'admin' && !animePar(seance, identity.practitionerId)) {
           return {
             ok: false,
             message:
@@ -796,7 +797,7 @@ export function createMockStaffApp(): StaffApp {
           })
         }
         for (const occurrence of world.occurrences.values()) {
-          if (occurrence.facilitatorId !== query.practitionerId || occurrence.status === 'cancelled') continue
+          if (!animePar(occurrence, query.practitionerId) || occurrence.status === 'cancelled') continue
           if (occurrence.localDate < depart || occurrence.localDate > jusque) continue
           occupeIntervenant.push({
             start: occurrence.start,
@@ -910,7 +911,7 @@ export function createMockStaffApp(): StaffApp {
         const animees = [...world.occurrences.values()]
           .filter(
             (o) =>
-              o.facilitatorId === practitionerId &&
+              animePar(o, practitionerId) &&
               o.status === 'scheduled' &&
               o.localDate >= leave.from &&
               o.localDate <= leave.to &&
@@ -1050,7 +1051,7 @@ export function createMockStaffApp(): StaffApp {
           // La marque, et non le texte du motif : « L'animateur est absent » est aussi
           // l'un des motifs que le bouton « Annuler cette séance » propose.
           if (occurrence.cancelledByLeave !== true) continue
-          if (occurrence.facilitatorId !== practitionerId) continue
+          if (!animePar(occurrence, practitionerId)) continue
           if (occurrence.localDate < leave.from || occurrence.localDate > leave.to) continue
           /*
             Le passé ne se rétablit pas plus qu'il ne s'annule.
@@ -1308,7 +1309,7 @@ export function createMockStaffApp(): StaffApp {
             : kind === 'category'
               ? activity.categoryId === id
               : kind === 'practitioner'
-                ? activity.facilitatorId === id
+                ? animePar(activity, id)
                 : activity.serviceIds.includes(id)
         const parOccurrence = (occurrence: Occurrence): boolean =>
           kind === 'location'
@@ -1316,7 +1317,7 @@ export function createMockStaffApp(): StaffApp {
             : kind === 'category'
               ? occurrence.categoryId === id
               : kind === 'practitioner'
-                ? occurrence.facilitatorId === id
+                ? animePar(occurrence, id)
                 : occurrence.audienceKeys.includes(id)
 
         const nom =

@@ -130,10 +130,25 @@ export type Activity = {
   description: string
   categoryId: string
   locationId: string
-  /** Le nom, dénormalisé : c'est lui que le patient lit. */
+  /** Les noms, dénormalisés : « Claire », « Claire et Marc ». C'est ce que le patient lit. */
   facilitator?: string
-  /** L'intervenant, quand il vient du catalogue : c'est lui qui relie à son planning. */
+  /**
+   * Le premier de `facilitatorIds`, gardé à jour.
+   *
+   * Il précède la possibilité d'animer à plusieurs, et il n'est pas là par nostalgie :
+   * les règles de sécurité et toutes les activités déjà enregistrées s'appuient dessus.
+   * Ne le lisez pas directement — `facilitatorIdsOf` sait lire les deux formes.
+   */
   facilitatorId?: string
+  /**
+   * Tous ceux qui animent, dans l'ordre où on les a nommés.
+   *
+   * Retour du terrain : un atelier cuisine se tient à deux, une sortie en ville aussi. La
+   * personne qui n'était pas nommée ne pouvait ni faire l'appel, ni voir la séance dans
+   * son planning — elle n'existait pas pour l'application alors qu'elle était dans la
+   * salle. Absent sur les activités écrites avant ce champ : voir `domain/animation`.
+   */
+  facilitatorIds?: string[]
   /**
    * L'activité est animée par un patient, seul.
    *
@@ -175,7 +190,10 @@ export type Occurrence = {
   categoryId: string
   locationId: string
   facilitator?: string
+  /** Le premier de `facilitatorIds`. Voir `Activity.facilitatorId`. */
   facilitatorId?: string
+  /** Tous ceux qui animent. Voir `Activity.facilitatorIds` et `domain/animation`. */
+  facilitatorIds?: string[]
   /** Animée par un patient, seul : pas d'appel. Voir `Activity.ledByPatient`. */
   ledByPatient?: boolean
   /**

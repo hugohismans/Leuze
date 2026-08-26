@@ -12,6 +12,7 @@
  * Rien ici n'accorde de droit : les règles Firestore appliquent la même chose sur le
  * jeton. Ceci ne fait qu'accorder l'interface.
  */
+import { animePar, type Anime } from './animation'
 
 export type ActivityActor = {
   role: 'staff' | 'admin' | null
@@ -43,23 +44,22 @@ export function facilitatorFor(actor: ActivityActor, chosen: string | null): str
  * seulement celles qu'il anime déjà — reprendre celle d'un collègue reviendrait à la lui
  * retirer, et une activité sans personne désignée relève de l'organisation du service.
  */
-export function canEditActivity(
-  actor: ActivityActor,
-  activity: { facilitatorId?: string } | null,
-): boolean {
+export function canEditActivity(actor: ActivityActor, activity: Anime | null): boolean {
   if (canChooseFacilitator(actor)) return true
   if (actor.role !== 'staff') return false
   const lien = lienDe(actor)
   if (lien === null) return false
   // Une activité qui n'existe pas encore sera la sienne : c'est le cas de la création.
   if (activity === null) return true
-  return activity.facilitatorId === lien
+  // Chacun de ceux qui animent : à deux, le second ne pouvait pas modifier sa propre
+  // activité — ni corriger l'heure, ni annuler une séance qu'il tient lui-même.
+  return animePar(activity, lien)
 }
 
 /** Ce que l'écran explique quand la modification est refusée. `null` quand elle ne l'est pas. */
 export function activityEditRefusal(
   actor: ActivityActor,
-  activity: { facilitatorId?: string; facilitator?: string } | null,
+  activity: (Anime & { facilitator?: string }) | null,
 ): string | null {
   if (canEditActivity(actor, activity)) return null
   if (actor.role !== 'staff') return 'Cet écran est réservé au personnel soignant.'

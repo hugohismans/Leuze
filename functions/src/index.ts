@@ -24,6 +24,7 @@ import {
 import { patientRegistrationDecision, swapMessage, type BusyEntry } from './domain/conflicts'
 import { alreadyAskedMessage } from './domain/appointments'
 import type { RegistrationKind } from './domain/capacity'
+import { animePar, facilitatorIdsOf, type Anime } from './domain/animation'
 import {
   effectivePermissions,
   isAllowed,
@@ -997,7 +998,7 @@ export const appointmentPlanning = onCall(async (request: CallableRequest) => {
   }
   for (const document of sesSeances.docs) {
     const occurrence = docToOccurrence(document)
-    if (occurrence.facilitatorId !== practitionerId || occurrence.status === 'cancelled') continue
+    if (!animePar(occurrence, practitionerId) || occurrence.status === 'cancelled') continue
     occupeIntervenant.push({
       start: occurrence.start,
       end: occurrence.end,
@@ -1593,8 +1594,9 @@ export const deleteActivity = onCall(async (request: CallableRequest) => {
   if (!snapshot.exists) throw new HttpsError('not-found', "Cette activité n'existe plus.")
   const donnees = snapshot.data() ?? {}
   const title = (donnees['title'] as string | undefined) ?? activityId
-  const anime = (donnees['facilitatorId'] as string | undefined) ?? ''
-  if (staff.role !== 'admin' && (anime === '' || anime !== staff.practitionerId)) {
+  // Chacun de ceux qui animent : à deux, le second ne pouvait pas supprimer sa propre
+  // activité. Voir `domain/animation`.
+  if (staff.role !== 'admin' && !animePar(donnees as Anime, staff.practitionerId)) {
     throw new HttpsError(
       'permission-denied',
       "Seul un administrateur, ou la personne qui anime cette activité, peut la supprimer.",
@@ -1707,8 +1709,7 @@ export const deleteOccurrence = onCall(async (request: CallableRequest) => {
   const snapshot = await reference.get()
   if (!snapshot.exists) throw new HttpsError('not-found', "Cette séance n'existe plus.")
   const donnees = snapshot.data() ?? {}
-  const anime = (donnees['facilitatorId'] as string | undefined) ?? ''
-  if (staff.role !== 'admin' && (anime === '' || anime !== staff.practitionerId)) {
+  if (staff.role !== 'admin' && !animePar(donnees as Anime, staff.practitionerId)) {
     throw new HttpsError(
       'permission-denied',
       "Seul un administrateur, ou la personne qui anime cette activité, peut supprimer une séance.",
@@ -1804,10 +1805,31 @@ export const removeCatalogEntry = onCall(async (request: CallableRequest) => {
     return (await requete.limit(PLAFOND).get()).size
   }
 
+  /*
+    Deux requêtes, parce qu'un intervenant peut être le second à animer.
+
+    On ne cherchait que `facilitatorId`, c'est-à-dire le premier. Quelqu'un qui n'anime
+    que des activités où il vient en second n'était compté nulle part : l'écran annonçait
+    « aucune activité », on le retirait du catalogue, et les séances qu'il animait
+    perdaient un animateur sans que rien ne le dise.
+
+    Les deux champs sont interrogés : `facilitatorIds` pour les activités écrites depuis
+    qu'on peut animer à plusieurs, `facilitatorId` pour toutes celles d'avant. On compte
+    les documents distincts — la plupart répondent aux deux.
+  */
+  async function combienAnime(collection: string, id: string): Promise<number> {
+    const [parListe, parPremier] = await Promise.all([
+      db().collection(collection).where('facilitatorIds', 'array-contains', id).limit(PLAFOND).get(),
+      db().collection(collection).where('facilitatorId', '==', id).limit(PLAFOND).get(),
+    ])
+    const vus = new Set([...parListe.docs, ...parPremier.docs].map((d) => d.id))
+    return Math.min(vus.size, PLAFOND)
+  }
+
   // Un motif de rendez-vous ne se pose ni sur une activité ni sur une séance : il ne
   // vit que sur les rendez-vous. On ne va donc pas les interroger pour rien.
   const requeteActivites =
-    kind === 'appointmentKind'
+    kind === 'appointmentKind' || kind === 'practitioner'
       ? null
       : champActivite === null
         ? db().collection(COLLECTIONS.activities).where('serviceIds', 'array-contains', id)
@@ -1815,13 +1837,18 @@ export const removeCatalogEntry = onCall(async (request: CallableRequest) => {
   const activites = requeteActivites === null ? null : await requeteActivites.limit(PLAFOND).get()
 
   const usage = {
-    activities: activites?.size ?? 0,
+    activities:
+      kind === 'practitioner'
+        ? await combienAnime(COLLECTIONS.activities, id)
+        : (activites?.size ?? 0),
     occurrences:
       kind === 'appointmentKind'
         ? 0
-        : champActivite === null
-          ? await combien(db().collection(COLLECTIONS.occurrences).where('audienceKeys', 'array-contains', id))
-          : await combien(db().collection(COLLECTIONS.occurrences).where(champActivite, '==', id)),
+        : kind === 'practitioner'
+          ? await combienAnime(COLLECTIONS.occurrences, id)
+          : champActivite === null
+            ? await combien(db().collection(COLLECTIONS.occurrences).where('audienceKeys', 'array-contains', id))
+            : await combien(db().collection(COLLECTIONS.occurrences).where(champActivite, '==', id)),
     patients:
       kind === 'service' ? await combien(db().collection(COLLECTIONS.patients).where('serviceId', '==', id)) : 0,
     appointments:
@@ -2081,7 +2108,7 @@ export const declareLeave = onCall(async (request: CallableRequest) => {
       const data = d.data()
       const fin = (data['end'] as Timestamp | undefined) ?? (data['start'] as Timestamp | undefined)
       if (fin !== undefined && fin.toMillis() < maintenant) return false
-      return data['facilitatorId'] === practitionerId && data['status'] === 'scheduled'
+      return animePar(data as Anime, practitionerId) && data['status'] === 'scheduled'
     })
     .map((d) => {
       const data = d.data()
@@ -2323,7 +2350,7 @@ async function retablirLesSeancesDuConge(practitionerId: string, leave: Leave): 
     // La marque, et non le texte du motif : « L'animateur est absent » est aussi l'un
     // des motifs que le bouton « Annuler cette séance » propose.
     if (data.cancelledByLeave !== true) continue
-    if (data.facilitatorId !== practitionerId) continue
+    if (!animePar(data as Anime, practitionerId)) continue
     /*
       La séance rentre dans sa série, et n'en sort pas.
 
