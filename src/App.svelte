@@ -155,7 +155,7 @@
   on lisait « Retour au programme » au-dessus d'un champ qui demandait un code.
 -->
 {#if !espaceSoignant && store.signedIn && (occurrenceId !== null || router.path === '/mes-inscriptions' || router.path === '/rendez-vous' || router.path === '/ma-semaine' || router.path === '/proposer')}
-  {@const retour = backTarget(router.previous)}
+  {@const retour = backTarget(router.path, router.previous)}
   <BackLink to={retour.to} label={retour.label} />
 {/if}
 
