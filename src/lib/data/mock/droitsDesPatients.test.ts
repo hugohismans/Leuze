@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { createMockRepository, createMockStaffApp } from './index'
 import { mockCatalog } from './catalog'
 import { resetWorld, world, DEMO_PATIENT_UID } from './state'
+import { seanceAVenir, terrainDegage } from './terrain'
 import { OPEN_TO_PATIENTS, PATIENT_ACTIONS } from '../../domain/permissions'
 import { todayLocalDate } from '../../domain/time'
 
@@ -18,18 +19,11 @@ const ouvrirAdministrateur = async () => {
   return app
 }
 
-/** Une séance à venir, ouverte au patient de démonstration. */
-function seanceAVenir() {
-  const aujourdHui = todayLocalDate()
-  return [...world.occurrences.values()]
-    .filter((o) => o.localDate > aujourdHui && o.status !== 'cancelled')
-    .filter((o) => o.audienceKeys.includes('all'))
-    .sort((a, b) => a.start.getTime() - b.start.getTime())[0]!
-}
 
 beforeEach(() => {
   resetWorld()
   mockCatalog.reset()
+  terrainDegage()
   world.appointments = world.appointments.filter((a) => a.patientUid !== DEMO_PATIENT_UID)
 })
 

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { createMockRepository, createMockStaffApp } from './index'
 import { mockCatalog } from './catalog'
 import { resetWorld, world, DEMO_PATIENT_UID } from './state'
+import { seanceAVenir, terrainDegage } from './terrain'
 import { todayLocalDate } from '../../domain/time'
 
 /**
@@ -36,22 +37,7 @@ const ouvrirSoignant = async () => {
  *
  * On efface donc tout : chaque test ne parle plus que de ce qu'il pose lui-même.
  */
-function terrainDegage(): void {
-  world.registrations = []
-  world.appointments = []
-  for (const [id, occurrence] of world.occurrences) {
-    world.occurrences.set(id, { ...occurrence, confirmedCount: 0, waitlistCount: 0, spectatorCount: 0 })
-  }
-}
 
-/** Une séance à venir, ouverte à tout le monde. */
-function seanceAVenir() {
-  const aujourdHui = todayLocalDate()
-  return [...world.occurrences.values()]
-    .filter((o) => o.localDate > aujourdHui && o.status !== 'cancelled')
-    .filter((o) => o.audienceKeys.includes('all'))
-    .sort((a, b) => a.start.getTime() - b.start.getTime())[0]!
-}
 
 /** Une seconde séance qui recouvre exactement la première. */
 function seanceQuiRecouvre(seance: ReturnType<typeof seanceAVenir>) {

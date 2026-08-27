@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createMockRepository } from './mockRepository'
 import { DEMO_PATIENT_UID, resetWorld, world } from './state'
+import { seanceAVenir, terrainDegage } from './terrain'
 import { makeOccurrence } from '../../domain/fixtures'
 import { addLocalDays, instantOf, addMinutes, todayLocalDate } from '../../domain/time'
 import type { LocalDate } from '../../domain/types'
@@ -56,6 +57,7 @@ describe('la cloison entre services', () => {
 
   beforeEach(() => {
     resetWorld()
+    terrainDegage()
   })
 
   it('laisse passer ce qui est ouvert à son unité', async () => {
