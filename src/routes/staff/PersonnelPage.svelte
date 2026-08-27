@@ -991,31 +991,52 @@
           {/if}
         </div>
 
-        {#if staffStore.isAdmin && compteDe(personne.id) !== undefined}
-          {@const compte = compteDe(personne.id)!}
+        {#if staffStore.isAdmin}
+          {@const compte = compteDe(personne.id)}
           <!--
             Le rôle vit dans le jeton, pas dans un document : le changer déconnecte la
             personne, qui devra se reconnecter. On le dit, plutôt que de la laisser
             constater que « rien n'a changé ».
           -->
-          <label class="bascule mt-3">
-            <input
-              type="checkbox"
-              checked={compte.role === 'admin'}
-              disabled={busy || cEstMonCompte(compte)}
-              onchange={(event) => basculerAdministrateur(compte, event.currentTarget.checked)}
-            />
-            <span>
-              <strong>Administrateur.</strong>
-              {#if cEstMonCompte(compte)}
-                C'est votre compte : vous ne pouvez pas retirer vos propres droits.
-              {:else}
-                Voit tous les plannings et tous les rendez-vous, gère les patients, le
-                personnel et le catalogue. La personne devra se reconnecter pour que le
-                changement s'applique.
-              {/if}
-            </span>
-          </label>
+          {#if compte === undefined}
+            <!--
+              Sans compte, il n'y a rien à quoi attacher un rôle — et la case disparaissait
+              sans un mot. On lisait alors « Administrateur » sur une fiche et rien sur la
+              suivante, ce qui se comprend comme « au hasard ». Constaté en service, par
+              quelqu'un qui connaît pourtant l'application par cœur.
+
+              Une phrase, et non une case grisée : une case qu'on ne peut pas cocher n'est
+              pas atteignable au clavier, et l'explication passerait au-dessus de la tête
+              d'un lecteur d'écran — c'est-à-dire précisément de celui qui en a le plus
+              besoin. C'est la règle de l'écran des réglages : un geste fermé n'est jamais
+              caché, on lit à la place ce qu'il faut faire.
+            -->
+            <p class="mt-3 text-lg text-ink-soft">
+              <strong class="text-ink">Administrateur.</strong>
+              {personne.name} n'a pas encore d'accès à l'application : il n'y a pas de rôle
+              à lui donner. Utilisez « Lui donner un accès », juste au-dessus, puis revenez
+              ici.
+            </p>
+          {:else}
+            <label class="bascule mt-3">
+              <input
+                type="checkbox"
+                checked={compte.role === 'admin'}
+                disabled={busy || cEstMonCompte(compte)}
+                onchange={(event) => basculerAdministrateur(compte, event.currentTarget.checked)}
+              />
+              <span>
+                <strong>Administrateur.</strong>
+                {#if cEstMonCompte(compte)}
+                  C'est votre compte : vous ne pouvez pas retirer vos propres droits.
+                {:else}
+                  Voit tous les plannings et tous les rendez-vous, gère les patients, le
+                  personnel et le catalogue. La personne devra se reconnecter pour que le
+                  changement s'applique.
+                {/if}
+              </span>
+            </label>
+          {/if}
         {/if}
 
         {#if aRetirer === personne.id}
